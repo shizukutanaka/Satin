@@ -22,7 +22,7 @@ import pandas as pd
 T = TypeVar('T')
 
 class PerformanceMonitor:
-    """Enhanced performance monitoring system with ML-based optimization"""
+    """Enhanced performance monitoring system with advanced optimization"""
     
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
@@ -44,6 +44,205 @@ class PerformanceMonitor:
             'disk': None,
             'network': None
         }
+        self._anomaly_detector = AnomalyDetector()
+        self._batch_optimizer = BatchOptimizer()
+        self._distributed_processor = DistributedProcessor()
+        self._confidence_intervals = {
+            'memory': (0, 0),
+            'cpu': (0, 0),
+            'disk': (0, 0),
+            'network': (0, 0)
+        }
+        self._last_anomaly_check = time.time()
+        self._anomaly_check_interval = 300  # 5 minutes
+    
+    async def calculate_confidence_interval(self, resource: str, confidence: float = 0.95) -> Tuple[float, float]:
+        """Calculate confidence interval for resource usage"""
+        if resource not in self.metrics:
+            return (0, 0)
+            
+        values = [point['value'] for point in self.metrics[resource]['history']]
+        if not values:
+            return (0, 0)
+            
+        mean = np.mean(values)
+        std = np.std(values)
+        n = len(values)
+        
+        z_score = 1.96  # For 95% confidence
+        margin = z_score * (std / np.sqrt(n))
+        
+        return (mean - margin, mean + margin)
+    
+    async def detect_anomalies(self):
+        """Detect anomalies in resource usage"""
+        if not self.enabled:
+            return
+            
+        current_time = time.time()
+        if current_time - self._last_anomaly_check < self._anomaly_check_interval:
+            return
+            
+        for resource, history in self.metrics.items():
+            if 'history' in history:
+                values = [point['value'] for point in history['history']]
+                latest = values[-1]
+                
+                # Get confidence interval
+                lower, upper = await self.calculate_confidence_interval(resource)
+                
+                # Check for anomaly
+                if latest < lower or latest > upper:
+                    await self._anomaly_detector.handle_anomaly(resource, latest)
+                    
+        self._last_anomaly_check = current_time
+    
+    async def optimize_batch_processing(self, items: List[Any], batch_size: int = 100) -> List[Any]:
+        """Optimize batch processing with dynamic batch size"""
+        if not items:
+            return []
+            
+        # Calculate optimal batch size based on current system load
+        cpu_load = await self.get_cpu_load()
+        memory_usage = await self.get_memory_usage()
+        
+        # Adjust batch size based on system resources
+        adjusted_batch_size = self._batch_optimizer.calculate_optimal_batch_size(
+            batch_size,
+            cpu_load,
+            memory_usage
+        )
+        
+        # Process items in batches
+        results = []
+        for i in range(0, len(items), adjusted_batch_size):
+            batch = items[i:i + adjusted_batch_size]
+            batch_results = await self._process_batch(batch)
+            results.extend(batch_results)
+            
+            # Monitor resource usage during processing
+            await self.monitor_batch_processing(batch, batch_results)
+            
+        return results
+    
+    async def monitor_batch_processing(self, batch: List[Any], results: List[Any]):
+        """Monitor resource usage during batch processing"""
+        metrics = {
+            'cpu': await self.get_cpu_load(),
+            'memory': await self.get_memory_usage(),
+            'disk': await self.get_disk_usage(),
+            'network': await self.get_network_usage()
+        }
+        
+        # Update metrics
+        for resource, value in metrics.items():
+            await self.add_metric(resource, value)
+            
+        # Detect anomalies during processing
+        await self.detect_anomalies()
+    
+    async def process_distributed(self, items: List[Any], num_nodes: int = 4) -> List[Any]:
+        """Process items across distributed nodes"""
+        if not items:
+            return []
+            
+        # Split items across nodes
+        chunks = self._split_items(items, num_nodes)
+        
+        # Process in parallel
+        results = await asyncio.gather(*[
+            self._distributed_processor.process_chunk(chunk)
+            for chunk in chunks
+        ])
+        
+        # Combine results
+        return [item for sublist in results for item in sublist]
+    
+    def _split_items(self, items: List[Any], num_nodes: int) -> List[List[Any]]:
+        """Split items into chunks for distributed processing"""
+        chunk_size = len(items) // num_nodes
+        chunks = []
+        for i in range(num_nodes):
+            start = i * chunk_size
+            end = start + chunk_size if i < num_nodes - 1 else len(items)
+            chunks.append(items[start:end])
+        return chunks
+    
+    class AnomalyDetector:
+        """Resource usage anomaly detection"""
+        
+        def __init__(self):
+            self._alerts = []
+            self._last_alert = time.time()
+            self._alert_interval = 300  # 5 minutes
+            
+        async def handle_anomaly(self, resource: str, value: float):
+            """Handle detected anomaly"""
+            current_time = time.time()
+            if current_time - self._last_alert < self._alert_interval:
+                return
+                
+            # Generate alert
+            alert = {
+                'timestamp': current_time,
+                'resource': resource,
+                'value': value,
+                'severity': self._calculate_severity(value)
+            }
+            self._alerts.append(alert)
+            
+            # Take corrective action
+            await self._take_corrective_action(resource, value)
+            
+            self._last_alert = current_time
+            
+        def _calculate_severity(self, value: float) -> str:
+            """Calculate anomaly severity"""
+            if value > 95:
+                return 'critical'
+            elif value > 90:
+                return 'high'
+            elif value > 85:
+                return 'medium'
+            return 'low'
+            
+        async def _take_corrective_action(self, resource: str, value: float):
+            """Take corrective action for anomaly"""
+            if resource == 'memory':
+                await self._optimize_memory()
+            elif resource == 'cpu':
+                await self._optimize_cpu()
+            elif resource == 'disk':
+                await self._optimize_disk()
+            elif resource == 'network':
+                await self._optimize_network()
+    
+    class BatchOptimizer:
+        """Batch processing optimization"""
+        
+        def __init__(self):
+            self._optimal_batch_sizes = {}
+            self._last_optimization = time.time()
+            self._optimization_interval = 300  # 5 minutes
+            
+        def calculate_optimal_batch_size(self, 
+                                        current_size: int,
+                                        cpu_load: float,
+                                        memory_usage: float) -> int:
+            """Calculate optimal batch size based on system resources"""
+            # Adjust batch size based on CPU load
+            cpu_factor = 1.0 - (cpu_load / 100)
+            
+            # Adjust batch size based on memory usage
+            memory_factor = 1.0 - (memory_usage / 100)
+            
+            # Calculate final adjustment factor
+            adjustment = cpu_factor * memory_factor
+            
+            # Apply adjustment with minimum size constraint
+            optimal_size = max(1, int(current_size * adjustment))
+            
+            return optimal_size
     
     def timeit(self, func: Optional[Callable] = None, name: Optional[str] = None):
         """Async performance measurement decorator"""
