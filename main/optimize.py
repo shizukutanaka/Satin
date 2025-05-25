@@ -12,20 +12,38 @@ import json
 import os
 import logging
 import aiofiles
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from statsmodels.tsa.seasonal import seasonal_decompose
+import pandas as pd
 
 T = TypeVar('T')
 
 class PerformanceMonitor:
-    """Enhanced performance monitoring system"""
+    """Enhanced performance monitoring system with ML-based optimization"""
     
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
-        self.metrics = OrderedDict()  # Use OrderedDict for better memory efficiency
+        self.metrics = OrderedDict()
         self._lock = asyncio.Lock()
         self._executor = ThreadPoolExecutor(max_workers=4)
         self._last_cleanup = time.time()
         self._cleanup_interval = 3600  # 1 hour
         self._max_metrics = 1000  # Maximum number of metrics to keep
+        self._resource_optimizer = ResourceOptimizer()
+        self._last_optimization = time.time()
+        self._optimization_interval = 3600  # 1 hour
+        self._ml_optimizer = MLOptimizer()
+        self._last_ml_training = time.time()
+        self._ml_training_interval = 3600 * 24  # 24 hours
+        self._ml_models = {
+            'memory': None,
+            'cpu': None,
+            'disk': None,
+            'network': None
+        }
     
     def timeit(self, func: Optional[Callable] = None, name: Optional[str] = None):
         """Async performance measurement decorator"""
