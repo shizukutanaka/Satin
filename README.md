@@ -13,6 +13,39 @@ Satin is a powerful and flexible configuration management system designed for ma
 - Automatic backups
 - Backup scheduling
 - Environment variable support
+- Dynamic plugin loading
+
+### Plugin System
+
+Satin now includes a robust plugin system that:
+
+1. Automatically loads plugins from the plugins directory
+2. Supports plugin configuration
+3. Provides plugin reloading
+4. Includes error handling and logging
+
+To use the plugin system:
+
+```python
+from main.plugin_manager import PluginManager
+from main.logging_manager import Logger
+
+# Initialize logger and plugin manager
+logger = Logger()
+plugin_manager = PluginManager(logger)
+
+# Load all plugins
+plugin_manager.load_plugins()
+
+# Get a specific plugin
+my_plugin = plugin_manager.get_plugin("my_plugin")
+
+# Reload all plugins
+plugin_manager.reload_all_plugins()
+
+# Get all loaded plugins
+all_plugins = plugin_manager.get_all_plugins()
+```
 
 ### Backup Scheduling
 
