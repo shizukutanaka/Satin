@@ -13,6 +13,24 @@ Satin is a powerful and flexible configuration management system designed for ma
 - Automatic backups
 - Environment variable support
 
+### Configuration Validation
+
+Satin now includes a configuration validator that:
+
+1. Validates configuration files against the schema
+2. Checks for valid logging levels
+3. Ensures UI theme configurations are correct
+4. Verifies network port settings
+
+To use the validator:
+
+```python
+from main.config_validator import ConfigValidator
+
+validator = ConfigValidator("path/to/config.json")
+validator.validate()
+```
+
 ## Getting Started
 
 ### Prerequisites
