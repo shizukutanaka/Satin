@@ -68,6 +68,11 @@ satin/
 │   │   └── setup.bat
 │   └── mac/        # Mac setup
 │       └── setup.sh
+├── backup/         # Backup scripts
+│   ├── win/       # Windows backup
+│   │   └── backup_satin.bat
+│   └── mac/       # Mac backup
+│       └── backup_satin.sh
 └── locales/         # Language files
 ```
 
