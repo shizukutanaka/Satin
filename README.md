@@ -16,6 +16,46 @@ Satin is a powerful and flexible configuration management system designed for ma
 - Dynamic plugin loading
 - Enhanced configuration versioning
 - Enhanced backup scheduler
+- Enhanced caching system
+
+### Enhanced Caching System
+
+Satin now includes an enhanced caching system that:
+
+1. Supports async operations
+2. Provides detailed cache statistics
+3. Optimizes memory usage
+4. Manages disk cache efficiently
+5. Includes cache warmup
+
+To use the enhanced cache system:
+
+```python
+from main.cache_manager import CacheManager
+from main.logging_manager import Logger
+
+# Initialize logger and cache manager
+logger = Logger()
+cache_manager = CacheManager()
+
+# Create a cached function
+@cache_manager.cache
+async def expensive_operation(param):
+    # Simulate expensive operation
+    await asyncio.sleep(1)
+    return f"Result for {param}"
+
+# Use the cached function
+result = await expensive_operation("test")
+
+# Get cache statistics
+stats = cache_manager.get_cache_stats()
+print(f"Cache hit rate: {stats['hit_rate']}%")
+print(f"Average latency: {stats['average_latency']}ms")
+
+# Clear cache
+cache_manager.clear_cache()
+```
 
 ### Enhanced Backup Scheduler
 
