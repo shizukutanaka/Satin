@@ -58,6 +58,10 @@ satin/
 │       ├── backup_satin.sh
 │       └── run_satin.sh
 ├── main/             # Main application code
+│   ├── win/         # Windows main files
+│   │   └── config_manager_enhanced.py
+│   ├── mac/         # Mac main files
+│   │   └── config_manager_enhanced.py
 │   ├── config/       # Configuration management
 │   ├── i18n/        # Internationalization
 │   ├── optimize/     # Performance optimization
