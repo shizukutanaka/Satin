@@ -1,0 +1,51 @@
+{
+  "version": "1.0.0",
+  "settings": {
+    "log_level": "INFO",
+    "language": "ja",
+    "debug_mode": false,
+    "auto_update": true,
+    "check_interval": 3600,
+    "backup": {
+      "enabled": true,
+      "max_backups": 5,
+      "backup_dir": "backups"
+    },
+    "paths": {
+      "data_dir": "data",
+      "log_dir": "logs",
+      "plugin_dir": "plugins"
+    }
+  },
+  "plugins": [
+    {
+      "name": "comment_manager",
+      "enabled": true,
+      "settings": {
+        "auto_start": true,
+        "max_history": 1000
+      }
+    },
+    {
+      "name": "tts_engine",
+      "enabled": true,
+      "settings": {
+        "provider": "voicevox",
+        "voice_id": "0",
+        "speed": 1.0,
+        "pitch": 0.0,
+        "volume": 1.0
+      }
+    },
+    {
+      "name": "overlay",
+      "enabled": true,
+      "settings": {
+        "theme": "dark",
+        "font_size": 16,
+        "opacity": 0.9,
+        "position": "bottom-right"
+      }
+    }
+  ]
+}

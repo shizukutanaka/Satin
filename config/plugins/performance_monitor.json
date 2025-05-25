@@ -1,0 +1,12 @@
+{
+    "enabled": true,
+    "settings": {
+        "interval": 5,  // 監視間隔（秒）
+        "memory_threshold": 80,  // メモリ使用率閾値（%）
+        "cpu_threshold": 90,  // CPU使用率閾値（%）
+        "disk_threshold": 90,  // ディスク使用率閾値（%）
+        "network_threshold": 1000000,  // ネットワークIO閾値（bps）
+        "alert_enabled": true,
+        "alert_threshold": 3  // 連続アラート閾値
+    }
+}

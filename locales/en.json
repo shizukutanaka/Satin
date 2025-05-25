@@ -1,0 +1,20 @@
+{
+  "title": "Satin Unified Dashboard",
+  "hello": "Hello!",
+  "desc": "This UI automatically switches language and font.",
+  "event_log": "Event Log",
+  "backups": "Backups",
+  "cloud_sync": "Cloud Sync",
+  "download": "Download",
+  "manual_cloud_sync": "Manual Cloud Sync",
+  "executed_cloud_sync": "Cloud sync executed (example)",
+  "time": "Time",
+  "type": "Type",
+  "details": "Details",
+  "no_file": "File does not exist.",
+  "user": "User",
+  "logout": "Logout",
+  "history": "Preset History",
+  "userlog": "User Action Log",
+  "operation": "Operation"
+}

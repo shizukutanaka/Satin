@@ -1,0 +1,64 @@
+{
+    "language_name": "English",
+    "language_code": "en",
+    "language_direction": "ltr",
+    
+    "common": {
+        "yes": "Yes",
+        "no": "No",
+        "ok": "OK",
+        "cancel": "Cancel",
+        "save": "Save",
+        "delete": "Delete",
+        "edit": "Edit",
+        "back": "Back",
+        "next": "Next",
+        "previous": "Previous",
+        "loading": "Loading...",
+        "error": "Error",
+        "success": "Success",
+        "warning": "Warning",
+        "info": "Information"
+    },
+    
+    "menu": {
+        "file": "File",
+        "edit": "Edit",
+        "view": "View",
+        "tools": "Tools",
+        "help": "Help",
+        "settings": "Settings",
+        "exit": "Exit"
+    },
+    
+    "settings": {
+        "title": "Settings",
+        "general": "General",
+        "appearance": "Appearance",
+        "language": "Language",
+        "theme": "Theme",
+        "dark_mode": "Dark Mode",
+        "light_mode": "Light Mode",
+        "system_mode": "System Default",
+        "save_changes": "Save Changes",
+        "changes_saved": "Changes saved successfully"
+    },
+    
+    "errors": {
+        "unknown_error": "An unknown error occurred",
+        "connection_error": "Connection error",
+        "file_not_found": "File not found",
+        "permission_denied": "Permission denied",
+        "invalid_input": "Invalid input",
+        "timeout": "Request timed out"
+    },
+    
+    "validation": {
+        "required": "This field is required",
+        "invalid_email": "Please enter a valid email address",
+        "invalid_url": "Please enter a valid URL",
+        "min_length": "Must be at least {min} characters",
+        "max_length": "Must be at most {max} characters",
+        "password_mismatch": "Passwords do not match"
+    }
+}

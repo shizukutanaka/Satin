@@ -1,0 +1,9 @@
+{
+    "enabled": true,
+    "settings": {
+        "default_language": "en",
+        "available_languages": ["en", "ja"],
+        "fallback_language": "en",
+        "auto_detect_language": true
+    }
+}

@@ -1,0 +1,23 @@
+{
+  "title": "عرض Satin متعدد اللغات",
+  "hello": "مرحبا!",
+  "desc": "تقوم هذه الواجهة تلقائيًا بتبديل اللغة والخط وفقًا لبيئتك.",
+  "menu_file": "ملف",
+  "menu_edit": "تحرير",
+  "menu_help": "مساعدة",
+  "btn_ok": "موافق",
+  "btn_cancel": "إلغاء",
+  "msg_error": "حدث خطأ.",
+  "msg_loading": "جار التحميل...",
+  "msg_success": "تم بنجاح!",
+  "label_username": "اسم المستخدم",
+  "label_password": "كلمة المرور",
+  "msg_confirm": "هل أنت متأكد؟",
+  "msg_logout": "تسجيل الخروج",
+  "label_settings": "الإعدادات",
+  "label_language": "اللغة",
+  "tooltip_copy": "نسخ إلى الحافظة",
+  "tooltip_delete": "حذف العنصر",
+  "status_online": "متصل",
+  "status_offline": "غير متصل"
+}

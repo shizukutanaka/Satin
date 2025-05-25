@@ -1,0 +1,20 @@
+{
+  "title": "Satin 一元管理ダッシュボード",
+  "hello": "こんにちは!",
+  "desc": "このUIは自動で言語・フォントが切り替わります。",
+  "event_log": "イベントログ",
+  "backups": "バックアップ",
+  "cloud_sync": "クラウド同期",
+  "download": "ダウンロード",
+  "manual_cloud_sync": "手動でクラウド同期",
+  "executed_cloud_sync": "クラウド同期を実行しました（例）",
+  "time": "時刻",
+  "type": "種別",
+  "details": "詳細",
+  "no_file": "ファイルが存在しません",
+  "user": "ユーザー",
+  "logout": "ログアウト",
+  "history": "プリセット履歴",
+  "userlog": "操作ログ",
+  "operation": "操作"
+}

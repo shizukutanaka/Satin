@@ -1,0 +1,10 @@
+{
+    "enabled": true,
+    "settings": {
+        "memory_cache_size": 1024,  // メモリキャッシュサイズ（MB）
+        "disk_cache_size": 1024,  // ディスクキャッシュサイズ（MB）
+        "cache_ttl": 3600,  // キャッシュ有効時間（秒）
+        "cleanup_interval": 3600,  // クリーンアップ間隔（秒）
+        "max_cache_items": 10000  // 最大キャッシュアイテム数
+    }
+}

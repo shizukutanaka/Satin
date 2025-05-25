@@ -1,0 +1,14 @@
+# Satin用 gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+.env
+.cache
+.idea/
+.vscode/
+*.log
+*.bak
+*.swp
+# 配信用一時ファイルやキャッシュもここに追加可
