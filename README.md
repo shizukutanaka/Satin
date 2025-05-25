@@ -50,6 +50,13 @@ satin/
 ├── config/           # Configuration files
 │   ├── config.json   # Main configuration
 │   └── plugins/      # Plugin configurations
+├── launch/          # Launch scripts
+│   ├── win/         # Windows launch scripts
+│   │   ├── backup_satin.bat
+│   │   └── run_satin.bat
+│   └── mac/         # Mac launch scripts
+│       ├── backup_satin.sh
+│       └── run_satin.sh
 ├── main/             # Main application code
 │   ├── config/       # Configuration management
 │   ├── i18n/        # Internationalization
