@@ -1,0 +1,7 @@
+# Satin requirements
+# 必要なPythonパッケージはここに記載
+
+tkinter
+pillow
+tqdm  # 進捗バー表示用
+# 配信・コメント管理系で必要なものがあれば追記
