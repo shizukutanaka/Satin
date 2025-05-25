@@ -64,6 +64,10 @@ satin/
 │   └── task_scheduler/ # Task scheduling
 ├── plugins/          # Custom plugins
 ├── setup/           # Setup scripts
+│   ├── win/        # Windows setup
+│   │   └── setup.bat
+│   └── mac/        # Mac setup
+│       └── setup.sh
 └── locales/         # Language files
 ```
 
