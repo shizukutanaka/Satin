@@ -159,8 +159,8 @@ class PerformanceMonitor:
             for name, times in self.metrics.items()
         }
 
-def cache_result(ttl: int = 300, max_size: int = 1000):
-    """Enhanced caching decorator with size limit and async support"""
+def cache_result(ttl: int = 300, max_size: int = 1000, compression: bool = False):
+    """Enhanced caching decorator with size limit, async support, and compression"""
     def decorator(func):
         cache = OrderedDict()
         
@@ -170,13 +170,20 @@ def cache_result(ttl: int = 300, max_size: int = 1000):
             
             # Check cache
             if key in cache:
-                result, timestamp = cache[key]
+                result, timestamp, compressed = cache[key]
                 if time.time() - timestamp < ttl:
+                    if compressed and compression:
+                        result = decompress_result(result)
                     return result
             
             # Call function and cache result
             result = await func(*args, **kwargs)
-            cache[key] = (result, time.time())
+            
+            # Compress result if enabled
+            if compression:
+                result = compress_result(result)
+            
+            cache[key] = (result, time.time(), compression)
             
             # Enforce size limit
             if len(cache) > max_size:
@@ -190,13 +197,20 @@ def cache_result(ttl: int = 300, max_size: int = 1000):
             
             # Check cache
             if key in cache:
-                result, timestamp = cache[key]
+                result, timestamp, compressed = cache[key]
                 if time.time() - timestamp < ttl:
+                    if compressed and compression:
+                        result = decompress_result(result)
                     return result
             
             # Call function and cache result
             result = func(*args, **kwargs)
-            cache[key] = (result, time.time())
+            
+            # Compress result if enabled
+            if compression:
+                result = compress_result(result)
+            
+            cache[key] = (result, time.time(), compression)
             
             # Enforce size limit
             if len(cache) > max_size:
@@ -209,14 +223,50 @@ def cache_result(ttl: int = 300, max_size: int = 1000):
         return sync_wrapper
     return decorator
 
-async def batch_process(items: List[T], process_func: Callable, batch_size: int = 10, max_workers: int = 4) -> List[T]:
-    """Enhanced batch processing with async support and worker pool"""
+# Compression utilities
+def compress_result(result):
+    """Compress result using zlib"""
+    import zlib
+    import pickle
+    return zlib.compress(pickle.dumps(result))
+
+def decompress_result(compressed_result):
+    """Decompress result"""
+    import zlib
+    import pickle
+    return pickle.loads(zlib.decompress(compressed_result))
+
+# Memory optimization
+def optimize_memory():
+    """Optimize memory usage"""
+    import gc
+    gc.collect()
+    return gc.get_count()
+
+async def batch_process(items: List[T], process_func: Callable, batch_size: int = 10, max_workers: int = 4, optimize: bool = True) -> List[T]:
+    """Enhanced batch processing with async support, worker pool, and optimization"""
     results = []
     executor = ThreadPoolExecutor(max_workers=max_workers)
     
     async def process_batch(batch: List[T]) -> List[T]:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(executor, process_func, batch)
+        # Optimize batch size based on system resources
+        if optimize:
+            batch_size = optimize_batch_size(len(batch))
+        return await loop.run_in_executor(executor, process_func, batch[:batch_size])
+    
+    def optimize_batch_size(total: int) -> int:
+        """Optimize batch size based on system resources"""
+        import psutil
+        memory = psutil.virtual_memory()
+        cpu_count = psutil.cpu_count()
+        
+        # Adjust batch size based on available resources
+        if memory.percent > 80:
+            return max(1, total // 2)
+        elif cpu_count > 4:
+            return min(total, 100)
+        return min(total, 50)
     
     for i in range(0, len(items), batch_size):
         batch = items[i:i + batch_size]
@@ -224,13 +274,35 @@ async def batch_process(items: List[T], process_func: Callable, batch_size: int 
     
     return results
     
-async def parallel_process(items: List[T], process_func: Callable, max_workers: int = 4) -> List[T]:
-    """Process items in parallel using asyncio"""
+async def parallel_process(items: List[T], process_func: Callable, max_workers: int = 4, optimize: bool = True) -> List[T]:
+    """Process items in parallel using asyncio with optimization"""
     results = []
     
     async def process_item(item: T) -> T:
         loop = asyncio.get_event_loop()
+        # Optimize processing based on item type
+        if optimize:
+            item = optimize_item(item)
         return await loop.run_in_executor(None, process_func, item)
+    
+    def optimize_item(item: T) -> T:
+        """Optimize item processing"""
+        import sys
+        item_size = sys.getsizeof(item)
+        
+        # Optimize based on item size
+        if item_size > 1024 * 1024:  # Large items
+            return optimize_large_item(item)
+        return item
+    
+    def optimize_large_item(item: T) -> T:
+        """Optimize large items"""
+        import pickle
+        import zlib
+        
+        # Compress large items
+        compressed = zlib.compress(pickle.dumps(item))
+        return pickle.loads(zlib.decompress(compressed))
     
     tasks = [process_item(item) for item in items]
     results = await asyncio.gather(*tasks)
