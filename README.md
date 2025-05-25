@@ -14,6 +14,38 @@ Satin is a powerful and flexible configuration management system designed for ma
 - Backup scheduling
 - Environment variable support
 - Dynamic plugin loading
+- Enhanced configuration versioning
+
+### Enhanced Configuration Version Management
+
+Satin now includes enhanced configuration version management that:
+
+1. Saves versions with optional descriptions
+2. Limits version history to prevent disk space issues
+3. Compares different versions
+4. Automatically backs up before restoration
+5. Provides detailed version information
+
+To use the enhanced version management:
+
+```python
+from main.config_version_manager import save_config_version, list_config_versions, restore_config_version, compare_versions
+
+# Save current configuration with description
+version_path = save_config_version(description="before_update")
+
+# List all versions with details
+versions = list_config_versions()
+for version in versions:
+    print(f"{version['timestamp']} - {version['size']} bytes")
+
+# Restore a specific version
+restore_config_version(versions[0]['path'])
+
+# Compare two versions
+comparison = compare_versions(versions[0]['path'], versions[1]['path'])
+print(f"Differences found: {len(comparison['differences'])}")
+```
 
 ### Plugin System
 
