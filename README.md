@@ -15,6 +15,49 @@ Satin is a powerful and flexible configuration management system designed for ma
 - Environment variable support
 - Dynamic plugin loading
 - Enhanced configuration versioning
+- Enhanced backup scheduler
+
+### Enhanced Backup Scheduler
+
+Satin now includes an enhanced backup scheduler that:
+
+1. Provides detailed backup history
+2. Sends notifications for backup events
+3. Validates backup success/failure
+4. Automatically clears old backups
+5. Supports daily and weekly backups
+
+To use the enhanced backup scheduler:
+
+```python
+from main.backup_scheduler import BackupScheduler
+from main.notification_system import NotificationSystem
+from main.backup_manager import BackupManager
+from main.logging_manager import Logger
+
+# Initialize components
+logger = Logger()
+notification_system = NotificationSystem(logger)
+backup_manager = BackupManager(logger)
+
+# Initialize backup scheduler
+scheduler = BackupScheduler(backup_manager, notification_system)
+
+# Schedule daily backup at 2 AM
+scheduler.add_daily_backup(2, 0)
+
+# Schedule weekly backup on Sunday at 3 AM
+scheduler.add_weekly_backup("sunday", 3, 0)
+
+# Start the scheduler
+scheduler.start()
+
+# Get backup history
+history = scheduler.get_backup_history()
+
+# Clear backup history
+scheduler.clear_backup_history()
+```
 
 ### Enhanced Configuration Version Management
 
