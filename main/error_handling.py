@@ -26,6 +26,27 @@ class RetryableError(SatinError):
         self.retry_after = retry_after
         self.max_retries = max_retries
 
+class RetryStrategy:
+    """Strategy configuration for retry logic"""
+    def __init__(
+        self,
+        max_retries: int = 3,
+        backoff_factor: float = 1.0,
+        exceptions: tuple = (Exception,),
+        initial_delay: float = 1.0,
+        max_delay: float = 60.0
+    ):
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
+        self.exceptions = exceptions
+        self.initial_delay = initial_delay
+        self.max_delay = max_delay
+
+    def get_delay(self, attempt: int) -> float:
+        """Calculate delay for given attempt number"""
+        delay = self.initial_delay * (self.backoff_factor ** attempt)
+        return min(delay, self.max_delay)
+
 class ValidationError(SatinError):
     """Raised when input validation fails"""
     def __init__(self, message: str, field: Optional[str] = None):
@@ -139,6 +160,50 @@ def error_handler(log_file: Optional[str] = None):
                 return func(*args, **kwargs)
             except Exception as e:
                 return handler.handle_error(e)
+        return wrapper
+    return decorator
+
+def handle_error(retry_strategy: Optional['RetryStrategy'] = None):
+    """Decorator with retry support using RetryStrategy"""
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            import time
+            import logging
+            logger = logging.getLogger(__name__)
+
+            if retry_strategy is None:
+                # No retry, just execute
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    logger.exception(f"Error in {func.__name__}: {e}")
+                    raise
+
+            # Retry with strategy
+            last_exception = None
+            for attempt in range(retry_strategy.max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except retry_strategy.exceptions as e:
+                    last_exception = e
+                    if attempt < retry_strategy.max_retries - 1:
+                        delay = retry_strategy.get_delay(attempt)
+                        logger.warning(
+                            f"Attempt {attempt + 1} failed in {func.__name__}: {e}. "
+                            f"Retrying in {delay:.2f}s..."
+                        )
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"All {retry_strategy.max_retries} attempts failed in {func.__name__}")
+                except Exception as e:
+                    # Non-retryable exception
+                    logger.exception(f"Non-retryable error in {func.__name__}: {e}")
+                    raise
+
+            if last_exception:
+                raise last_exception
+
         return wrapper
     return decorator
 
