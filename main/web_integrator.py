@@ -292,7 +292,7 @@ class WebIntegrator:
         links = []
         metadata = {}
 
-        # Method 1: Trafilatura (高精度記事抽出)
+        # Method 1: Trafilatura (高精度記事抽出) - 最速・最高精度
         if TRAFILATURA_AVAILABLE:
             try:
                 extracted_text = trafilatura.extract(
@@ -304,23 +304,32 @@ class WebIntegrator:
                 if extracted_text:
                     content = extracted_text
 
-                # メタデータ取得
-                meta = trafilatura.extract_metadata(html)
-                if meta:
-                    title = meta.title or title
-                    author = meta.author
-                    if meta.date:
-                        try:
-                            published_date = datetime.fromisoformat(meta.date)
-                        except:
-                            pass
-                    language = meta.language or language
+                    # メタデータ取得
+                    meta = trafilatura.extract_metadata(html)
+                    if meta:
+                        title = meta.title or title
+                        author = meta.author
+                        if meta.date:
+                            try:
+                                published_date = datetime.fromisoformat(meta.date)
+                            except ValueError:
+                                pass
+                        language = meta.language or language
+
+                    # 成功したので以降の抽出をスキップ
+                    return WebPage(
+                        url=url, title=title or url, content=content,
+                        html=html, extracted_text=content, author=author,
+                        published_date=published_date, language=language,
+                        keywords=keywords, images=images, links=links,
+                        metadata=metadata
+                    )
 
             except Exception as e:
                 self.logger.debug(f"Trafilatura extraction failed: {e}")
 
         # Method 2: Readability (コンテンツ抽出)
-        if not content and READABILITY_AVAILABLE:
+        if READABILITY_AVAILABLE:
             try:
                 doc = Document(html)
                 title = doc.title() or title
@@ -329,6 +338,16 @@ class WebIntegrator:
                 if BS4_AVAILABLE:
                     soup = BeautifulSoup(content_html, 'html.parser')
                     content = soup.get_text(strip=True, separator=' ')
+
+                # 成功したので以降の抽出をスキップ
+                if content:
+                    return WebPage(
+                        url=url, title=title or url, content=content,
+                        html=html, extracted_text=content, author=author,
+                        published_date=published_date, language=language,
+                        keywords=keywords, images=images, links=links,
+                        metadata=metadata
+                    )
 
             except Exception as e:
                 self.logger.debug(f"Readability extraction failed: {e}")
@@ -570,6 +589,11 @@ class WebIntegrator:
         pages: List[WebPage] = []
 
         start_domain = urlparse(start_url).netloc
+
+        # robots.txt 準拠チェック (倫理的スクレイピング)
+        if not self.check_robots_txt(start_url):
+            self.logger.error(f"robots.txt denies crawling {start_url}")
+            return pages
 
         while queue and len(pages) < max_pages:
             url, depth = queue.popleft()

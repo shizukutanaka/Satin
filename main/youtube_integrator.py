@@ -107,7 +107,9 @@ class YouTubeIntegrator:
         cache_ttl: int = 86400,  # 24時間
         rate_limit_per_day: int = 10000
     ):
-        self.api_key = api_key
+        import os
+        # API Key: 引数優先 → 環境変数フォールバック
+        self.api_key = api_key or os.getenv('YOUTUBE_API_KEY')
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -399,7 +401,8 @@ class YouTubeIntegrator:
                     self.cache_manager.set(cache_key, full_text, ttl=86400)
                     self.logger.info(f"Transcript retrieved for {video_id} in {lang}")
                     return full_text
-                except:
+                except Exception as e:
+                    self.logger.debug(f"Transcript not available in {lang}: {e}")
                     continue
 
             # 自動生成字幕も試す
@@ -411,8 +414,8 @@ class YouTubeIntegrator:
                 self.cache_manager.set(cache_key, full_text, ttl=86400)
                 self.logger.info(f"Auto-generated transcript retrieved for {video_id}")
                 return full_text
-            except:
-                pass
+            except Exception as e:
+                self.logger.debug(f"Auto-generated transcript not available: {e}")
 
         except Exception as e:
             self.logger.warning(f"Failed to retrieve transcript for {video_id}: {e}")
@@ -545,7 +548,8 @@ class YouTubeIntegrator:
         Returns:
             YouTubeVideo list
         """
-        if not self.youtube_service or not self._check_rate_limit():
+        # search.list() は 100 quota消費する (YouTube Data API v3仕様)
+        if not self.youtube_service or not self._check_rate_limit(quota_cost=100):
             return []
 
         try:
