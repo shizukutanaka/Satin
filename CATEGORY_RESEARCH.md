@@ -19,7 +19,7 @@
 9. アバター身体性(VRM/Live2D idle・spring 物理・audio-reactive) — `idle_motion.ts`, `spring.ts`, `audio_reactivity.ts`, `particles.ts`
 10. プライバシー保護/オンデバイス知能(local LLM/TTS, BYOK, zero-dep) — `ai_chat.ts`, `schema.ts`
 
-進捗: ✅1 ✅2 ⬜3 ⬜4 ⬜5 ⬜6 ⬜7 ⬜8 ⬜9 ⬜10
+進捗: ✅1 ✅2 ✅3 ✅4 ⬜5 ⬜6 ⬜7 ⬜8 ⬜9 ⬜10
 
 ---
 
@@ -108,11 +108,87 @@
 
 ---
 
-## 3〜10. (調査予定 — /loop で順次拡充)
+## 3. 割り込み適時性/opportune-moment 検出
 
-- 3. 割り込み適時性 — 既存 `RESEARCH_DRIVEN_IMPROVEMENTS.md` §B の出典を核に GitHub OSS を追加予定。
-- 4. 文脈付きバンディット — 同 §B-2。
-- 5. 変化点検知 — 同 §C(BOCPD)。
+1. **Beyond Interruptibility: Predicting Opportune Moments to Engage Mobile Users** (UbiComp/IMWUT 2017) — https://minoskt.github.io/papers/UbiComp17_Engagement.pdf
+   ML で opportune moment を予測すると非知能戦略比 **+66.6%**。
+   → ★ `interruptibility.ts` を「busy 判定」から「engage 好機予測」へ。
+2. **Intelligent Notification Systems: A Survey** — arxiv **1711.10171** — https://arxiv.org/pdf/1711.10171
+   通知適時化の特徴量・手法サーベイ(breakpoint/context)。
+   → 取り込むコンテキスト特徴(直前アプリ切替・時間帯)の整理。
+3. **How Busy Are You?: Predicting the Interruptibility Intensity of Mobile Users** (CHI 2017) — https://www.researchgate.net/publication/316708988
+   interruptibility を二値でなく **強度(intensity)** で予測。
+   → `interruptibility.ts` の出力を連続スコア化(現状の coarse 判定を精緻化)。
+4. **Continual Prediction of Notification Attendance with Classical and Deep Network Approaches** — arxiv **1712.07120** — https://arxiv.org/pdf/1712.07120
+   通知応答の継続予測。軽量な古典手法でも実用精度。
+   → DL 不要。`interruption_feedback.ts` の受容率推定を online 更新に。
+5. **Predicting Interruptibility for Manual Data Collection** (MobileHCI 2017) — https://www.jorgegoncalves.com/docs/mobilehci17.pdf
+   文脈特徴による interruptibility 予測の実証。
+   → 採用特徴の取捨選択の参考。
+6. **Rare Life Event Detection via Mobile Sensing Using Multi-Task Learning** — arxiv **2305.20056** — https://arxiv.org/abs/2305.20056
+   モバイルセンシングで稀イベント検出(MTL)。
+   → breakpoint/特異状況を「介入を控える」シグナルに。
+7. **Examining the cognitive processes underlying resumption costs in task-interruption** (2023, PMC10896823) — https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10896823/
+   タスク中断の **resumption cost**(再開コスト)の認知機構。
+   → ★ `interruptionCost` を resumption-cost の概念で再定義(深い作業中ほど高コスト)。
+8. **To Ask or Not To Ask (HITL contextual bandits)** — arxiv **2405.06908** — https://arxiv.org/html/2405.06908v1
+   「問い合わせるべきか」の認知負荷を考慮した問い合わせ制御。
+   → 問い合わせコストを `interruptionCost` と統合。
+9. **GitHub: TimingPredict/Dataset** — https://github.com/TimingPredict/Dataset
+   タイミング予測用データセット。
+   → 適時化モデルの評価・回帰テスト用の参考データ。
+10. **User Interruptibility and Notification Management in Mobile Devices**(研究トピック概観) — https://www.nature.com/research-intelligence/nri-topic-summaries-v9/user-interruptibility-and-notification-management-in-mobile-devices
+    分野全体の動向(attention capacity + context-aware + ML)。
+    → 設計の俯瞰・抜け漏れチェック。
+
+**改善点まとめ(カテゴリ3)**: ①busy判定→好機予測へ(#1)、②出力を連続スコア化(#3)、
+③`interruptionCost` を resumption-cost で再定義(#7)、④受容率の online 更新+問い合わせコスト統合(#4,#8)、
+⑤app/task 切替を breakpoint シグナルに(#2)。
+
+---
+
+## 4. 文脈付きバンディット/オンライン学習
+
+1. **GitHub: thoughtworks/simplebandit** — https://github.com/thoughtworks/simplebandit
+   ★ **ゼロ依存の TS 文脈付きバンディット**(online logistic regression + softmax 探索, <700行)。
+   → `bandit.ts` を非文脈→**文脈付き**へ拡張する際の直接の実装パターン(設計思想が satin と一致)。
+2. **Optimal Baseline Corrections for Off-Policy Contextual Bandits** — arxiv **2405.05736** — https://arxiv.org/abs/2405.05736
+   制御変量(baseline 補正/doubly-robust)で分散最適な不偏推定。
+   → `debiasedUpdate` を baseline-corrected/doubly-robust へ。
+3. **Anytime-valid off-policy inference for contextual bandits** — arxiv **2210.10768** — https://arxiv.org/abs/2210.10768
+   逐次的に妥当な off-policy 推論。
+   → `auditRewards` の信頼区間を anytime-valid に。
+4. **To Ask or Not To Ask** — arxiv **2405.06908** — https://arxiv.org/html/2405.06908v1
+   人間参加型の文脈バンディットで問い合わせ判断。
+   → 介入の要否判断を bandit へ統合。
+5. **Feel-Good Thompson Sampling for Contextual Bandits (MCMC)** — arxiv **2507.15290** — https://arxiv.org/html/2507.15290
+   Feel-Good TS の探索性能を MCMC で検証。
+   → 探索方針(softmax→TS)の比較検討。
+6. **GitHub: stitchfix/mab** — https://github.com/stitchfix/mab
+   Thompson/epsilon-greedy の決定的実装ライブラリ。
+   → `selectArm` の探索戦略の実装参考。
+7. **GitHub: ReactiveCJ/MultiArmedBandit** — https://github.com/ReactiveCJ/MultiArmedBandit
+   MAB 戦略(TS 含む)の入門実装。
+   → 既存 `bandit.ts` との戦略比較。
+8. **GitHub Topic: contextual-bandits** — https://github.com/topics/contextual-bandits
+   文脈バンディット OSS の一覧。
+   → 軽量実装の横断比較。
+9. **GitHub Topic: thompson-sampling** — https://github.com/topics/thompson-sampling
+   TS 系実装のエコシステム。
+   → 探索手法の実装ソース。
+10. **Thompson Sampling for Contextual bandits**(解説, gdmarmerola) — https://gdmarmerola.github.io/ts-for-contextual-bandits/
+    文脈バンディット+TS の実装解説。
+    → 実装時のアルゴリズム理解。
+
+**改善点まとめ(カテゴリ4)**: ①`bandit.ts` を文脈付き化(時刻/chronotype/活動/breakpoint をコンテキストに)。
+simplebandit の online logistic + softmax が ゼロ依存方針に最適(#1)。②報酬補正を doubly-robust/baseline-corrected へ(#2)、
+③off-policy 監査を anytime-valid に(#3)、④探索を softmax↔Thompson で比較(#5,#6)。
+
+---
+
+## 5〜10. (調査予定 — /loop で順次拡充)
+
+- 5. 変化点検知 — 既存 §C(BOCPD)。
 - 6. 長期記憶 — 同 §D(RMM/TiMem/Amory)+ ReMe / LD-Agent / Agent-Memory-Paper-List。
 - 7. 概日/睡眠 — 同 §F。
 - 8. 安全性/ウェルビーイング — 同 §A。
