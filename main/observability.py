@@ -7,6 +7,7 @@ OpenTelemetry 対応
 import logging
 import json
 import time
+import threading
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -257,27 +258,46 @@ class Metrics:
     cache_hit_rates: Dict[str, float] = field(default_factory=dict)
     active_connections: int = 0
     memory_usage_mb: float = 0.0
+    # Guards the read-modify-write counter updates below so increments are not
+    # lost when recorded from multiple threads (e.g. ThreadPoolExecutor workers).
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False,
+                                  repr=False, compare=False)
+    # Keep at most this many latency samples per operation (bounds memory).
+    _MAX_LATENCY_SAMPLES: int = field(default=1000, init=False, repr=False, compare=False)
 
     def record_operation_latency(self, operation: str, latency_ms: float) -> None:
         """オペレーションレイテンシを記録"""
-        if operation not in self.operation_latencies:
-            self.operation_latencies[operation] = []
-        self.operation_latencies[operation].append(latency_ms)
+        with self._lock:
+            samples = self.operation_latencies.setdefault(operation, [])
+            samples.append(latency_ms)
+            if len(samples) > self._MAX_LATENCY_SAMPLES:
+                del samples[0]
 
     def record_api_call(self, api_name: str) -> None:
         """API 呼び出しをカウント"""
-        self.api_call_counts[api_name] = self.api_call_counts.get(api_name, 0) + 1
+        with self._lock:
+            self.api_call_counts[api_name] = self.api_call_counts.get(api_name, 0) + 1
 
     def record_error(self, error_type: str) -> None:
         """エラーをカウント"""
-        self.error_counts[error_type] = self.error_counts.get(error_type, 0) + 1
+        with self._lock:
+            self.error_counts[error_type] = self.error_counts.get(error_type, 0) + 1
 
     def get_summary(self) -> Dict[str, Any]:
         """メトリクスサマリーを取得"""
         import statistics
 
+        # Take a consistent snapshot under the lock, then compute outside it.
+        with self._lock:
+            latencies_snapshot = {op: list(v) for op, v in self.operation_latencies.items()}
+            api_calls = dict(self.api_call_counts)
+            errors = dict(self.error_counts)
+            cache_hit_rates = dict(self.cache_hit_rates)
+            active_connections = self.active_connections
+            memory_usage_mb = self.memory_usage_mb
+
         latency_stats = {}
-        for op, latencies in self.operation_latencies.items():
+        for op, latencies in latencies_snapshot.items():
             if latencies:
                 latency_stats[op] = {
                     'mean_ms': statistics.mean(latencies),
@@ -289,11 +309,11 @@ class Metrics:
 
         return {
             'operation_latencies': latency_stats,
-            'api_calls': self.api_call_counts,
-            'errors': self.error_counts,
-            'cache_hit_rates': self.cache_hit_rates,
-            'active_connections': self.active_connections,
-            'memory_usage_mb': self.memory_usage_mb
+            'api_calls': api_calls,
+            'errors': errors,
+            'cache_hit_rates': cache_hit_rates,
+            'active_connections': active_connections,
+            'memory_usage_mb': memory_usage_mb
         }
 
 
