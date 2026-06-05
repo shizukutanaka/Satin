@@ -87,6 +87,10 @@ class TokenBucketLimiter(RateLimiter):
             refill_rate: Tokens added per second
             name: Limiter identifier
         """
+        if refill_rate <= 0:
+            raise ValueError("refill_rate must be > 0")
+        if capacity <= 0:
+            raise ValueError("capacity must be > 0")
         self.capacity = capacity
         self.refill_rate = refill_rate
         self.name = name
@@ -126,14 +130,32 @@ class TokenBucketLimiter(RateLimiter):
 
     async def acquire(self, tokens: int = 1) -> bool:
         """Acquire tokens, blocking until available."""
-        async with self._lock:
-            while True:
+        while True:
+            # Hold the lock only while inspecting/decrementing tokens, never
+            # across the sleep — otherwise all acquirers (and update_rate) are
+            # serialized behind one waiter.
+            async with self._lock:
                 await self._refill()
                 if self.tokens >= tokens:
                     self.tokens -= tokens
                     return True
                 wait_time = (tokens - self.tokens) / self.refill_rate
-                await asyncio.sleep(wait_time)
+            await asyncio.sleep(wait_time)
+
+    async def update_rate(self, refill_rate: float, capacity: Optional[float] = None) -> None:
+        """Adjust the refill rate (and optionally capacity) in place.
+
+        Mutates this limiter instead of being replaced, so concurrent acquirers
+        keep using a single, consistent object with preserved token state.
+        """
+        if refill_rate <= 0:
+            raise ValueError("refill_rate must be > 0")
+        async with self._lock:
+            await self._refill()
+            self.refill_rate = refill_rate
+            if capacity is not None and capacity > 0:
+                self.capacity = capacity
+                self.tokens = min(self.tokens, capacity)
 
     def get_status(self) -> RateLimitStatus:
         """Get current status without locking."""
@@ -166,6 +188,8 @@ class LeakyBucketLimiter(RateLimiter):
             queue_size: Maximum queue depth
             name: Limiter identifier
         """
+        if leak_rate <= 0:
+            raise ValueError("leak_rate must be > 0")
         self.leak_rate = leak_rate
         self.queue_size = queue_size
         self.name = name
@@ -244,6 +268,10 @@ class SlidingWindowLimiter(RateLimiter):
             window_seconds: Window duration in seconds
             name: Limiter identifier
         """
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be > 0")
+        if max_requests <= 0:
+            raise ValueError("max_requests must be > 0")
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.name = name
@@ -443,13 +471,13 @@ class AdaptiveRateLimiter:
             await self._update_rate(new_rate)
 
     async def _update_rate(self, new_rate: float) -> None:
-        """Update limiter with new rate."""
+        """Update limiter with new rate (in place, keeping the same object)."""
         if new_rate != self.current_rate:
             self.current_rate = new_rate
-            self.limiter = TokenBucketLimiter(
-                capacity=new_rate * 2,
-                refill_rate=new_rate
-            )
+            # Mutate the existing limiter rather than replacing it, so in-flight
+            # acquire() calls keep operating on a single consistent object and
+            # token state is not silently reset.
+            await self.limiter.update_rate(new_rate, capacity=new_rate * 2)
             logger.info(f"Rate adjusted to {new_rate:.2f} req/s")
 
     async def acquire(self, tokens: int = 1) -> bool:
