@@ -249,12 +249,17 @@ class TestYouTubeSearchRequest:
         assert req.query is not None
 
     @given(
-        st.integers(min_value=0, max_value=3600),
-        st.integers(min_value=1, max_value=3600)
+        st.integers(min_value=0, max_value=1799),
+        st.integers(min_value=1, max_value=1800)
     )
-    def test_duration_range_validation(self, min_dur: int, max_dur: int):
-        """Test duration range constraints."""
-        assume(max_dur > min_dur)
+    def test_duration_range_validation(self, min_dur: int, delta: int):
+        """Test duration range constraints.
+
+        Derive max_duration = min_duration + delta so it is always strictly
+        greater, instead of generating it independently and discarding ~half the
+        cases via assume(max_dur > min_dur).
+        """
+        max_dur = min_dur + delta  # in (min_dur, 3599], always valid
         req = YouTubeSearchRequest(
             query="test",
             min_duration=min_dur,
@@ -328,19 +333,28 @@ class TestSearchResult:
         assert 0 <= result.relevance_score <= 100
 
     @given(
-        st.floats(min_value=-1.0, max_value=101.0)
+        st.floats(min_value=-50.0, max_value=150.0,
+                  allow_nan=False, allow_infinity=False)
     )
     def test_relevance_score_bounds(self, score: float):
-        """Test relevance score is properly bounded."""
-        assume(0 <= score <= 100)
-        result = SearchResult(
+        """In-range scores are accepted; out-of-range scores are rejected.
+
+        (Previously this asserted ``score == score`` after assume()-filtering to
+        the valid range, so it never exercised the bound at all.)
+        """
+        kwargs = dict(
             title="test",
             url="https://example.com",
             content_type=ContentType.ARTICLE,
             source=APIProvider.WEB_SEARCH,
-            relevance_score=score
+            relevance_score=score,
         )
-        assert result.relevance_score == score
+        if 0 <= score <= 100:
+            result = SearchResult(**kwargs)
+            assert result.relevance_score == score
+        else:
+            with pytest.raises(ValueError):
+                SearchResult(**kwargs)
 
 
 class TestCacheEntry:
