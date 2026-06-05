@@ -19,7 +19,7 @@
 9. アバター身体性(VRM/Live2D idle・spring 物理・audio-reactive) — `idle_motion.ts`, `spring.ts`, `audio_reactivity.ts`, `particles.ts`
 10. プライバシー保護/オンデバイス知能(local LLM/TTS, BYOK, zero-dep) — `ai_chat.ts`, `schema.ts`
 
-進捗: ✅1 ✅2 ✅3 ✅4 ✅5 ✅6 ✅7 ✅8 ⬜9 ⬜10
+進捗: ✅1 ✅2 ✅3 ✅4 ✅5 ✅6 ✅7 ✅8 ✅9 ✅10 — **全10カテゴリ完了**
 
 ---
 
@@ -340,9 +340,95 @@ TS ガードレールで出力安全性強化(#9)。
 
 ---
 
-## 9〜10. (調査予定 — /loop で順次拡充)
+## 9. アバター身体性(VRM idle・spring 物理・audio-reactive)
 
-- 9. アバター身体性 — VRM/Live2D・spring 物理・ビート検出の arxiv/GitHub を新規調査。
+1. **GitHub: pixiv/three-vrm** — https://github.com/pixiv/three-vrm
+   ★ three.js での VRM ローダ(**spring bone** 物理・表情・LookAt 標準実装)。
+   → `spring.ts` の二次系を three-vrm の spring bone パラメータ(stiffness/drag)と互換に。アプリ統合容易化。
+2. **GitHub: VerseEngine/three-avatar** — https://github.com/VerseEngine/three-avatar
+   idle/walk/dance のアニメーションマッピング。
+   → `idle_motion.ts`/dance(audio_reactivity)の状態→クリップ対応の設計参考。
+3. **GitHub: hirokazuniimoto/virtual-avatar-sdk** — https://github.com/hirokazuniimoto/virtual-avatar-sdk
+   自動まばたき+idle の軽量ランタイム。
+   → まばたき/微動を core の idle 出力として薄く定義。
+4. **GitHub: binzume/aframe-vrm** — https://github.com/binzume/aframe-vrm
+   physics モジュール + startBlink/stopBlink。
+   → blink 制御 API の参考。
+5. **GitHub: tk256ailab/vrm-viewer** — https://github.com/tk256ailab/vrm-viewer
+   VRMA(VRM Animation)対応ビューア。
+   → VRMA 標準アニメーションとの連携。
+6. **OBTAIN: Real-Time Beat Tracking in Audio Signals** — arxiv **1704.02216** — https://arxiv.org/abs/1704.02216
+   OSS→CBSS→peak で実時間ビート追跡。
+   → ★ `audio_reactivity.detectBeat`/`estimateTempo` を OSS→CBSS パイプラインで堅牢化。
+7. **Beat Tracking as Object Detection** — arxiv **2510.14391** — https://arxiv.org/abs/2510.14391
+   ビート追跡を物体検出として再定式化。
+   → 将来的な高精度化の参照(現状は軽量手法維持)。
+8. **Towards an efficient deep learning model for musical onset detection** — arxiv **1806.06773** — https://arxiv.org/pdf/1806.06773
+   パラメータ 28.3% の軽量 onset 検出。
+   → 軽量・オンデバイス志向の onset 特徴の参考。
+9. **GitHub Topic: procedural-animation** — https://github.com/topics/procedural-animation
+   手続き的アニメーション OSS 群。
+   → idle の手続き生成手法の比較。
+10. **GitHub: idovelemon/PerlinNoise**(+ simplexIdle gist https://gist.github.com/Sjeiti/7145c2fe1a3468be87d2) — https://github.com/idovelemon/PerlinNoise
+    Perlin/Simplex ノイズによる「生命感のある」微動。
+    → ★ `idle_motion.ts` に **Perlin/Simplex ノイズ + 呼吸(sine+ノイズ)** を導入し機械的反復を排除。
+
+**改善点まとめ(カテゴリ9)**: ①`detectBeat` を OSS→CBSS で堅牢化(#6)、②`idle_motion` に Perlin/Simplex+呼吸(#10)、
+③`spring.ts` を three-vrm spring bone と互換パラメータ化(#1)、④idle/dance の状態→クリップ対応整備(#2)。
+
+---
+
+## 10. プライバシー保護/オンデバイス知能(local LLM/TTS, BYOK, zero-dep)
+
+1. **GitHub: mlc-ai/web-llm** — https://github.com/mlc-ai/web-llm
+   ★ **OpenAI API 互換** の in-browser LLM 推論(WebGPU、サーバ不要)。
+   → `ai_chat.ts` の BYOK プロバイダに **"local"(web-llm)** を追加。完全ローカル会話を実現(差別化軸を強化)。
+2. **GitHub: RunanywhereAI/on-device-browser-agent** — https://github.com/RunanywhereAI/on-device-browser-agent
+   WebLLM ベースの完全ローカル・no API key エージェント。
+   → ローカル専用モードの設計参考。
+3. **GitHub: hannes-sistemica/browser-llm-webgpu** — https://github.com/hannes-sistemica/browser-llm-webgpu
+   transformers.js + ONNX Runtime Web でブラウザ推論。
+   → WASM フォールバック経路の参考(GPU 無し環境)。
+4. **GitHub: clowerweb/tts-studio** — https://github.com/clowerweb/tts-studio
+   Kitten(24MB)/Piper(75MB)/Kokoro(82MB)をブラウザ内で実行。
+   → ★ TTS インターフェースを core に薄く定義し、ローカル TTS を差し込み可能に。
+5. **GitHub: steveseguin/tts.rocks** — https://github.com/steveseguin/tts.rocks
+   Kokoro+Piper+eSpeak のブラウザ TTS。
+   → 無料・オフライン TTS の実装参考。
+6. **Xenova: Kokoro TTS v1.0 100% ローカル(WebGPU)** — https://huggingface.co/posts/Xenova/620657830533509
+   10秒の音声を ~1秒で生成、サーバ不要。
+   → リアルタイム発話の実現可能性の根拠。
+7. **Improving User Privacy in Personalized Generation** — arxiv **2601.17569** — https://www.arxiv.org/pdf/2601.17569
+   個人化を **完全オンデバイス** で行いサーバへ情報を出さない。
+   → satin の「全状態をローカル保持」設計の裏付け・強化指針。
+8. **Privacy-Preserving Bandits** — arxiv **1909.04421** — https://arxiv.org/pdf/1909.04421
+   バンディット学習をプライバシー保護下で実施。
+   → カテゴリ4(`bandit.ts`)をローカル/LDP 前提で安全に。
+9. **Privacy-Preserving Graph Embedding based on Local Differential Privacy** — arxiv **2310.11060** — https://arxiv.org/html/2310.11060v2
+   LDP の基礎(ローカル摂動で原データを端末に留める)。
+   → 将来のオプトイン・テレメトリに LDP を適用する際の指針。
+10. **GitHub Topic: on-device-ai (TypeScript)** — https://github.com/topics/on-device-ai?l=typescript
+    オンデバイス AI の TS エコシステム。
+    → ゼロ依存・型付き実装の探索源。
+
+**改善点まとめ(カテゴリ10)**: ①`ai_chat.ts` に local(web-llm)プロバイダ追加で完全ローカル会話(#1,#2)、
+②core に薄い TTS インターフェース→ローカル TTS(Kokoro/Piper)差込(#4,#5,#6)、
+③オンデバイス個人化・LDP の裏付けで「プライバシーファースト」を強化(#7,#8,#9)。
+
+---
+
+## 総括(横断的な最優先改善)
+
+全10カテゴリの調査から、**差別化軸(完全ローカル・ゼロ依存・プライバシー)を強化しつつ体験を底上げする**順で:
+
+1. **反シンコファンシー + 依存防止**(§8,§2,§1)— 倫理・差別化・低コストで効果大。
+2. **文脈付きバンディット + breakpoint 適時化**(§4,§3)— `thoughtworks/simplebandit` 方式で中核体験を底上げ。
+3. **BOCPD 変化点検知**(§5)+ **階層メモリ/忘却**(§6)— アルゴリズム的に明確な堅牢化。
+4. **感情推定の個人ベースライン化 + 不確実性**(§1)/ **概日 ~8h 窓・規則性**(§7)。
+5. **idle に Perlin+呼吸 / detectBeat 堅牢化**(§9)+ **local LLM/TTS プロバイダ**(§10)— プロダクト体験とローカル路線の強化。
+
+全提案は「pure function・ゼロ依存・型付き・オンデバイス」を堅持し、`arxiv_improvements`/`arxiv_round2`
+同様に **出典付き単体テスト** を添えて実装する。本ファイルの全 URL は web 検索で実在確認済み(2026-06-05)。
 - 6. 長期記憶 — 同 §D(RMM/TiMem/Amory)+ ReMe / LD-Agent / Agent-Memory-Paper-List。
 - 7. 概日/睡眠 — 同 §F。
 - 8. 安全性/ウェルビーイング — 同 §A。
