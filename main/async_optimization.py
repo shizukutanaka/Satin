@@ -18,6 +18,7 @@ Based on 2025 best practices:
 """
 
 import asyncio
+import functools
 import logging
 import time
 from typing import Any, Callable, List, Optional, TypeVar, Union, Coroutine
@@ -66,7 +67,12 @@ class EventLoopOptimizer:
         Args:
             enable: Whether to enable debug mode
         """
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop yet (e.g. called at startup before asyncio.run).
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
         loop.set_debug(enable)
 
         if enable:
@@ -75,12 +81,20 @@ class EventLoopOptimizer:
             logger.info("Asyncio debug mode disabled")
 
     @staticmethod
-    def optimize_selector(selector_type: str = "auto") -> None:
+    def recommended_selector(selector_type: str = "auto") -> str:
         """
-        Set optimal selector for platform.
+        Return the recommended selector for the current platform.
+
+        The selector backend is fixed when the event loop is created and cannot
+        be swapped on a live loop, so this method is informational only: it
+        reports which backend asyncio will already be using. It does NOT mutate
+        any running loop.
 
         Args:
-            selector_type: "auto", "select", "poll", "epoll", "kqueue", "iocp"
+            selector_type: "auto" to detect from the platform, otherwise echoed back.
+
+        Returns:
+            The selector backend name (e.g. "epoll", "kqueue", "iocp", "poll").
 
         Note:
         - epoll: Linux (most efficient)
@@ -88,8 +102,6 @@ class EventLoopOptimizer:
         - iocp: Windows (default)
         - poll: Unix fallback
         """
-        import selectors
-
         if selector_type == "auto":
             # Platform-specific optimization
             if sys.platform == "linux":
@@ -101,12 +113,8 @@ class EventLoopOptimizer:
             else:
                 selector_type = "poll"
 
-        try:
-            loop = asyncio.get_event_loop()
-            # Selector policy is typically determined at event loop creation
-            logger.info(f"Event loop using selector: {selector_type}")
-        except Exception as e:
-            logger.warning(f"Could not set selector: {e}")
+        logger.info(f"Recommended event loop selector for this platform: {selector_type}")
+        return selector_type
 
 
 @dataclass
@@ -169,59 +177,50 @@ class AsyncTaskPool:
         """
         task_id = f"task_{self._task_counter}"
         self._task_counter += 1
+        name = task_name or task_id
+
+        # Pre-create the result record; the wrapper fills it in as the task runs
+        # so timing/result/exception are captured reliably (asyncio.Task exposes
+        # no public start/end timestamps).
+        result = AsyncTaskResult(task_id=task_id, coroutine_name=name)
 
         async def bounded_coro():
             async with self.semaphore:
-                return await coro
+                result.start_time = datetime.now()
+                started = time.perf_counter()
+                try:
+                    result.result = await coro
+                    return result.result
+                except Exception as exc:
+                    result.exception = exc
+                    raise
+                finally:
+                    result.end_time = datetime.now()
+                    result.duration_ms = (time.perf_counter() - started) * 1000
 
-        task = asyncio.create_task(bounded_coro(), name=task_name or task_id)
+        task = asyncio.create_task(bounded_coro(), name=name)
         self.tasks.append(task)
+        self.results.append(result)
         return task_id
 
     async def run_all(self, return_exceptions: bool = True) -> List[AsyncTaskResult]:
         """
-        Run all tasks concurrently.
+        Run all tasks concurrently and wait for completion.
 
         Args:
-            return_exceptions: Include exceptions in results
+            return_exceptions: If True, exceptions are captured per-result instead
+                of propagating out of this call.
 
         Returns:
-            List of task results
+            List of task results (one per add_task call, in submission order)
         """
         if not self.tasks:
             return []
 
-        try:
-            if sys.version_info >= (3, 11):
-                # Python 3.11+ TaskGroup
-                async with asyncio.TaskGroup() as tg:
-                    for task in self.tasks:
-                        tg.create_task(task)
-            else:
-                # Manual task management
-                await asyncio.gather(*self.tasks, return_exceptions=return_exceptions)
-        except Exception as e:
-            logger.error(f"Task pool execution error: {e}")
-
-        # Collect results
-        for i, task in enumerate(self.tasks):
-            result = AsyncTaskResult(
-                task_id=f"task_{i}",
-                coroutine_name=task.get_name()
-            )
-
-            if task.done():
-                try:
-                    result.result = task.result()
-                    result.duration_ms = (
-                        (task._when - task._created) * 1000
-                        if hasattr(task, '_when') and hasattr(task, '_created')
-                        else 0
-                    )
-                except Exception as e:
-                    result.exception = e
-
-            self.results.append(result)
+        # Tasks were already scheduled in add_task(); awaiting them here drives
+        # them to completion. The per-task wrapper records result/exception, so a
+        # plain gather works correctly on every supported Python version.
+        await asyncio.gather(*self.tasks, return_exceptions=return_exceptions)
 
         return self.results
 
@@ -256,6 +255,10 @@ class ConcurrentExecutor:
         """
         self.max_workers = max_workers
         self.executor_type = executor_type
+        # Lazily-created, reused pools for "auto" mode so we don't spawn (and
+        # leak) a fresh pool on every call.
+        self._auto_thread: Optional[ThreadPoolExecutor] = None
+        self._auto_process: Optional[ProcessPoolExecutor] = None
 
         if executor_type == "thread":
             self.executor = ThreadPoolExecutor(max_workers=max_workers)
@@ -281,18 +284,24 @@ class ConcurrentExecutor:
         Returns:
             Function result
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         if self.executor is None:
-            # Auto-select executor based on function characteristics
+            # Auto-select a reused executor based on function characteristics.
             if self._is_cpu_bound(func):
-                executor = ProcessPoolExecutor(max_workers=self.max_workers)
+                if self._auto_process is None:
+                    self._auto_process = ProcessPoolExecutor(max_workers=self.max_workers)
+                executor = self._auto_process
             else:
-                executor = ThreadPoolExecutor(max_workers=self.max_workers)
+                if self._auto_thread is None:
+                    self._auto_thread = ThreadPoolExecutor(max_workers=self.max_workers)
+                executor = self._auto_thread
         else:
             executor = self.executor
 
-        return await loop.run_in_executor(executor, func, *args)
+        # functools.partial carries **kwargs (run_in_executor only forwards *args).
+        call = functools.partial(func, *args, **kwargs)
+        return await loop.run_in_executor(executor, call)
 
     @staticmethod
     def _is_cpu_bound(func: Callable) -> bool:
@@ -323,7 +332,7 @@ class ConcurrentExecutor:
         Returns:
             List of results
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         futures = []
 
         for item in iterables[0] if iterables else []:
@@ -334,12 +343,16 @@ class ConcurrentExecutor:
             )
             futures.append(future)
 
-        return await asyncio.gather(*futures, return_exceptions=False)
+        gathered = asyncio.gather(*futures, return_exceptions=False)
+        if timeout is not None:
+            return await asyncio.wait_for(gathered, timeout=timeout)
+        return await gathered
 
     def shutdown(self) -> None:
-        """Shutdown executor."""
-        if self.executor:
-            self.executor.shutdown(wait=True)
+        """Shutdown all executors owned by this instance."""
+        for pool in (self.executor, self._auto_thread, self._auto_process):
+            if pool is not None:
+                pool.shutdown(wait=True)
 
 
 class AsyncContextManager:
@@ -479,6 +492,10 @@ class AsyncRateLimiterAdvanced:
         self.max_concurrency = max_concurrency
         self.current_concurrency = min_concurrency
         self.semaphore = asyncio.Semaphore(self.current_concurrency)
+        # Number of permits we still owe back to a shrink decision. While > 0,
+        # completing tasks retire their permit instead of returning it, which
+        # lowers capacity without ever replacing the live Semaphore object.
+        self._pending_reduction = 0
         self.latencies: List[float] = []
         self.window_size = 100
 
@@ -493,36 +510,35 @@ class AsyncRateLimiterAdvanced:
         Args:
             latency_ms: Task execution latency
         """
-        self.semaphore.release()
-
-        # Track latency
+        # Track latency first so the adjustment below sees this sample.
         self.latencies.append(latency_ms)
         if len(self.latencies) > self.window_size:
             self.latencies.pop(0)
 
-        # Adjust concurrency
+        # Decide whether to grow or shrink the concurrency budget.
         if len(self.latencies) >= 10:
-            p99_latency = sorted(self.latencies)[int(len(self.latencies) * 0.99)]
+            idx = min(int(len(self.latencies) * 0.99), len(self.latencies) - 1)
+            p99_latency = sorted(self.latencies)[idx]
 
-            if p99_latency > self.target_latency_ms:
-                # Reduce concurrency if latency too high
-                new_concurrency = max(
-                    self.min_concurrency,
-                    self.current_concurrency - 1
-                )
-            elif p99_latency < self.target_latency_ms * 0.8:
-                # Increase concurrency if latency good
-                new_concurrency = min(
-                    self.max_concurrency,
-                    self.current_concurrency + 1
-                )
-            else:
-                new_concurrency = self.current_concurrency
+            if (p99_latency > self.target_latency_ms
+                    and self.current_concurrency > self.min_concurrency):
+                # Too slow: retire one permit (paid down when tasks complete).
+                self._pending_reduction += 1
+                self.current_concurrency -= 1
+                logger.info(f"Adjusted concurrency to {self.current_concurrency}")
+            elif (p99_latency < self.target_latency_ms * 0.8
+                    and self.current_concurrency < self.max_concurrency):
+                # Headroom: add a permit to the same semaphore.
+                self.current_concurrency += 1
+                self.semaphore.release()
+                logger.info(f"Adjusted concurrency to {self.current_concurrency}")
 
-            if new_concurrency != self.current_concurrency:
-                self.current_concurrency = new_concurrency
-                self.semaphore = asyncio.Semaphore(new_concurrency)
-                logger.info(f"Adjusted concurrency to {new_concurrency}")
+        # Return this task's permit, unless we owe a pending reduction — in which
+        # case retiring it now is how we shrink the budget.
+        if self._pending_reduction > 0:
+            self._pending_reduction -= 1
+        else:
+            self.semaphore.release()
 
 
 async def gather_with_timeout(
@@ -641,17 +657,32 @@ class AsyncConnectionPool:
             )
             return conn
         except asyncio.TimeoutError:
-            # Try to create overflow connection
-            if len(self._all_connections) < self.pool_size + self.max_overflow:
-                conn = await self.factory()
-                self._all_connections.append(conn)
-                return conn
+            # Try to create an overflow connection. The check + create + append
+            # must be atomic, otherwise concurrent acquirers can race past the
+            # cap and create more than pool_size + max_overflow connections
+            # (which would later overflow the bounded queue on release()).
+            async with self._lock:
+                if len(self._all_connections) < self.pool_size + self.max_overflow:
+                    conn = await self.factory()
+                    self._all_connections.append(conn)
+                    return conn
 
             raise
 
     async def release(self, conn: Any) -> None:
-        """Release connection back to pool."""
-        await self._available.put(conn)
+        """Release connection back to pool, discarding it if the pool is full."""
+        try:
+            self._available.put_nowait(conn)
+        except asyncio.QueueFull:
+            # Pool already at capacity (e.g. a transient overflow connection);
+            # drop this one instead of blocking the caller forever.
+            async with self._lock:
+                if conn in self._all_connections:
+                    self._all_connections.remove(conn)
+            if hasattr(conn, 'close'):
+                closer = conn.close()
+                if asyncio.iscoroutine(closer):
+                    await closer
 
     async def close_all(self) -> None:
         """Close all connections."""

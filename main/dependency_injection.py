@@ -79,8 +79,10 @@ class ServiceContainer:
         self._factories: Dict[Type, Callable] = {}
         self._singletons: Dict[Type, Any] = {}
         self._scopes: List['ServiceScope'] = []
-        self._resolution_stack: List[Type] = []
-        self._lock = asyncio.Lock()
+        # Per-type locks so concurrent resolves of the same singleton create it
+        # exactly once, without a single container-wide lock that would deadlock
+        # on nested singleton dependencies (asyncio.Lock is not reentrant).
+        self._singleton_locks: Dict[Type, asyncio.Lock] = {}
 
     def register(
         self,
@@ -186,44 +188,50 @@ class ServiceContainer:
             ServiceNotFoundError: Service not registered
             CircularDependencyError: Circular dependency detected
         """
-        # Check for circular dependencies
-        if service_type in self._resolution_stack:
-            chain = ' -> '.join(t.__name__ for t in self._resolution_stack + [service_type])
+        return await self._resolve(service_type, [])
+
+    async def _resolve(self, service_type: Type[T], stack: List[Type]) -> T:
+        # Cycle detection uses a per-call stack (not shared instance state), so
+        # concurrent resolutions cannot corrupt each other's chains.
+        if service_type in stack:
+            chain = ' -> '.join(t.__name__ for t in stack + [service_type])
             raise CircularDependencyError(f"Circular dependency: {chain}")
 
         if service_type not in self._services:
             raise ServiceNotFoundError(f"Service {service_type.__name__} not registered")
 
         descriptor = self._services[service_type]
+        next_stack = stack + [service_type]
 
         # Return singleton if available
         if descriptor.lifetime == ServiceLifetime.SINGLETON:
             if service_type in self._singletons:
                 return self._singletons[service_type]
 
-            # Create singleton
-            self._resolution_stack.append(service_type)
-            try:
-                instance = await self._create_instance(descriptor)
+            # Serialize creation per type so concurrent resolves don't build the
+            # singleton twice. setdefault is atomic under the single-threaded loop.
+            lock = self._singleton_locks.setdefault(service_type, asyncio.Lock())
+            async with lock:
+                if service_type in self._singletons:
+                    return self._singletons[service_type]
+                instance = await self._create_instance(descriptor, next_stack)
                 self._singletons[service_type] = instance
                 return instance
-            finally:
-                self._resolution_stack.pop()
 
         # Create transient or scoped instance
-        self._resolution_stack.append(service_type)
-        try:
-            return await self._create_instance(descriptor)
-        finally:
-            self._resolution_stack.pop()
+        return await self._create_instance(descriptor, next_stack)
 
-    async def _create_instance(self, descriptor: ServiceDescriptor) -> Any:
+    async def _create_instance(self, descriptor: ServiceDescriptor, stack: List[Type]) -> Any:
         """Create service instance."""
         if descriptor.instance is not None:
             return descriptor.instance
 
         if descriptor.factory:
-            return descriptor.factory(self)
+            result = descriptor.factory(self)
+            # Support async factories (factory may be a coroutine function).
+            if inspect.isawaitable(result):
+                result = await result
+            return result
 
         if descriptor.implementation_type is None:
             raise ServiceResolutionError("No implementation provided")
@@ -236,16 +244,21 @@ class ServiceContainer:
             if param_name == 'self':
                 continue
 
-            if param.annotation == inspect.Parameter.empty:
-                if param.default != inspect.Parameter.empty:
+            annotation = param.annotation
+            # Only auto-resolve concrete class annotations. Missing annotations,
+            # string/forward refs (from `from __future__ import annotations`), and
+            # typing generics (Optional[X], etc.) are not registrable keys — fall
+            # back to the parameter default instead of raising.
+            if annotation is inspect.Parameter.empty or not isinstance(annotation, type):
+                if param.default is not inspect.Parameter.empty:
                     kwargs[param_name] = param.default
                 continue
 
             # Try to resolve dependency
             try:
-                kwargs[param_name] = await self.resolve(param.annotation)
+                kwargs[param_name] = await self._resolve(annotation, stack)
             except ServiceResolutionError:
-                if param.default != inspect.Parameter.empty:
+                if param.default is not inspect.Parameter.empty:
                     kwargs[param_name] = param.default
                 else:
                     raise
@@ -461,24 +474,42 @@ class ServiceProviderDecorator:
                 pass
         """
         def decorator(func: Callable) -> Callable:
+            # Inject under the parameter whose annotation matches service_type, so
+            # the call site receives it by its real name (not the class name).
+            sig = inspect.signature(func)
+            target_param: Optional[str] = next(
+                (name for name, p in sig.parameters.items() if p.annotation is service_type),
+                None,
+            )
+            if target_param is None:
+                target_param = next(
+                    (name for name in sig.parameters if name != 'self'), None
+                )
+
             async def async_wrapper(*args, **kwargs):
-                if service_type not in kwargs:
-                    kwargs[service_type.__name__] = await self.container.resolve(service_type)
+                if target_param is not None and target_param not in kwargs:
+                    kwargs[target_param] = await self.container.resolve(service_type)
                 return await func(*args, **kwargs)
 
             def sync_wrapper(*args, **kwargs):
-                if service_type not in kwargs:
-                    # Create event loop if needed
+                if target_param is not None and target_param not in kwargs:
                     try:
-                        loop = asyncio.get_running_loop()
+                        asyncio.get_running_loop()
                     except RuntimeError:
+                        # No running loop: resolve on a throwaway loop, then call func.
                         loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        return loop.run_until_complete(
-                            self.container.resolve(service_type)
+                        try:
+                            kwargs[target_param] = loop.run_until_complete(
+                                self.container.resolve(service_type)
+                            )
+                        finally:
+                            loop.close()
+                    else:
+                        # Can't block on async resolution inside a running loop.
+                        raise RuntimeError(
+                            "Cannot resolve dependency synchronously inside a running "
+                            "event loop; decorate an async function instead."
                         )
-                    # In async context - cannot use sync wrapper
-                    raise RuntimeError("Use async wrapper in async context")
                 return func(*args, **kwargs)
 
             if inspect.iscoroutinefunction(func):

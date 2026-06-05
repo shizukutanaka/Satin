@@ -23,6 +23,7 @@ from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 import inspect
+import math
 import re
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,9 @@ class CyclomaticComplexityVisitor(ast.NodeVisitor):
         self.max_nested_depth = 0
         self.lines_of_code = 0
         self.decision_points = []
+        # Depth of function nesting while visiting; used to avoid counting the
+        # decision points of *nested* functions toward the target function.
+        self._func_depth = 0
 
     def visit_If(self, node: ast.If) -> None:
         """Visit if statements."""
@@ -201,6 +205,20 @@ class CyclomaticComplexityVisitor(ast.NodeVisitor):
     def visit_Lambda(self, node: ast.Lambda) -> None:
         """Don't count lambda functions."""
         pass
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        """Descend into the target function body, but not into nested functions.
+
+        Nested functions are measured separately by the analyzer; recursing into
+        them here would double-count their decision points in the parent.
+        """
+        self._func_depth += 1
+        if self._func_depth == 1:
+            self.generic_visit(node)
+        self._func_depth -= 1
+
+    # async def bodies behave the same for complexity purposes
+    visit_AsyncFunctionDef = visit_FunctionDef
 
 
 class CodeComplexityAnalyzer:
@@ -331,49 +349,27 @@ class CodeComplexityAnalyzer:
             metrics.issues.append(f"Syntax error: {e}")
             return metrics
 
+        # The stdlib ast module does not set a .parent attribute, so establish
+        # parent links before classifying functions vs. methods.
+        for parent in ast.walk(tree):
+            for child in ast.iter_child_nodes(parent):
+                child.parent = parent
+
         # Analyze functions and classes
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if hasattr(node, 'parent') and isinstance(node.parent, ast.ClassDef):
-                    # Method of a class
-                    class_name = node.parent.name
-                    if class_name not in metrics.classes:
-                        metrics.classes[class_name] = {}
-                    # Analyze method
-                    func_source = '\n'.join(lines[node.lineno - 1:node.end_lineno])
-                    visitor = CyclomaticComplexityVisitor(node.name)
-                    visitor.visit(node)
-                    metrics.classes[class_name][node.name] = ComplexityMetrics(
-                        name=f"{class_name}.{node.name}",
-                        cyclomatic_complexity=visitor.complexity,
-                        cognitive_complexity=CodeComplexityAnalyzer._calculate_cognitive_complexity(node),
-                        halstead_volume=CodeComplexityAnalyzer._estimate_halstead_volume(func_source),
-                        lines_of_code=node.end_lineno - node.lineno + 1,
-                        lines_logical=len([l for l in func_source.split('\n') if l.strip()]),
-                        crap_index=CodeComplexityAnalyzer._calculate_crap_index(
-                            visitor.complexity,
-                            node.end_lineno - node.lineno + 1
-                        ),
-                        nested_depth=visitor.max_nested_depth
-                    )
-                else:
-                    # Module-level function
-                    func_source = '\n'.join(lines[node.lineno - 1:node.end_lineno] if node.end_lineno else lines[node.lineno - 1:])
-                    visitor = CyclomaticComplexityVisitor(node.name)
-                    visitor.visit(node)
-                    metrics.functions[node.name] = ComplexityMetrics(
-                        name=node.name,
-                        cyclomatic_complexity=visitor.complexity,
-                        cognitive_complexity=CodeComplexityAnalyzer._calculate_cognitive_complexity(node),
-                        halstead_volume=CodeComplexityAnalyzer._estimate_halstead_volume(func_source),
-                        lines_of_code=node.end_lineno - node.lineno + 1 if node.end_lineno else 1,
-                        lines_logical=len([l for l in func_source.split('\n') if l.strip()]),
-                        crap_index=CodeComplexityAnalyzer._calculate_crap_index(
-                            visitor.complexity,
-                            node.end_lineno - node.lineno + 1 if node.end_lineno else 1
-                        ),
-                        nested_depth=visitor.max_nested_depth
-                    )
+                parent = getattr(node, 'parent', None)
+                if isinstance(parent, ast.ClassDef):
+                    # Method of a class — namespaced under the class so methods of
+                    # the same name in different classes don't collide.
+                    metrics.classes.setdefault(parent.name, {})
+                    m = CodeComplexityAnalyzer._metrics_for_node(node, lines)
+                    m.name = f"{parent.name}.{node.name}"
+                    metrics.classes[parent.name][node.name] = m
+                elif isinstance(parent, ast.Module):
+                    # Module-level function (nested functions are skipped to avoid
+                    # bare-name key collisions and double reporting).
+                    metrics.functions[node.name] = CodeComplexityAnalyzer._metrics_for_node(node, lines)
 
         # Calculate maintainability index
         metrics.maintainability_index = CodeComplexityAnalyzer._calculate_maintainability_index(
@@ -386,14 +382,43 @@ class CodeComplexityAnalyzer:
         return metrics
 
     @staticmethod
+    def _metrics_for_node(node: ast.AST, lines: List[str]) -> ComplexityMetrics:
+        """Compute ComplexityMetrics for a single function/method node."""
+        end = getattr(node, 'end_lineno', None) or node.lineno
+        loc = end - node.lineno + 1
+        func_source = '\n'.join(lines[node.lineno - 1:end])
+        visitor = CyclomaticComplexityVisitor(node.name)
+        visitor.visit(node)
+        return ComplexityMetrics(
+            name=node.name,
+            cyclomatic_complexity=visitor.complexity,
+            cognitive_complexity=CodeComplexityAnalyzer._calculate_cognitive_complexity(node),
+            halstead_volume=CodeComplexityAnalyzer._estimate_halstead_volume(func_source),
+            lines_of_code=loc,
+            lines_logical=len([l for l in func_source.split('\n') if l.strip()]),
+            crap_index=CodeComplexityAnalyzer._calculate_crap_index(visitor.complexity, loc),
+            nested_depth=visitor.max_nested_depth,
+        )
+
+    @staticmethod
     def _calculate_cognitive_complexity(node: ast.AST) -> int:
-        """Calculate cognitive complexity."""
-        # Simplified: mostly based on cyclomatic complexity
-        # Real calculation would weight nesting levels higher
+        """Calculate a simplified cognitive complexity.
+
+        Counts decision points within the function but does NOT descend into
+        nested function definitions (those are measured on their own).
+        """
         complexity = 1
-        for child in ast.walk(node):
-            if isinstance(child, (ast.If, ast.While, ast.For, ast.ExceptHandler)):
-                complexity += 1
+
+        def _walk(n: ast.AST) -> None:
+            nonlocal complexity
+            for child in ast.iter_child_nodes(n):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue  # nested function: skip its internals
+                if isinstance(child, (ast.If, ast.While, ast.For, ast.ExceptHandler)):
+                    complexity += 1
+                _walk(child)
+
+        _walk(node)
         return complexity
 
     @staticmethod
@@ -411,26 +436,24 @@ class CodeComplexityAnalyzer:
     @staticmethod
     def _estimate_halstead_volume(source: str) -> float:
         """
-        Estimate Halstead volume.
+        Estimate Halstead volume V = N * log2(n).
 
-        Simplified calculation: volume = N * log2(n)
-        where N = total operators + operands, n = unique operators + operands
+        N = program length (total operators + operands),
+        n = vocabulary (unique operators + operands).
         """
-        # Remove comments and strings
+        # Remove comment lines (a rough proxy; full tokenization is out of scope).
         lines = source.split('\n')
         code_lines = [l for l in lines if l.strip() and not l.strip().startswith('#')]
         code = '\n'.join(code_lines)
 
-        # Count operators and operands (simplified)
-        operators = len(re.findall(r'[\+\-\*/=<>!&\|]', code))
-        operands = len(re.findall(r'\b\w+\b', code))
+        operators = re.findall(r'[\+\-\*/=<>!&\|%]+', code)
+        operands = re.findall(r'\b[A-Za-z_]\w*\b|\b\d+\b', code)
 
-        n_total = operators + operands
-        if n_total > 0 and n_total > 2:
-            n_unique = len(set(re.findall(r'[\+\-\*/=<>!&\|]', code))) + len(set(re.findall(r'\b\w+\b', code)))
-            volume = n_total * (2 if n_unique == 0 else (n_total / max(1, n_unique)).__format__('.2f'))
-            return float(volume) if isinstance(volume, (int, float)) else 0.0
-        return 0.0
+        n_total = len(operators) + len(operands)            # length N
+        n_unique = len(set(operators)) + len(set(operands))  # vocabulary n
+        if n_total == 0 or n_unique <= 1:
+            return 0.0
+        return float(n_total * math.log2(n_unique))
 
     @staticmethod
     def _calculate_maintainability_index(
