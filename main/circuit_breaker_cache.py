@@ -85,8 +85,12 @@ class CircuitBreaker:
         self.metrics = CircuitBreakerMetrics()
         self.failure_count = 0
         self.success_count = 0
+        self._half_open_calls = 0
         self.last_failure_time: Optional[datetime] = None
         self.call_history: deque = deque(maxlen=self.config.metrics_window)
+        # Guards state transitions / counters. Held only around bookkeeping,
+        # never around the wrapped call, so CLOSED-state calls stay concurrent.
+        self._lock = asyncio.Lock()
 
     async def call(
         self,
@@ -106,23 +110,37 @@ class CircuitBreaker:
         Returns:
             func の実行結果 or フォールバック値
         """
-        # 状態チェック
-        if self.state == CircuitState.OPEN:
-            # 回復待機時間が経過したか確認
-            if self._should_attempt_reset():
-                self.state = CircuitState.HALF_OPEN
-                self.success_count = 0
-                self.metrics.state_change_time = datetime.now()
-                logger.info(f"Circuit Breaker '{self.name}' -> HALF_OPEN")
-            else:
-                # OPEN 状態のまま - リクエスト遮断
-                self.metrics.rejected_calls += 1
-                logger.warning(f"Circuit Breaker '{self.name}' is OPEN - rejecting call")
-
-                if fallback:
-                    return await self._call_function(fallback)
+        # 状態チェック・遷移(状態更新はロックで保護。func 実行はロック外)
+        rejected = False
+        async with self._lock:
+            if self.state == CircuitState.OPEN:
+                # 回復待機時間が経過したか確認
+                if self._should_attempt_reset():
+                    self.state = CircuitState.HALF_OPEN
+                    self.success_count = 0
+                    self.failure_count = 0      # 回復試行をクリーンに開始
+                    self._half_open_calls = 0
+                    self.metrics.state_change_time = datetime.now()
+                    logger.info(f"Circuit Breaker '{self.name}' -> HALF_OPEN")
                 else:
-                    raise Exception(f"Circuit Breaker '{self.name}' is OPEN")
+                    rejected = True
+
+            # HALF_OPEN 中はプローブ数を success_threshold までに制限
+            if not rejected and self.state == CircuitState.HALF_OPEN:
+                if self._half_open_calls >= self.config.success_threshold:
+                    rejected = True
+                else:
+                    self._half_open_calls += 1
+
+        if rejected:
+            # OPEN 状態のまま / HALF_OPEN 上限 - リクエスト遮断
+            self.metrics.rejected_calls += 1
+            logger.warning(f"Circuit Breaker '{self.name}' is OPEN - rejecting call")
+
+            if fallback:
+                return await self._call_function(fallback)
+            else:
+                raise Exception(f"Circuit Breaker '{self.name}' is OPEN")
 
         # 関数を実行
         start_time = time.time()
@@ -144,18 +162,21 @@ class CircuitBreaker:
                     f"(threshold: {self.config.slow_call_threshold_ms}ms)"
                 )
 
-            # HALF_OPEN 状態の処理
-            if self.state == CircuitState.HALF_OPEN:
-                self.success_count += 1
-                if self.success_count >= self.config.success_threshold:
-                    self.state = CircuitState.CLOSED
-                    self.failure_count = 0
-                    self.metrics.state_change_time = datetime.now()
-                    logger.info(f"Circuit Breaker '{self.name}' -> CLOSED (recovered)")
+            # 状態遷移・カウンタはロックで保護
+            async with self._lock:
+                if self.state == CircuitState.HALF_OPEN:
+                    self.success_count += 1
+                    if self.success_count >= self.config.success_threshold:
+                        self.state = CircuitState.CLOSED
+                        self.failure_count = 0
+                        self.success_count = 0
+                        self._half_open_calls = 0
+                        self.metrics.state_change_time = datetime.now()
+                        logger.info(f"Circuit Breaker '{self.name}' -> CLOSED (recovered)")
 
-            # CLOSED 状態では失敗カウントをリセット
-            elif self.state == CircuitState.CLOSED:
-                self.failure_count = 0
+                # CLOSED 状態では失敗カウントをリセット
+                elif self.state == CircuitState.CLOSED:
+                    self.failure_count = 0
 
             return result
 
@@ -164,26 +185,30 @@ class CircuitBreaker:
             self.metrics.total_calls += 1
             self.metrics.failed_calls += 1
             self.metrics.last_failure_time = datetime.now()
-            self.failure_count += 1
             self.last_failure_time = datetime.now()
 
             logger.error(f"Call failed in Circuit Breaker '{self.name}': {e}")
 
-            # HALF_OPEN 状態では即座に OPEN に
-            if self.state == CircuitState.HALF_OPEN:
-                self.state = CircuitState.OPEN
-                self.metrics.state_change_time = datetime.now()
-                logger.error(f"Circuit Breaker '{self.name}' -> OPEN (recovery failed)")
+            async with self._lock:
+                self.failure_count += 1
 
-            # CLOSED 状態で閾値到達 → OPEN に
-            elif self.state == CircuitState.CLOSED:
-                if self.failure_count >= self.config.failure_threshold:
+                # HALF_OPEN 状態では即座に OPEN に(成功カウントもリセット)
+                if self.state == CircuitState.HALF_OPEN:
                     self.state = CircuitState.OPEN
+                    self.success_count = 0
+                    self._half_open_calls = 0
                     self.metrics.state_change_time = datetime.now()
-                    logger.error(
-                        f"Circuit Breaker '{self.name}' -> OPEN "
-                        f"(failures: {self.failure_count}/{self.config.failure_threshold})"
-                    )
+                    logger.error(f"Circuit Breaker '{self.name}' -> OPEN (recovery failed)")
+
+                # CLOSED 状態で閾値到達 → OPEN に
+                elif self.state == CircuitState.CLOSED:
+                    if self.failure_count >= self.config.failure_threshold:
+                        self.state = CircuitState.OPEN
+                        self.metrics.state_change_time = datetime.now()
+                        logger.error(
+                            f"Circuit Breaker '{self.name}' -> OPEN "
+                            f"(failures: {self.failure_count}/{self.config.failure_threshold})"
+                        )
 
             # フォールバック実行
             if fallback:
