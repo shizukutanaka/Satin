@@ -3,11 +3,15 @@
 """
 import os
 import json
-import yaml
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
 from dataclasses import dataclass, asdict
+
+try:
+    import yaml
+except ImportError:  # PyYAML is optional; only needed for .yaml/.yml config files
+    yaml = None
 
 # ロガーの設定
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
@@ -57,6 +61,9 @@ def load_config(file_path: Union[str, Path] = None) -> Dict[str, Any]:
             if file_path.suffix.lower() == '.json':
                 return json.load(f)
             elif file_path.suffix.lower() in ('.yaml', '.yml'):
+                if yaml is None:
+                    logger.error("YAML 設定の読み込みには PyYAML が必要です: pip install pyyaml")
+                    return {}
                 return yaml.safe_load(f)
             else:
                 logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
@@ -89,6 +96,9 @@ def save_config(config: Dict[str, Any], file_path: Union[str, Path] = None) -> b
             if file_path.suffix.lower() == '.json':
                 json.dump(config, f, ensure_ascii=False, indent=2)
             elif file_path.suffix.lower() in ('.yaml', '.yml'):
+                if yaml is None:
+                    logger.error("YAML 設定の保存には PyYAML が必要です: pip install pyyaml")
+                    return False
                 yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
             else:
                 logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
@@ -217,22 +227,25 @@ def update_config(new_config: Dict[str, Any], save_to_file: bool = True) -> bool
         bool: 更新に成功したかどうか
     """
     global _config_instance
-    
-    # バリデーション
-    errors = validate_config(new_config)
+
+    # 先にマージし、最終的な設定をバリデーションする。
+    # （部分更新で version/settings を毎回渡さなくて済むよう、マージ後に検証する。
+    #   以前は部分的な new_config を検証していたため必須フィールド欠落で常に失敗していた。）
+    current_config = get_config()
+    merged_config = merge_configs(current_config, new_config)
+
+    errors = validate_config(merged_config)
     if errors:
         logger.error("設定の更新に失敗しました。バリデーションエラーがあります:")
         for field, msgs in errors.items():
             for msg in msgs:
                 logger.error(f"  - {field}: {msg}")
         return False
-    
-    # マージ
-    current_config = get_config()
-    _config_instance = merge_configs(current_config, new_config)
-    
+
+    _config_instance = merged_config
+
     # ファイルに保存
     if save_to_file:
         return save_config(_config_instance)
-    
+
     return True
