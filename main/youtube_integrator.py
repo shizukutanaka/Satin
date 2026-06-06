@@ -33,7 +33,7 @@ try:
 except ImportError:
     YOUTUBE_API_AVAILABLE = False
 
-from error_handling import handle_error, RetryStrategy, ErrorContext
+from error_handling import handle_error, RetryStrategy
 from cache_manager import CacheManager
 from logging_manager import LoggingManager
 

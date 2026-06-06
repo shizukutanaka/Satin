@@ -239,8 +239,14 @@ def retry_on_error(
 # Global error handler instance
 _error_handler = ErrorHandler()
 
-def handle_error(error: Exception) -> Any:
-    """Handle an error using the global error handler"""
+def handle_global_error(error: Exception) -> Any:
+    """Handle an error using the global error handler.
+
+    NOTE: renamed from `handle_error` to avoid shadowing the `@handle_error`
+    decorator factory defined above — the previous duplicate definition replaced
+    the decorator with this function, so `@handle_error(RetryStrategy(...))`
+    raised `TypeError: 'dict' object is not callable`.
+    """
     return _error_handler.handle_error(error)
 
 def set_global_error_handler(handler: ErrorHandler) -> None:

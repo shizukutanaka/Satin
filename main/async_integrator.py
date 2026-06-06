@@ -2,6 +2,9 @@
 非同期統合モジュール - High-Performance Async Integration
 asyncio + httpx による高速並列処理実装
 """
+# Defer annotation evaluation so httpx.* type hints don't require httpx at import
+# time (httpx is an optional dependency guarded by the try/except below).
+from __future__ import annotations
 
 import asyncio
 import time
