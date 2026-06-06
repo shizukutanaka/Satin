@@ -7,7 +7,7 @@ import logging
 import shutil
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from utils_config import get_config, update_config, validate_config
 
 logger = logging.getLogger(__name__)

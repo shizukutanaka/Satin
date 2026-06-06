@@ -9,10 +9,10 @@
 """
 import os
 import json
+import hashlib
 import logging
 import threading
 import time
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, TypeVar
 from datetime import datetime, timedelta
@@ -106,6 +106,9 @@ class CacheManager:
         self.memory_cache_size_bytes = self.memory_cache_size * 1024 * 1024
 
         self.executor = ThreadPoolExecutor(max_workers=self.max_concurrent_tasks)
+        # Keep strong refs to fire-and-forget disk-write tasks so the event loop
+        # doesn't garbage-collect them mid-flight.
+        self._background_tasks: set = set()
 
         self.stats = CacheStats()
         self._cleanup_stop_event = threading.Event()
@@ -125,7 +128,10 @@ class CacheManager:
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(self.executor, lambda: func(*args, **kwargs))
 
-        @lru_cache(maxsize=self.memory_cache_size)
+        # NOTE: do NOT wrap this coroutine with functools.lru_cache — it would
+        # cache the *coroutine object*, and the second cache hit would await an
+        # already-exhausted coroutine (RuntimeError). Caching is handled by the
+        # key-based self.memory_cache below.
         async def wrapper(*args, **kwargs) -> T:
             start_time = time.time()
             key = self._generate_cache_key(func.__name__, args, kwargs)
@@ -138,7 +144,9 @@ class CacheManager:
 
             result = await async_executor(*args, **kwargs)
             self._set_memory_cache(key, result)
-            asyncio.create_task(self._update_disk_cache_async(key, result))
+            task = asyncio.create_task(self._update_disk_cache_async(key, result))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
 
             latency = (time.time() - start_time) * 1000
             self.stats.record_miss(latency)
@@ -209,8 +217,18 @@ class CacheManager:
             raise
     
     def _generate_cache_key(self, func_name: str, args: Tuple, kwargs: Dict) -> str:
-        """キャッシュキーの生成"""
-        return f"{func_name}_{hash(args)}_{hash(tuple(sorted(kwargs.items())))}"
+        """キャッシュキーの生成（プロセス間で安定なハッシュ）。
+
+        組み込み hash() は PYTHONHASHSEED により実行ごとに変わるため、ディスクキャッシュ
+        のキー(=ファイル名)が再起動で一致せず warmup/永続化が効かなくなる。安定した
+        hashlib.sha256 を用いる。
+        """
+        try:
+            payload = repr((args, tuple(sorted(kwargs.items()))))
+        except Exception:
+            payload = repr((args, list(kwargs.items())))
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+        return f"{func_name}_{digest}"
     
     def _update_disk_cache(self, key: str, value: Any) -> None:
         if self.disk_cache_size <= 0:

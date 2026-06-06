@@ -12,3 +12,6 @@ __pycache__/
 *.bak
 *.swp
 # 配信用一時ファイルやキャッシュもここに追加可
+
+# ランタイム生成キャッシュ(CacheManager)
+main/config/cache/
