@@ -53,6 +53,24 @@ class ValidationError(SatinError):
         details = {'field': field} if field else {}
         super().__init__(message, code=400, details=details)
 
+
+class ConfigError(SatinError):
+    """Raised when configuration loading/saving/validation fails."""
+    def __init__(self, message: str, details: Optional[Dict] = None):
+        super().__init__(message, code=500, details=details)
+
+
+# Backwards/forwards-compatible alias (some modules import ConfigurationError).
+class ConfigurationError(ConfigError):
+    """Alias of ConfigError for callers expecting this name."""
+
+
+class PluginError(SatinError):
+    """Raised when a plugin fails to load or execute."""
+    def __init__(self, message: str, plugin: Optional[str] = None):
+        details = {'plugin': plugin} if plugin else {}
+        super().__init__(message, code=500, details=details)
+
 class ErrorHandler:
     """Global error handler and recovery manager"""
     

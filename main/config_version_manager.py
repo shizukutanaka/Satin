@@ -3,9 +3,9 @@ import glob
 import json
 import shutil
 import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from utils_profile import profile_time, log_info, log_error
-from .error_handling import ConfigError
+from error_handling import ConfigError
 
 VERSIONS_DIR = "config_versions"
 MAX_VERSIONS = 10  # 最大バージョン数

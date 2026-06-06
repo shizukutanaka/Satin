@@ -2,8 +2,8 @@ import os
 import importlib
 from typing import Dict, Any, List, Type
 from pathlib import Path
-from .error_handling import PluginError
-from .logging_manager import Logger
+from error_handling import PluginError
+from logging_manager import LoggingManager as Logger
 
 class PluginManager:
     """Manage and load plugins"""
