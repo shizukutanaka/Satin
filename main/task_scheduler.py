@@ -43,20 +43,22 @@ class ScheduledTask:
     created_at: float = field(compare=False, default_factory=time.time)
     
     def run(self):
-        """Execute the task"""
+        """Execute the task, retrying in-process up to max_retries on failure."""
         self.status = TaskStatus.RUNNING
-        try:
-            self.result = self.func(*self.args, **self.kwargs)
-            self.status = TaskStatus.COMPLETED
-            return self.result
-        except Exception as e:
-            self.error = e
-            if self.retries < self.max_retries:
-                self.retries += 1
-                self.status = TaskStatus.PENDING
-                return None
-            self.status = TaskStatus.FAILED
-            raise
+        while True:
+            try:
+                self.result = self.func(*self.args, **self.kwargs)
+                self.status = TaskStatus.COMPLETED
+                return self.result
+            except Exception as e:
+                self.error = e
+                if self.retries < self.max_retries:
+                    # Previously this returned None and left the task PENDING
+                    # without ever re-running it; retry here so max_retries works.
+                    self.retries += 1
+                    continue
+                self.status = TaskStatus.FAILED
+                raise
 
 class TaskScheduler:
     """Task scheduler with priority queue"""
@@ -246,7 +248,12 @@ class TaskScheduler:
                         break
                 except queue.Empty:
                     continue
-                
+
+                # Skip tasks cancelled after they were enqueued.
+                if task.status == TaskStatus.CANCELLED:
+                    self.ready_queue.task_done()
+                    continue
+
                 with self.worker_semaphore:
                     try:
                         task.run()
