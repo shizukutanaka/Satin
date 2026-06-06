@@ -407,24 +407,47 @@ class PerformanceMonitor:
         Get statistics for operation.
 
         Returns:
-            Dictionary with mean, median, min, max, p95, p99
+            Dictionary with count, mean, median, min, max, p95, p99, stdev.
+            When there are no samples, every key is present with 0.0 (and
+            count 0) so callers never hit a KeyError.
         """
-        if operation_name not in self.metrics or not self.metrics[operation_name]:
-            return {}
+        import statistics
 
-        values = sorted(self.metrics[operation_name])
+        values = sorted(self.metrics.get(operation_name) or [])
         n = len(values)
+
+        if n == 0:
+            return {
+                'count': 0,
+                'mean_ms': 0.0, 'median_ms': 0.0,
+                'min_ms': 0.0, 'max_ms': 0.0,
+                'p95_ms': 0.0, 'p99_ms': 0.0,
+                'stdev_ms': 0.0,
+            }
 
         return {
             'count': n,
             'mean_ms': sum(values) / n,
-            'median_ms': values[n // 2],
+            'median_ms': statistics.median(values),
             'min_ms': values[0],
             'max_ms': values[-1],
-            'p95_ms': values[int(n * 0.95)],
-            'p99_ms': values[int(n * 0.99)] if n > 100 else values[-1],
+            'p95_ms': self._percentile(values, 95.0),
+            'p99_ms': self._percentile(values, 99.0),
             'stdev_ms': self._calculate_stdev(values)
         }
+
+    @staticmethod
+    def _percentile(values: List[float], pct: float) -> float:
+        """Linear-interpolation percentile over an already-sorted list."""
+        if not values:
+            return 0.0
+        if len(values) == 1:
+            return values[0]
+        rank = (pct / 100.0) * (len(values) - 1)
+        lo = int(rank)
+        hi = min(lo + 1, len(values) - 1)
+        frac = rank - lo
+        return values[lo] + (values[hi] - values[lo]) * frac
 
     @staticmethod
     def _calculate_stdev(values: List[float]) -> float:
