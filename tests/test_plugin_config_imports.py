@@ -37,6 +37,12 @@ class ModuleImportTests(unittest.TestCase):
     def test_config_version_manager_imports(self):
         import config_version_manager  # noqa: F401  (was relative-import + NameError: Any)
 
+    def test_plugin_manager_has_json_imported(self):
+        # plugin_manager.load_config uses json.load(); json must be importable
+        # (was missing -> NameError at runtime when loading plugin config).
+        import plugin_manager
+        self.assertTrue(hasattr(plugin_manager, "json"))
+
 
 if __name__ == "__main__":
     unittest.main()

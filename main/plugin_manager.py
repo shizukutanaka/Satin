@@ -1,5 +1,6 @@
 import os
 import importlib
+import json
 from typing import Dict, Any, List, Type
 from pathlib import Path
 from error_handling import PluginError
