@@ -1,9 +1,9 @@
 import os
 import json
-from functools import lru_cache
-
 import locale
-import tkinter as tk
+# NOTE: tkinter is intentionally not imported at module level — it is only used
+# in the commented-out GUI demo below, and importing it unconditionally made this
+# module unimportable in headless environments (no Tk) despite not needing a GUI.
 
 # 100+言語対応のフォントマップ例（必要に応じて拡張）
 FONT_MAP = {
