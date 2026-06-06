@@ -22,7 +22,6 @@ try:
         before_sleep_log,
         after_log,
         RetryError,
-        Attempt,
     )
     TENACITY_AVAILABLE = True
 except ImportError:
@@ -378,6 +377,11 @@ class RetryMetrics:
             self.failed_calls += 1
 
 
+# Module-level aggregate used by retry_with_metrics()/get_retry_metrics() when no
+# explicit RetryMetrics instance is supplied.
+_global_retry_metrics = RetryMetrics()
+
+
 def retry_with_metrics(
     config: RetryConfiguration,
     metrics: Optional[RetryMetrics] = None
@@ -390,7 +394,7 @@ def retry_with_metrics(
             return func
         return no_retry_decorator
 
-    metrics = metrics or RetryMetrics()
+    metrics = metrics or _global_retry_metrics
 
     def decorator(func: Callable) -> Callable:
         logger = logging.getLogger(func.__module__)
@@ -427,13 +431,14 @@ def get_retry_metrics() -> dict:
     すべてのリトライメトリクスを取得
 
     Returns:
-        メトリクス辞書
+        メトリクス辞書(retry_with_metrics がデフォルトで使う集約インスタンスの値)
     """
+    m = _global_retry_metrics
     return {
-        'total_calls': RetryMetrics.total_calls if TENACITY_AVAILABLE else 0,
-        'total_retries': RetryMetrics.total_retries if TENACITY_AVAILABLE else 0,
-        'successful': RetryMetrics.successful_calls if TENACITY_AVAILABLE else 0,
-        'failed': RetryMetrics.failed_calls if TENACITY_AVAILABLE else 0,
+        'total_calls': m.total_calls,
+        'total_retries': m.total_retries,
+        'successful': m.successful_calls,
+        'failed': m.failed_calls,
     }
 
 
