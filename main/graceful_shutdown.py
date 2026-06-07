@@ -67,7 +67,10 @@ class GracefulShutdownManager:
 
     def unregister_task(self, task: asyncio.Task) -> None:
         """タスク完了時に登録解除"""
-        self.active_tasks.discard(task)
+        try:
+            self.active_tasks.remove(task)
+        except ValueError:
+            pass
 
     async def _run_cleanup(self) -> None:
         """すべてのクリーンアップハンドラを実行"""

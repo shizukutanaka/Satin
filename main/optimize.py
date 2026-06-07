@@ -11,15 +11,47 @@ from collections import OrderedDict
 import json
 import os
 import logging
-import aiofiles
-import numpy as np
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from statsmodels.tsa.seasonal import seasonal_decompose
-import pandas as pd
+try:
+    import aiofiles
+except ImportError:
+    aiofiles = None  # type: ignore
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+try:
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+except ImportError:
+    RandomForestRegressor = train_test_split = StandardScaler = None  # type: ignore
+try:
+    from statsmodels.tsa.seasonal import seasonal_decompose
+except ImportError:
+    seasonal_decompose = None  # type: ignore
+try:
+    import pandas as pd
+except ImportError:
+    pd = None  # type: ignore
 
 T = TypeVar('T')
+
+class _NoopStub:
+    """Placeholder for optional subsystems not yet implemented."""
+    async def forecast_resources(self): return {}
+    async def process_chunk(self, chunk): return chunk
+    def __getattr__(self, name):
+        async def _noop(*a, **kw): pass
+        return _noop
+
+
+class ResourceOptimizer(_NoopStub): pass
+class MLOptimizer(_NoopStub): pass
+class DistributedProcessor(_NoopStub): pass
+class CacheManager(_NoopStub): pass
+class DistributedCache(_NoopStub): pass
+class ResourceForecaster(_NoopStub): pass
+
 
 class PerformanceMonitor:
     """Enhanced performance monitoring system with adaptive optimization"""
@@ -44,8 +76,9 @@ class PerformanceMonitor:
             'disk': None,
             'network': None
         }
-        self._anomaly_detector = AnomalyDetector()
-        self._batch_optimizer = BatchOptimizer()
+        cls = self.__class__
+        self._anomaly_detector = cls.AnomalyDetector()
+        self._batch_optimizer = cls.BatchOptimizer()
         self._distributed_processor = DistributedProcessor()
         self._confidence_intervals = {
             'memory': (0, 0),
@@ -55,12 +88,12 @@ class PerformanceMonitor:
         }
         self._last_anomaly_check = time.time()
         self._anomaly_check_interval = 300  # 5 minutes
-        self._memory_manager = MemoryManager()
+        self._memory_manager = cls.MemoryManager()
         self._cache_manager = CacheManager()
         self._distributed_cache = DistributedCache()
         self._last_memory_optimization = time.time()
         self._memory_optimization_interval = 300  # 5 minutes
-        self._adaptive_optimizer = AdaptiveOptimizer()
+        self._adaptive_optimizer = cls.AdaptiveOptimizer()
         self._resource_forecaster = ResourceForecaster()
         self._last_adaptive_optimization = time.time()
         self._adaptive_optimization_interval = 300  # 5 minutes
@@ -719,23 +752,6 @@ class PerformanceMonitor:
                     del self.metrics[name]
                     del self.metrics[name + '_timestamp']
                     
-    def get_metrics(self) -> dict:
-        """Get all recorded metrics with detailed statistics"""
-        return {
-            name: {
-                'count': len(times),
-                'total': sum(times),
-                'avg': sum(times) / len(times) if times else 0,
-                'min': min(times) if times else 0,
-                'max': max(times) if times else 0,
-                'std_dev': self._calculate_std_dev(times),
-                'p95': self._calculate_percentile(times, 95),
-                'p99': self._calculate_percentile(times, 99)
-            }
-            for name, times in self.metrics.items()
-            if name.endswith('_timestamp')
-        }
-        
     def _calculate_std_dev(self, values: List[float]) -> float:
         """Calculate standard deviation"""
         if not values:
@@ -759,9 +775,12 @@ class PerformanceMonitor:
             name: {
                 'count': len(times),
                 'total': sum(times),
-                'avg': sum(times) / len(times),
-                'min': min(times),
-                'max': max(times)
+                'avg': sum(times) / len(times) if times else 0,
+                'min': min(times) if times else 0,
+                'max': max(times) if times else 0,
+                'std_dev': self._calculate_std_dev(times),
+                'p95': self._calculate_percentile(times, 95),
+                'p99': self._calculate_percentile(times, 99)
             }
             for name, times in self.metrics.items()
         }

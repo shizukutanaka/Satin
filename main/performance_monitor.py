@@ -10,7 +10,10 @@
 - アラート通知機能
 """
 import os
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None  # type: ignore
 import logging
 import threading
 import time
@@ -26,25 +29,32 @@ class PerformanceMonitor:
         """初期化"""
         self.config = get_config_manager()
         self.settings = self.config.get_plugin_config("performance_monitor")
-        
+
+        # Defaults — overridden below if plugin config is present
+        self.interval = 5
+        self.thresholds = {
+            "memory": 80,
+            "cpu": 90,
+            "disk": 90,
+            "network": 1_000_000,
+        }
+        self.alert_enabled = True
+        self.alert_threshold = 3
+        self.alert_count = 0
+        self.last_alert = None
+        self.monitor_thread = None
+        self.running = False
+
         if self.settings:
-            self.interval = self.settings.get("interval", 5)  # 監視間隔（秒）
+            self.interval = self.settings.get("interval", 5)
             self.thresholds = {
-                "memory": self.settings.get("memory_threshold", 80),  # メモリ使用率閾値（%）
-                "cpu": self.settings.get("cpu_threshold", 90),  # CPU使用率閾値（%）
-                "disk": self.settings.get("disk_threshold", 90),  # ディスク使用率閾値（%）
-                "network": self.settings.get("network_threshold", 1000000)  # ネットワークIO閾値（bps）
+                "memory": self.settings.get("memory_threshold", 80),
+                "cpu": self.settings.get("cpu_threshold", 90),
+                "disk": self.settings.get("disk_threshold", 90),
+                "network": self.settings.get("network_threshold", 1_000_000),
             }
-            
             self.alert_enabled = self.settings.get("alert_enabled", True)
-            self.alert_threshold = self.settings.get("alert_threshold", 3)  # 連続アラート閾値
-            
-            self.alert_count = 0
-            self.last_alert = None
-            
-            # モニタリングスレッドの初期化
-            self.monitor_thread = None
-            self.running = False
+            self.alert_threshold = self.settings.get("alert_threshold", 3)
             
     def start_monitoring(self) -> None:
         """モニタリングを開始"""
