@@ -18,11 +18,12 @@ def rotate_log(logfile, max_size=5*1024*1024, max_backups=5):
     with open(logfile, 'w', encoding='utf-8') as f:
         pass  # 空ファイルで再作成
     # 古いバックアップ削除
-    backups = sorted([f for f in os.listdir('.') if f.startswith(os.path.basename(logfile)+'.') and f.endswith('.gz')])
+    log_dir = os.path.dirname(os.path.abspath(logfile))
+    backups = sorted([f for f in os.listdir(log_dir) if f.startswith(os.path.basename(logfile)+'.') and f.endswith('.gz')])
     if len(backups) > max_backups:
         for old in backups[:-max_backups]:
             try:
-                os.remove(old)
+                os.remove(os.path.join(log_dir, old))
             except Exception:
                 pass
     print(f"ログローテート: {rotated}")

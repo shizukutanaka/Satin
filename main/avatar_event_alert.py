@@ -1,10 +1,17 @@
 import time
 import json
-import requests
 import argparse
 from datetime import datetime
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 def send_slack_alert(webhook_url, message):
+    if requests is None:
+        print("Slack通知失敗: requestsライブラリが未インストールです")
+        return
     payload = {"text": message}
     try:
         r = requests.post(webhook_url, json=payload, timeout=5)
