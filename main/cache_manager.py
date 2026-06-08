@@ -104,6 +104,9 @@ class CacheManager:
 
         self.memory_cache: "OrderedDict[str, Tuple[Any, datetime]]" = OrderedDict()
         self.memory_cache_size_bytes = self.memory_cache_size * 1024 * 1024
+        # Per-key TTL overrides for the public get()/set() API (the decorator
+        # path uses the global self.cache_ttl instead).
+        self._ttl_overrides: Dict[str, int] = {}
 
         self.executor = ThreadPoolExecutor(max_workers=self.max_concurrent_tasks)
         # Keep strong refs to fire-and-forget disk-write tasks so the event loop
@@ -153,6 +156,44 @@ class CacheManager:
             return result
 
         return wrapper
+
+    def get(self, key: str) -> Optional[Any]:
+        """公開 API: キャッシュから値を取得する（期限切れ・不在は None）。
+
+        youtube_integrator / web_integrator など各インテグレーターが
+        cache_manager.get(key) を直接呼ぶが、従来このメソッドが存在せず
+        AttributeError でキャッシュ参照が必ず失敗していた。per-key TTL に対応。
+        """
+        entry = self.memory_cache.get(key)
+        if entry is None:
+            return None
+        value, timestamp = entry
+        ttl = self._ttl_overrides.get(key, self.cache_ttl)
+        if datetime.now() - timestamp >= timedelta(seconds=ttl):
+            del self.memory_cache[key]
+            self._ttl_overrides.pop(key, None)
+            return None
+        self.memory_cache.move_to_end(key)
+        return value
+
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        """公開 API: 値をキャッシュに格納する（任意の per-key TTL 対応）。
+
+        ディスクキャッシュが有効な場合は永続化も行う。
+        """
+        self.memory_cache[key] = (value, datetime.now())
+        self.memory_cache.move_to_end(key)
+        if ttl is not None:
+            self._ttl_overrides[key] = ttl
+        else:
+            self._ttl_overrides.pop(key, None)
+
+        while self.max_cache_items > 0 and len(self.memory_cache) > self.max_cache_items:
+            oldest, _ = self.memory_cache.popitem(last=False)
+            self._ttl_overrides.pop(oldest, None)
+
+        # ディスク永続化（disk_cache_size<=0 の場合は内部で no-op）
+        self._update_disk_cache(key, value)
 
     def _get_memory_cache(self, key: str) -> Optional[Any]:
         entry = self.memory_cache.get(key)
@@ -206,6 +247,7 @@ class CacheManager:
     def clear_cache(self) -> None:
         try:
             self.memory_cache.clear()
+            self._ttl_overrides.clear()
             for cache_file in self.cache_dir.glob("*.json"):
                 try:
                     cache_file.unlink()
@@ -254,7 +296,8 @@ class CacheManager:
     def _cleanup_memory_cache(self) -> None:
         current_size = sum(len(json.dumps(v[0])) for v in self.memory_cache.values())
         while current_size > self.memory_cache_size_bytes and self.memory_cache:
-            self.memory_cache.popitem(last=False)
+            oldest, _ = self.memory_cache.popitem(last=False)
+            self._ttl_overrides.pop(oldest, None)
             current_size = sum(len(json.dumps(v[0])) for v in self.memory_cache.values())
 
     def _cleanup_disk_cache(self) -> None:
