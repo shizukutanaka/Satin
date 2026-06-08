@@ -65,6 +65,10 @@ class ConfigurationError(ConfigError):
     """Alias of ConfigError for callers expecting this name."""
 
 
+class BackupError(SatinError):
+    """Raised when a backup operation fails."""
+
+
 class PluginError(SatinError):
     """Raised when a plugin fails to load or execute."""
     def __init__(self, message: str, plugin: Optional[str] = None):
