@@ -105,9 +105,9 @@ class ContentAggregator:
         self.cache_manager = CacheManager()
 
         # 各インテグレーター初期化
-        self.youtube = YouTubeIntegrator(api_key=youtube_api_key, cache_dir=str(cache_dir / "youtube"))
-        self.paper = PaperIntegrator(cache_dir=str(cache_dir / "papers"))
-        self.web = WebIntegrator(cache_dir=str(cache_dir / "web"))
+        self.youtube = YouTubeIntegrator(api_key=youtube_api_key, cache_dir=str(self.cache_dir / "youtube"))
+        self.paper = PaperIntegrator(cache_dir=str(self.cache_dir / "papers"))
+        self.web = WebIntegrator(cache_dir=str(self.cache_dir / "web"))
 
         self.logger.info("Content Aggregator initialized with all integrators")
 

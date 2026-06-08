@@ -1,8 +1,8 @@
 import json
 import os
 from typing import Dict, Any
-from .config_schema import SatinConfig
-from .error_handling import ConfigurationError
+from config_schema import SatinConfig
+from error_handling import ConfigurationError
 
 class ConfigValidator:
     """Configuration validator for Satin"""
