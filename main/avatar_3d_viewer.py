@@ -1,9 +1,44 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget
-from PyQt5.QtCore import Qt
-from OpenGL.GL import *
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+try:
+    import cv2
+except ImportError:
+    cv2 = None  # type: ignore
+try:
+    import mediapipe as mp
+except ImportError:
+    mp = None  # type: ignore
+try:
+    from PyQt5.QtWidgets import (
+        QApplication, QMainWindow, QOpenGLWidget, QPushButton, QLabel,
+        QLineEdit, QFileDialog,
+    )
+    from PyQt5.QtCore import Qt, QTimer
+except ImportError:
+    QApplication = QMainWindow = QOpenGLWidget = QPushButton = QLabel = None  # type: ignore
+    QLineEdit = QFileDialog = Qt = QTimer = None  # type: ignore
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
+try:
+    import pyttsx3
+except ImportError:
+    pyttsx3 = None  # type: ignore
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None  # type: ignore
+try:
+    import pygltflib
+except ImportError:
+    pygltflib = None  # type: ignore
 
-class Avatar3DViewer(QOpenGLWidget):
+class Avatar3DViewer(QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -26,7 +61,7 @@ class Avatar3DViewer(QOpenGLWidget):
         glColor3f(1.0, 0.7, 0.2)
         glutWireTeapot(1.0)  # 仮の3Dモデル（ティーポット）
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("3Dアバタービューア（サンプル）")

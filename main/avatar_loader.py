@@ -1,8 +1,15 @@
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, PhotoImage
-from PIL import Image, ImageTk
 import json
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, PhotoImage
+except ImportError:
+    tk = filedialog = messagebox = PhotoImage = None  # type: ignore
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = ImageTk = None  # type: ignore
 
 SUPPORTED_EXTS = [".vrm", ".fbx", ".glb", ".gltf"]
 HISTORY_FILE = "avatar_history.json"

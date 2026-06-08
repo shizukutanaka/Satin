@@ -1,17 +1,48 @@
 import sys
 import threading
 import queue
-import numpy as np
-import cv2
-import mediapipe as mp
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget
-from PyQt5.QtCore import Qt, QTimer
-from OpenGL.GL import *
-from OpenGL.GLU import *
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+try:
+    import cv2
+except ImportError:
+    cv2 = None  # type: ignore
+try:
+    import mediapipe as mp
+except ImportError:
+    mp = None  # type: ignore
+try:
+    from PyQt5.QtWidgets import (
+        QApplication, QMainWindow, QOpenGLWidget, QPushButton, QLabel,
+        QLineEdit, QFileDialog,
+    )
+    from PyQt5.QtCore import Qt, QTimer
+except ImportError:
+    QApplication = QMainWindow = QOpenGLWidget = QPushButton = QLabel = None  # type: ignore
+    QLineEdit = QFileDialog = Qt = QTimer = None  # type: ignore
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
+try:
+    import pyttsx3
+except ImportError:
+    pyttsx3 = None  # type: ignore
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None  # type: ignore
+try:
+    import pygltflib
+except ImportError:
+    pygltflib = None  # type: ignore
 
 # --- MediaPipe FaceMesh Setup ---
-mp_face_mesh = mp.solutions.face_mesh
-mp_drawing = mp.solutions.drawing_utils
+mp_face_mesh = mp.solutions.face_mesh if mp is not None else None
+mp_drawing = mp.solutions.drawing_utils if mp is not None else None
 
 class CameraThread(threading.Thread):
     def __init__(self, pose_queue):
@@ -50,7 +81,7 @@ class CameraThread(threading.Thread):
         cap.release()
         cv2.destroyAllWindows()
 
-class Avatar3DSyncViewer(QOpenGLWidget):
+class Avatar3DSyncViewer(QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, pose_queue, parent=None):
         super().__init__(parent)
         self.pose_queue = pose_queue
@@ -97,7 +128,7 @@ class Avatar3DSyncViewer(QOpenGLWidget):
             glRotatef(dx * 200, 0, 1, 0)
             glRotatef(dy * 200, 1, 0, 0)
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self, pose_queue):
         super().__init__()
         self.setWindowTitle("3Dアバター同期ビューア（カメラ連動サンプル）")

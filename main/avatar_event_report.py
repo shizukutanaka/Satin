@@ -2,8 +2,11 @@ import json
 import argparse
 from collections import Counter, defaultdict
 from datetime import datetime
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+except ImportError:
+    plt = mdates = None  # type: ignore
 import os
 
 def load_events(logfile):

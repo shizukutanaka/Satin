@@ -1,10 +1,13 @@
 import sys
 import json
 from datetime import datetime
-from PyQt5.QtWidgets import QApplication, QMainWindow, QListWidget, QLabel, QVBoxLayout, QWidget, QFileDialog
-from PyQt5.QtCore import Qt
+try:
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QListWidget, QLabel, QVBoxLayout, QWidget, QFileDialog
+    from PyQt5.QtCore import Qt
+except ImportError:
+    QApplication = QMainWindow = QListWidget = QLabel = QVBoxLayout = QWidget = QFileDialog = Qt = None  # type: ignore
 
-class EventTimelineViewer(QMainWindow):
+class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
     def __init__(self, logfile="avatar_event_log.jsonl"):
         super().__init__()
         self.setWindowTitle("アバターイベントタイムラインビューア")
