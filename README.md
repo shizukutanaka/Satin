@@ -209,6 +209,40 @@ validator = ConfigValidator("path/to/config.json")
 validator.validate()
 ```
 
+### Environment Variable Overrides
+
+Following the [12-factor](https://12factor.net/config) convention (as used by
+Dynaconf and Pydantic-Settings), any nested configuration key can be overridden
+at runtime with a `SATIN_`-prefixed environment variable. Use a double
+underscore (`__`) to descend into nested sections:
+
+```bash
+# settings.log_level = "DEBUG"
+export SATIN_SETTINGS__LOG_LEVEL=DEBUG
+
+# settings.backup.max_backups = 10
+export SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10
+
+# settings.debug_mode = true   (values are type-cast automatically)
+export SATIN_SETTINGS__DEBUG_MODE=true
+```
+
+```python
+from main.utils_config import get_config
+
+cfg = get_config()
+print(cfg["settings"]["log_level"])  # "DEBUG" when the env var above is set
+```
+
+Notes:
+
+- Values are automatically cast (`true`/`false` → bool, integers, floats,
+  comma-separated lists, JSON objects/arrays).
+- Overrides are applied **at read time only** — they are never written back to
+  `config.json` when you call `update_config()` / `save_config()`.
+- The legacy short aliases (e.g. `SATIN_LOG_LEVEL`) continue to work and take
+  precedence over the dynamic `SECTION__KEY` form.
+
 ## Getting Started
 
 ### Prerequisites

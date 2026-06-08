@@ -13,6 +13,13 @@ try:
 except ImportError:  # PyYAML is optional; only needed for .yaml/.yml config files
     yaml = None
 
+try:
+    # 環境変数オーバーレイ (12-factor)。config パッケージが import 出来ない環境でも
+    # 設定読み込み自体は壊れないよう、失敗時は無効化する。
+    from config.env import apply_env_overrides
+except Exception:  # pragma: no cover - defensive
+    apply_env_overrides = None
+
 # ロガーの設定
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -190,21 +197,19 @@ def merge_configs(base_config: Dict[str, Any], override_config: Dict[str, Any]) 
 # 設定のシングルトンインスタンス
 _config_instance = None
 
-def get_config(reload: bool = False) -> Dict[str, Any]:
+def _ensure_loaded(reload: bool = False) -> Dict[str, Any]:
     """
-    設定を取得する（シングルトンパターン）
-    
-    Args:
-        reload: Trueの場合、設定を再読み込みする
-        
-    Returns:
-        Dict[str, Any]: 設定の辞書
+    ファイル由来のベース設定（シングルトン）を返す。
+
+    環境変数オーバーレイは含めない。書き戻し（update_config / save_config）が
+    実行時の環境変数値をファイルへ永続化してしまうのを防ぐため、ベース設定と
+    実効設定を分離している。
     """
     global _config_instance
-    
+
     if _config_instance is None or reload:
         _config_instance = load_config()
-        
+
         # 設定のバリデーション
         errors = validate_config(_config_instance)
         if errors:
@@ -212,8 +217,28 @@ def get_config(reload: bool = False) -> Dict[str, Any]:
             for field, msgs in errors.items():
                 for msg in msgs:
                     logger.warning(f"  - {field}: {msg}")
-    
+
     return _config_instance
+
+def get_config(reload: bool = False) -> Dict[str, Any]:
+    """
+    設定を取得する（シングルトン + 環境変数オーバーレイ）
+
+    ファイルから読み込んだベース設定に、`SATIN_` プレフィックス付き環境変数を
+    重ねた実効設定を返す。オーバーレイは読み取り時のみ適用され、ファイルへは
+    書き戻されない。
+
+    Args:
+        reload: Trueの場合、設定を再読み込みする
+
+    Returns:
+        Dict[str, Any]: 設定の辞書（環境変数オーバーレイ適用済み）
+    """
+    base = _ensure_loaded(reload)
+
+    if apply_env_overrides is None:
+        return base
+    return apply_env_overrides(base)
 
 def update_config(new_config: Dict[str, Any], save_to_file: bool = True) -> bool:
     """
@@ -231,7 +256,9 @@ def update_config(new_config: Dict[str, Any], save_to_file: bool = True) -> bool
     # 先にマージし、最終的な設定をバリデーションする。
     # （部分更新で version/settings を毎回渡さなくて済むよう、マージ後に検証する。
     #   以前は部分的な new_config を検証していたため必須フィールド欠落で常に失敗していた。）
-    current_config = get_config()
+    # ベース設定を使う（環境変数オーバーレイ込みの get_config() ではない）。
+    # そうしないと実行時の環境変数値がファイルに永続化されてしまう。
+    current_config = _ensure_loaded()
     merged_config = merge_configs(current_config, new_config)
 
     errors = validate_config(merged_config)

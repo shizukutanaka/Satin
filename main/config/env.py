@@ -14,6 +14,11 @@ T = TypeVar('T')
 # Prefix for all Satin environment variables
 ENV_PREFIX = 'SATIN_'
 
+# Double underscore separates nesting levels, following the de-facto convention
+# used by Dynaconf and Pydantic-Settings. Example:
+#   SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10  ->  settings.backup.max_backups = 10
+NESTED_DELIMITER = '__'
+
 # Mapping of environment variables to config paths
 ENV_MAPPING = {
     # Core
@@ -47,24 +52,67 @@ ENV_MAPPING = {
     'NETWORK_VERIFY_SSL': 'network.verify_ssl',
 }
 
-def get_env_config(prefix: str = ENV_PREFIX) -> Dict[str, Any]:
+def get_dynamic_env_config(prefix: str = ENV_PREFIX) -> Dict[str, Any]:
     """
-    Extract configuration from environment variables
-    
+    Build a config overlay from *any* prefixed environment variable.
+
+    Unlike the legacy ENV_MAPPING whitelist, this lets callers override any
+    nested config key without pre-registering it. The portion after the prefix
+    is split on the nesting delimiter ("__") and each segment is lower-cased to
+    match the JSON config key convention (settings, log_level, max_backups...).
+
+        SATIN_SETTINGS__LOG_LEVEL=DEBUG       -> {'settings': {'log_level': 'DEBUG'}}
+        SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10 -> {'settings': {'backup': {'max_backups': 10}}}
+
     Args:
         prefix: Prefix for environment variables
-        
+
+    Returns:
+        Nested dictionary built from prefixed environment variables
+    """
+    config: Dict[str, Any] = {}
+    plen = len(prefix)
+
+    for env_var, raw in os.environ.items():
+        if not env_var.startswith(prefix):
+            continue
+        remainder = env_var[plen:]
+        # Keys handled by the explicit ENV_MAPPING alias table are applied
+        # separately (and take precedence), so skip them here to avoid creating
+        # spurious top-level keys.
+        if not remainder or remainder in ENV_MAPPING:
+            continue
+
+        segments = [seg.lower() for seg in remainder.split(NESTED_DELIMITER) if seg != '']
+        if not segments:
+            continue
+
+        _set_nested(config, '.'.join(segments), _parse_env_value(raw))
+
+    return config
+
+def get_env_config(prefix: str = ENV_PREFIX) -> Dict[str, Any]:
+    """
+    Extract configuration from environment variables.
+
+    Combines the dynamic ``SECTION__KEY`` overlay with the explicit
+    ENV_MAPPING alias table. Explicit aliases take precedence over dynamic keys
+    so the documented short names remain authoritative.
+
+    Args:
+        prefix: Prefix for environment variables
+
     Returns:
         Dictionary with configuration from environment variables
     """
-    config = {}
-    
+    config = get_dynamic_env_config(prefix)
+
     for env_var, config_path in ENV_MAPPING.items():
         full_env_var = f"{prefix}{env_var}"
         if full_env_var in os.environ:
             value = os.environ[full_env_var]
             _set_nested(config, config_path, _parse_env_value(value))
-    
+
     return config
 
 def _parse_env_value(value: str) -> Any:
@@ -83,9 +131,11 @@ def _parse_env_value(value: str) -> Any:
     if value.lower() in ('false', 'no', '0'):
         return False
     
-    # Handle numeric values
-    if value.isdigit():
+    # Handle numeric values (int first, including negatives, then float)
+    try:
         return int(value)
+    except ValueError:
+        pass
     try:
         return float(value)
     except ValueError:
