@@ -25,6 +25,18 @@ logger = logging.getLogger(__name__)
 
 class LoggingManager:
     """ログ管理クラス"""
+
+    @staticmethod
+    def get_logger(name: str) -> logging.Logger:
+        """
+        名前付きロガーを返す (整合インターフェース)。
+
+        async_integrator / content_aggregator / web_integrator / youtube_integrator が
+        `LoggingManager.get_logger("...")` を呼ぶが、従来このメソッドが存在せず
+        AttributeError で初期化に失敗していた。標準の logging.getLogger を返す。
+        """
+        return logging.getLogger(name)
+
     def __init__(self):
         """初期化"""
         self.config = get_config_manager()
