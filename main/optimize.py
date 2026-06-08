@@ -483,18 +483,23 @@ class PerformanceMonitor:
         """Calculate confidence interval for resource usage"""
         if resource not in self.metrics:
             return (0, 0)
-            
+
         values = [point['value'] for point in self.metrics[resource]['history']]
         if not values:
             return (0, 0)
-            
-        mean = np.mean(values)
-        std = np.std(values)
+
+        if np is None:
+            # Fallback: pure-Python mean ± std
+            mean = sum(values) / len(values)
+            std = self._calculate_std_dev(values)
+        else:
+            mean = float(np.mean(values))
+            std = float(np.std(values))
+
         n = len(values)
-        
         z_score = 1.96  # For 95% confidence
-        margin = z_score * (std / np.sqrt(n))
-        
+        margin = z_score * (std / (n ** 0.5))
+
         return (mean - margin, mean + margin)
     
     async def detect_anomalies(self):
@@ -710,48 +715,68 @@ class PerformanceMonitor:
             if name not in self.metrics:
                 self.metrics[name] = []
             self.metrics[name].append(value)
-            
-            # Periodic cleanup
+
+            # Periodic cleanup (called inside the lock — do not re-acquire)
             current_time = time.time()
             if current_time - self._last_cleanup > self._cleanup_interval:
-                await self._cleanup_metrics()
+                await self._cleanup_metrics_unlocked()
                 self._last_cleanup = current_time
-                
+
     def record_metric(self, name: str, value: float):
         """Sync metric recording with cleanup"""
         if name not in self.metrics:
             self.metrics[name] = []
         self.metrics[name].append(value)
-        
+
         # Periodic cleanup
         current_time = time.time()
         if current_time - self._last_cleanup > self._cleanup_interval:
-            self._cleanup_metrics()
+            self._cleanup_metrics_sync()
             self._last_cleanup = current_time
-            
+
     async def _cleanup_metrics(self):
-        """Cleanup old metrics"""
+        """Cleanup old metrics (acquires lock — do NOT call while lock is held)."""
         async with self._lock:
-            # Remove metrics older than 24 hours
-            cutoff = time.time() - 86400
-            for name in list(self.metrics.keys()):
-                if name.endswith('_timestamp'):
-                    continue
-                    
-                timestamps = self.metrics.get(name + '_timestamp', [])
-                if not timestamps:
-                    continue
-                    
-                # Remove old values
-                while timestamps and timestamps[0] < cutoff:
-                    timestamps.pop(0)
-                    self.metrics[name].pop(0)
-                    
-                # Remove empty metrics
-                if not timestamps:
-                    del self.metrics[name]
-                    del self.metrics[name + '_timestamp']
-                    
+            await self._cleanup_metrics_unlocked()
+
+    async def _cleanup_metrics_unlocked(self):
+        """Cleanup old metrics — must be called with self._lock already held."""
+        cutoff = time.time() - 86400
+        for name in list(self.metrics.keys()):
+            if name.endswith('_timestamp'):
+                continue
+
+            timestamps = self.metrics.get(name + '_timestamp', [])
+            if not timestamps:
+                continue
+
+            while timestamps and timestamps[0] < cutoff:
+                timestamps.pop(0)
+                self.metrics[name].pop(0)
+
+            if not timestamps:
+                del self.metrics[name]
+                del self.metrics[name + '_timestamp']
+
+    def _cleanup_metrics_sync(self):
+        """Sync variant of metric cleanup for use from record_metric."""
+        cutoff = time.time() - 86400
+        for name in list(self.metrics.keys()):
+            if name.endswith('_timestamp'):
+                continue
+
+            timestamps = self.metrics.get(name + '_timestamp', [])
+            if not timestamps:
+                continue
+
+            while timestamps and timestamps[0] < cutoff:
+                timestamps.pop(0)
+                self.metrics[name].pop(0)
+
+            if not timestamps:
+                del self.metrics[name]
+                del self.metrics[name + '_timestamp']
+
     def _calculate_std_dev(self, values: List[float]) -> float:
         """Calculate standard deviation"""
         if not values:
