@@ -45,7 +45,7 @@ class BackupManager:
             if not target_path.exists():
                 raise FileNotFoundError(f"対象ディレクトリが見つかりません: {target_dir}")
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             name = backup_name or f"backup_{timestamp}"
             backup_path = self.backup_dir / f"{name}.zip"
 

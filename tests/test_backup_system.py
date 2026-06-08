@@ -43,6 +43,29 @@ class BackupManagerImportTests(unittest.TestCase):
             os.unlink(fname)
 
 
+class BackupManagerTimestampTest(unittest.TestCase):
+    """Regression: rapid create_backup calls must not overwrite each other."""
+
+    def test_two_rapid_backups_get_unique_names(self):
+        import backup_manager as bm
+        import re
+        import inspect
+        src = inspect.getsource(bm.BackupManager.create_backup)
+        # Timestamp format must include microseconds (%f) to guarantee uniqueness
+        self.assertIn("%f", src,
+                      "create_backup timestamp must include %f (microseconds) to avoid same-second overwrite")
+
+    def test_timestamp_format_includes_microseconds(self):
+        import backup_manager as bm
+        import re
+        import inspect
+        src = inspect.getsource(bm.BackupManager.create_backup)
+        match = re.search(r'strftime\("([^"]+)"\)', src)
+        self.assertIsNotNone(match, "strftime format string not found")
+        fmt = match.group(1)
+        self.assertIn("%f", fmt, f"Timestamp format '{fmt}' lacks microseconds (%f)")
+
+
 class BackupSchedulerImportTests(unittest.TestCase):
     def test_imports_without_relative_errors(self):
         # Previously: ImportError relative import, BackupError missing, etc.
