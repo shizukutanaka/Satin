@@ -86,9 +86,9 @@ class TokenBucketRateLimiter:
         self.lock = asyncio.Lock()
 
     async def acquire(self, tokens: int = 1) -> None:
-        """トークン取得（利可能になるまで待機）"""
-        async with self.lock:
-            while True:
+        """トークン取得（利用可能になるまで待機）"""
+        while True:
+            async with self.lock:
                 # トークン補充
                 now = time.time()
                 elapsed = now - self.last_refill
@@ -105,9 +105,12 @@ class TokenBucketRateLimiter:
                     self.tokens -= tokens
                     return
 
-                # 待機
+                # 必要な待機時間を計算（ロック内で算出）
                 wait_time = (tokens - self.tokens) / self.rate_per_second
-                await asyncio.sleep(wait_time)
+
+            # ロックを解放してから待機する。ロックを保持したまま sleep すると
+            # 他のコルーチンが補充・取得できず、レート制限が完全に直列化してしまう。
+            await asyncio.sleep(wait_time)
 
 
 class AsyncHTTPClient:
