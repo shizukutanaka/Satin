@@ -59,8 +59,8 @@ class ConfigManager:
             # バックアップディレクトリの作成
             self.backup_dir.mkdir(parents=True, exist_ok=True)
             
-            # ファイル名の生成 (日時を含む)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # ファイル名の生成 (マイクロ秒まで含め同秒内の上書きを防ぐ)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             backup_file = self.backup_dir / f"config_backup_{timestamp}.json"
             
             # バックアップの作成
