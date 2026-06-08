@@ -43,11 +43,10 @@ def batch_backup_overlays(overlay_dir="."):
     now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     zipname = f"satin_overlays_backup_{now}.zip"
     try:
+        # zipfile.ZipFile はスレッドセーフではないため逐次書き込みする。
         with zipfile.ZipFile(zipname, 'w', zipfile.ZIP_DEFLATED) as zf:
-            def add_file(fname):
+            for fname in files:
                 zf.write(fname)
-                return fname
-            batch_process(add_file, files, desc="オーバーレイバックアップ中")
         log_info(f"オーバーレイ設定ファイルを {zipname} にバックアップしました")
     except Exception as e:
         log_error(f"[ERROR] オーバーレイバックアップ失敗: {e}")

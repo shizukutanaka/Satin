@@ -43,11 +43,11 @@ def batch_backup_comments(comment_dir="."):
     now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     zipname = f"satin_comments_backup_{now}.zip"
     try:
+        # zipfile.ZipFile はスレッドセーフではないため、batch_process(=ThreadPoolExecutor)
+        # で並列に zf.write すると書庫が破損する。逐次書き込みする。
         with zipfile.ZipFile(zipname, 'w', zipfile.ZIP_DEFLATED) as zf:
-            def add_file(fname):
+            for fname in files:
                 zf.write(fname)
-                return fname
-            batch_process(add_file, files, desc="コメントバックアップ中")
         log_info(f"コメント設定ファイルを {zipname} にバックアップしました")
     except Exception as e:
         log_error(f"[ERROR] コメントバックアップ失敗: {e}")
