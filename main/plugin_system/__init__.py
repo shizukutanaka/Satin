@@ -39,7 +39,7 @@ class PluginManager:
                 if f.name.startswith('_'):
                     continue
                 rel = f.relative_to(d).with_suffix('')
-                plugins.append(str(rel).replace('\\', '.'))
+                plugins.append('.'.join(rel.parts))
         return plugins
     
     def load_plugin(self, name: str) -> bool:
