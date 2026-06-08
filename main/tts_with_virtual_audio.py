@@ -1,19 +1,42 @@
 import sys
 import queue
 import threading
-import sounddevice as sd
-import numpy as np
-import pyttsx3
 import tempfile
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLineEdit, QLabel, QComboBox
-from PyQt5.QtCore import QTimer
-from scipy.io import wavfile
-from pydub import AudioSegment
 
-# 仮想オーディオデバイス一覧取得
-AUDIO_DEVICES = sd.query_devices()
-OUTPUT_DEVICES = [d for d in AUDIO_DEVICES if d['max_output_channels'] > 0]
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None  # type: ignore
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+try:
+    import pyttsx3
+except ImportError:
+    pyttsx3 = None  # type: ignore
+try:
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLineEdit, QLabel, QComboBox
+    from PyQt5.QtCore import QTimer
+except ImportError:
+    QApplication = QMainWindow = QPushButton = QLineEdit = QLabel = QComboBox = QTimer = None  # type: ignore
+try:
+    from scipy.io import wavfile
+except ImportError:
+    wavfile = None  # type: ignore
+try:
+    from pydub import AudioSegment
+except ImportError:
+    AudioSegment = None  # type: ignore
+
+# 仮想オーディオデバイス一覧取得 (sounddevice が使えない場合は空リスト)
+if sd is not None:
+    AUDIO_DEVICES = sd.query_devices()
+    OUTPUT_DEVICES = [d for d in AUDIO_DEVICES if d['max_output_channels'] > 0]
+else:
+    AUDIO_DEVICES = []
+    OUTPUT_DEVICES = []
 
 def list_output_devices():
     return [(i, d['name']) for i, d in enumerate(AUDIO_DEVICES) if d['max_output_channels'] > 0]
@@ -25,7 +48,7 @@ class TTSWorker(threading.Thread):
         self.tts_queue = tts_queue
         self.device_idx_getter = device_idx_getter
         self.daemon = True
-        self.engine = pyttsx3.init()
+        self.engine = pyttsx3.init() if pyttsx3 is not None else None
         self.running = True
 
     def run(self):
@@ -52,7 +75,7 @@ class TTSWorker(threading.Thread):
         sd.play(samples, audio.frame_rate, device=device_idx)
         sd.wait()
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TTS仮想オーディオデバイス出力サンプル")

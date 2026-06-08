@@ -12,8 +12,26 @@ Implements:
 - API-specific constraint validation
 """
 
-from pydantic import BaseModel, Field, validator, field_validator, ValidationInfo
-from pydantic.functional_validators import AfterValidator
+try:
+    from pydantic import BaseModel, Field, validator, field_validator, ValidationInfo
+    from pydantic.functional_validators import AfterValidator
+    _PYDANTIC_AVAILABLE = True
+except ImportError:
+    _PYDANTIC_AVAILABLE = False
+
+    class BaseModel:  # type: ignore[no-redef]
+        """Fallback stub when Pydantic is not installed."""
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+        @classmethod
+        def model_json_schema(cls): return {}
+
+    def Field(default=None, **kw): return default  # type: ignore[misc]
+    def validator(*a, **kw): return lambda f: f  # type: ignore[misc]
+    def field_validator(*a, **kw): return lambda f: f  # type: ignore[misc]
+    class ValidationInfo: pass  # type: ignore[no-redef]
+    def AfterValidator(f): return f  # type: ignore[misc]
 from typing import Optional, List, Dict, Any, Annotated, Union
 from enum import Enum
 from datetime import datetime, timedelta
