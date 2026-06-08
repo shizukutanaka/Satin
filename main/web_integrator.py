@@ -194,7 +194,7 @@ class WebIntegrator:
 
     def close(self):
         """リソースを確実に解放"""
-        if self.driver:
+        if getattr(self, "driver", None):
             try:
                 self.driver.quit()
                 self.logger.info("Selenium driver closed successfully")
