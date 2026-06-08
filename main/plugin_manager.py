@@ -66,10 +66,13 @@ class PluginManager:
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             
-            # Find plugin classes
+            # Find plugin classes — skip abstract bases and non-concrete types
             plugin_class = None
             for name, obj in module.__dict__.items():
-                if isinstance(obj, type) and issubclass(obj, PluginBase):
+                if (isinstance(obj, type)
+                        and obj is not PluginBase
+                        and issubclass(obj, PluginBase)
+                        and not getattr(obj, '__abstractmethods__', None)):
                     plugin_class = obj
                     break
             
