@@ -239,15 +239,3 @@ if __name__ == "__main__":
         else:
             print("Invalid choice. Please try again.")
 
-if __name__ == "__main__":
-    print("[INFO] 設定ファイル バージョン管理ツール")
-    ans = input("現在のconfig.jsonをバージョン保存しますか？ [y/N]: ")
-    if ans.lower() == "y":
-        save_config_version()
-    ans2 = input("バージョン一覧を表示しますか？ [y/N]: ")
-    if ans2.lower() == "y":
-        files = list_config_versions()
-        if files:
-            idx = input(f"復元したい番号を指定(0-{len(files)-1}) またはEnterでスキップ: ")
-            if idx.isdigit() and 0 <= int(idx) < len(files):
-                restore_config_version(files[int(idx)])
