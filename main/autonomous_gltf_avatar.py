@@ -1,12 +1,28 @@
 import sys
 import random
-import numpy as np
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QFileDialog, QPushButton, QLabel
-from PyQt5.QtCore import Qt, QTimer
-from OpenGL.GL import *
-from OpenGL.GLU import *
-import pygltflib
 import os
+
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+try:
+    from PyQt5.QtWidgets import (
+        QApplication, QMainWindow, QOpenGLWidget, QFileDialog, QPushButton, QLabel,
+    )
+    from PyQt5.QtCore import Qt, QTimer
+except ImportError:
+    QApplication = QMainWindow = QOpenGLWidget = QFileDialog = QPushButton = QLabel = None  # type: ignore
+    Qt = QTimer = None  # type: ignore
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
+try:
+    import pygltflib
+except ImportError:
+    pygltflib = None  # type: ignore
 
 class GLTFModel:
     def __init__(self, filename):
@@ -77,7 +93,7 @@ class GLTFModel:
         glEnd()
 
 
-class AutonomousGLTFAvatarViewer(QOpenGLWidget):
+class AutonomousGLTFAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -197,7 +213,7 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget):
         if self.talk_text:
             self.renderText(0, 2.0, 0, self.talk_text)
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("自律3Dアバター(GLTF)ビューア")

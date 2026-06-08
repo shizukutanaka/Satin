@@ -1,13 +1,33 @@
 import os
 import json
-from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
 from datetime import datetime
-from i18n import I18N
-
 from functools import wraps
 
-app = Flask(__name__)
-app.secret_key = 'satin_dashboard_secret'
+try:
+    from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
+    _FLASK_AVAILABLE = True
+except ImportError:
+    _FLASK_AVAILABLE = False
+    Flask = render_template_string = request = redirect = url_for = send_file = session = None  # type: ignore
+
+try:
+    from i18n import I18N
+except ImportError:
+    from importlib.util import spec_from_file_location as _spec, module_from_spec as _mfs
+    import os as _os
+    _spec_obj = _spec("satin_i18n", _os.path.join(_os.path.dirname(__file__), "i18n.py"))
+    _i18n_mod = _mfs(_spec_obj)
+    _spec_obj.loader.exec_module(_i18n_mod)
+    I18N = _i18n_mod.I18N
+
+if _FLASK_AVAILABLE:
+    app = Flask(__name__)
+    app.secret_key = 'satin_dashboard_secret'
+else:
+    class _NoopApp:
+        def route(self, *a, **kw): return lambda f: f
+        secret_key = ""
+    app = _NoopApp()  # type: ignore
 
 event_log_path = 'avatar_event_log.jsonl'
 backup_dir = 'event_report'
