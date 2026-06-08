@@ -167,8 +167,8 @@ class SignalHandler:
     def register_handlers(self) -> None:
         """システムシグナルハンドラを登録"""
         if sys.platform != 'win32':
-            # Unix/Linux
-            loop = asyncio.get_event_loop()
+            # Unix/Linux — must be called from within a running event loop
+            loop = asyncio.get_running_loop()
 
             loop.add_signal_handler(
                 signal.SIGTERM,
