@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Type
 from pathlib import Path
 from error_handling import PluginError
 from logging_manager import LoggingManager as Logger
+from plugin_base import PluginBase
 
 class PluginManager:
     """Manage and load plugins"""

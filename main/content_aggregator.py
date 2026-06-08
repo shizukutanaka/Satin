@@ -525,10 +525,12 @@ class ContentAggregator:
         self.logger.info(f"Creating knowledge base for topic: {topic}")
 
         # 検索実行
+        import math
+        n_sources = len(sources) if sources else 1
         result = self.search_all_sources(
             query=topic,
             sources=sources,
-            max_results_per_source=max_items // len(sources)
+            max_results_per_source=math.ceil(max_items / n_sources)
         )
 
         # 追加データ取得
