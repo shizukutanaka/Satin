@@ -243,6 +243,23 @@ Notes:
 - The legacy short aliases (e.g. `SATIN_LOG_LEVEL`) continue to work and take
   precedence over the dynamic `SECTION__KEY` form.
 
+#### `.env` files
+
+A `.env` file in the working directory is auto-loaded the first time the
+config is read (no extra call needed), so you can keep local overrides out of
+your shell profile:
+
+```dotenv
+# .env
+SATIN_SETTINGS__LOG_LEVEL=DEBUG
+SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10
+```
+
+- Real environment variables always win over `.env` values (the file provides
+  defaults, not overrides).
+- Set `SATIN_DISABLE_DOTENV=1` to skip auto-loading, or call
+  `config.env.load_dotenv(path, override=True)` explicitly for full control.
+
 ## Getting Started
 
 ### Prerequisites

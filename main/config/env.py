@@ -19,6 +19,9 @@ ENV_PREFIX = 'SATIN_'
 #   SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10  ->  settings.backup.max_backups = 10
 NESTED_DELIMITER = '__'
 
+# Guards one-time auto-loading of a ./.env file on first config read.
+_DOTENV_AUTOLOADED = False
+
 # Mapping of environment variables to config paths
 ENV_MAPPING = {
     # Core
@@ -91,13 +94,100 @@ def get_dynamic_env_config(prefix: str = ENV_PREFIX) -> Dict[str, Any]:
 
     return config
 
+def parse_dotenv(text: str) -> Dict[str, str]:
+    """
+    Parse the contents of a ``.env`` file into a dict of string values.
+
+    Supported syntax (a practical subset of the python-dotenv format):
+      - ``KEY=VALUE`` one per line
+      - blank lines and lines whose first non-space char is ``#`` are ignored
+      - an optional leading ``export `` is stripped
+      - surrounding matching single/double quotes are removed; inside double
+        quotes ``\\n`` / ``\\t`` escapes are expanded
+
+    Values are intentionally kept literal otherwise (no inline-comment
+    stripping) so that values legitimately containing ``#`` are preserved.
+
+    Args:
+        text: Raw file contents
+
+    Returns:
+        Mapping of KEY -> raw string value
+    """
+    result: Dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('export '):
+            line = line[len('export '):].lstrip()
+        if '=' not in line:
+            continue
+        key, _, value = line.partition('=')
+        key = key.strip()
+        if not key:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+            quote = value[0]
+            value = value[1:-1]
+            if quote == '"':
+                value = value.replace('\\n', '\n').replace('\\t', '\t')
+        result[key] = value
+    return result
+
+def load_dotenv(path: Optional[Union[str, Path]] = None, override: bool = False) -> Dict[str, str]:
+    """
+    Load a ``.env`` file into ``os.environ``.
+
+    Mirrors python-dotenv's default precedence: an already-set real environment
+    variable is NOT replaced unless ``override=True``. This keeps real env vars
+    authoritative over file-provided defaults.
+
+    Args:
+        path: Path to the .env file (defaults to ``./.env``)
+        override: When True, .env values replace existing environment variables
+
+    Returns:
+        Mapping of the keys that were actually applied to the environment
+    """
+    env_path = Path(path) if path else Path('.env')
+    if not env_path.exists():
+        return {}
+
+    try:
+        text = env_path.read_text(encoding='utf-8')
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f".env の読み込みに失敗しました: {env_path}: {e}")
+        return {}
+
+    applied: Dict[str, str] = {}
+    for key, value in parse_dotenv(text).items():
+        if not override and key in os.environ:
+            continue
+        os.environ[key] = value
+        applied[key] = value
+    return applied
+
+def _maybe_autoload_dotenv() -> None:
+    """Auto-load ``./.env`` exactly once on first config read (opt-out via
+    ``SATIN_DISABLE_DOTENV``). Never overrides real environment variables."""
+    global _DOTENV_AUTOLOADED
+    if _DOTENV_AUTOLOADED:
+        return
+    _DOTENV_AUTOLOADED = True
+    if os.environ.get('SATIN_DISABLE_DOTENV'):
+        return
+    load_dotenv()
+
 def get_env_config(prefix: str = ENV_PREFIX) -> Dict[str, Any]:
     """
     Extract configuration from environment variables.
 
     Combines the dynamic ``SECTION__KEY`` overlay with the explicit
     ENV_MAPPING alias table. Explicit aliases take precedence over dynamic keys
-    so the documented short names remain authoritative.
+    so the documented short names remain authoritative. A ``./.env`` file is
+    auto-loaded once on first call.
 
     Args:
         prefix: Prefix for environment variables
@@ -105,6 +195,7 @@ def get_env_config(prefix: str = ENV_PREFIX) -> Dict[str, Any]:
     Returns:
         Dictionary with configuration from environment variables
     """
+    _maybe_autoload_dotenv()
     config = get_dynamic_env_config(prefix)
 
     for env_var, config_path in ENV_MAPPING.items():
