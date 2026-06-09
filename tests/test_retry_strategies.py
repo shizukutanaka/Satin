@@ -38,5 +38,60 @@ class RetryMetricsTests(unittest.TestCase):
         self.assertFalse(hasattr(rs, "Attempt"))
 
 
+class RetryWithMetricsTests(unittest.TestCase):
+    """Regression: retry_with_metrics did not record failed calls in metrics.
+
+    The except RetryError block inside wrapper was dead code because tenacity
+    raises RetryError *outside* the wrapper body. The fix uses an outer/inner
+    pattern so failures are always captured.
+    """
+
+    def setUp(self):
+        rs._global_retry_metrics = RetryMetrics()
+
+    def _run_with_tenacity(self, func, config):
+        try:
+            from tenacity import stop_after_attempt, wait_none
+        except ImportError:
+            self.skipTest("tenacity not installed")
+        from main.retry_strategies import RetryConfiguration, retry_with_metrics
+        cfg = RetryConfiguration(max_retries=config.get("max_retries", 2))
+        metrics = RetryMetrics()
+        decorated = retry_with_metrics(cfg, metrics=metrics)(func)
+        return decorated, metrics
+
+    def test_success_records_attempt(self):
+        calls = [0]
+
+        def succeed():
+            calls[0] += 1
+            return "ok"
+
+        try:
+            decorated, metrics = self._run_with_tenacity(succeed, {"max_retries": 3})
+        except unittest.SkipTest:
+            return
+
+        result = decorated()
+        self.assertEqual(result, "ok")
+        self.assertEqual(metrics.successful_calls, 1)
+        self.assertEqual(metrics.failed_calls, 0)
+
+    def test_failure_records_failed_call(self):
+        def always_fail():
+            raise ValueError("boom")
+
+        try:
+            decorated, metrics = self._run_with_tenacity(always_fail, {"max_retries": 2})
+        except unittest.SkipTest:
+            return
+
+        with self.assertRaises(ValueError):
+            decorated()
+        # Failed call must be recorded (previously: failed_calls stayed 0).
+        self.assertEqual(metrics.failed_calls, 1)
+        self.assertEqual(metrics.successful_calls, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

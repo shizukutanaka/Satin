@@ -398,27 +398,42 @@ def retry_with_metrics(
 
     def decorator(func: Callable) -> Callable:
         logger = logging.getLogger(func.__module__)
+        _attempt = [0]
 
+        def _before(retry_state: Any) -> None:
+            _attempt[0] = retry_state.attempt_number
+
+        # Inner: wrapped by tenacity for retry logic.
         @retry(
             stop=config.get_stop_strategy(),
             wait=config.get_wait_strategy(),
             retry=retry_if_exception_type(Exception),
-            reraise=True
+            reraise=True,
+            before=_before,
         )
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def _retried(*args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
+
+        # Outer: calls _retried so that RetryError / original exception
+        # is catchable here for logging and metrics (inside _retried the
+        # except-RetryError block was unreachable because tenacity raises
+        # RetryError outside the wrapper body, not inside it).
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             start_time = time.time()
+            _attempt[0] = 0
             try:
-                result = func(*args, **kwargs)
-                metrics.record_attempt(func.__name__, 1, True)
+                result = _retried(*args, **kwargs)
+                metrics.record_attempt(func.__name__, _attempt[0], True)
                 return result
-            except RetryError as e:
+            except Exception as e:
                 elapsed = time.time() - start_time
                 logger.error(
                     f"{func.__name__} failed after "
-                    f"{e.last_attempt.attempt_number} attempts in {elapsed:.2f}s: {e.last_exception}"
+                    f"{_attempt[0]} attempts in {elapsed:.2f}s: {e}"
                 )
-                metrics.record_attempt(func.__name__, e.last_attempt.attempt_number, False)
+                metrics.record_attempt(func.__name__, _attempt[0], False)
                 raise
 
         return wrapper
