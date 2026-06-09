@@ -4,6 +4,7 @@ API リクエスト・スクレイピング・外部サービス呼び出し用
 """
 
 import logging
+import threading
 from typing import Callable, Optional, Type, Tuple, Any
 from functools import wraps
 from datetime import datetime
@@ -398,10 +399,11 @@ def retry_with_metrics(
 
     def decorator(func: Callable) -> Callable:
         logger = logging.getLogger(func.__module__)
-        _attempt = [0]
+        # threading.local so concurrent calls each track their own attempt count.
+        _local = threading.local()
 
         def _before(retry_state: Any) -> None:
-            _attempt[0] = retry_state.attempt_number
+            _local.attempt = retry_state.attempt_number
 
         # Inner: wrapped by tenacity for retry logic.
         @retry(
@@ -422,18 +424,18 @@ def retry_with_metrics(
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             start_time = time.time()
-            _attempt[0] = 0
+            _local.attempt = 0
             try:
                 result = _retried(*args, **kwargs)
-                metrics.record_attempt(func.__name__, _attempt[0], True)
+                metrics.record_attempt(func.__name__, _local.attempt, True)
                 return result
             except Exception as e:
                 elapsed = time.time() - start_time
                 logger.error(
                     f"{func.__name__} failed after "
-                    f"{_attempt[0]} attempts in {elapsed:.2f}s: {e}"
+                    f"{_local.attempt} attempts in {elapsed:.2f}s: {e}"
                 )
-                metrics.record_attempt(func.__name__, _attempt[0], False)
+                metrics.record_attempt(func.__name__, _local.attempt, False)
                 raise
 
         return wrapper
