@@ -63,6 +63,23 @@ class BatchBackupZipTests(unittest.TestCase):
         self.assertIsNotNone(fn, "tts backup function not found")
         self._run_backup_and_check(tmb, "tts_manager", fn)
 
+    def test_zip_uses_flat_arcnames(self):
+        """Regression: zf.write(fname) without arcname embedded absolute paths.
+        After the fix, ZIP entries must use basename only (no directory separator)."""
+        with tempfile.TemporaryDirectory() as d:
+            self._make_configs(d, "comment_manager")
+            cwd = os.getcwd()
+            os.chdir(d)
+            try:
+                cmb.batch_backup_comments(d)
+                zips = glob.glob(os.path.join(d, "*.zip"))
+                with zipfile.ZipFile(zips[0]) as zf:
+                    for name in zf.namelist():
+                        self.assertNotIn("/", name, f"Expected flat arcname, got: {name}")
+                        self.assertNotIn("\\", name)
+            finally:
+                os.chdir(cwd)
+
     def test_no_concurrent_zf_write(self):
         # Static guard: the backup functions must not pass zf.write through
         # batch_process (which would run it across threads).
