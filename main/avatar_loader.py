@@ -114,6 +114,9 @@ class AvatarLoaderApp:
             self.show_thumbnail(path)
 
 if __name__ == "__main__":
+    if tk is None:
+        print("tkinter が未インストールです。pip install tk でインストールしてください。")
+        raise SystemExit(1)
     try:
         import tkinterdnd2 as tkdnd
         tk.Tk = tkdnd.TkinterDnD.Tk
