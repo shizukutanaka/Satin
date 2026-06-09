@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from utils_config import get_config, update_config, validate_config
+from utils_config import get_config, update_config, validate_config, DEFAULT_CONFIG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,9 @@ class ConfigManager:
         Args:
             config_path: 設定ファイルのパス。Noneの場合はデフォルトパスを使用
         """
-        self.config_path = config_path or str(Path(__file__).parent / "config" / "config.json")
+        # 既定パスは utils_config の解決結果に合わせる（存在しない main/config/
+        # config.json を指してバックアップが FileNotFound になるのを防ぐ）。
+        self.config_path = config_path or str(DEFAULT_CONFIG_FILE)
         self.backup_dir = Path(self.config_path).parent / "backups"
         self.current_config = None
         

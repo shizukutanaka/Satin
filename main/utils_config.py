@@ -27,7 +27,28 @@ logger = logging.getLogger(__name__)
 
 # 設定ファイルのデフォルトパス
 DEFAULT_CONFIG_DIR = Path(__file__).parent / "config"
-DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
+
+
+def _resolve_default_config_file() -> Path:
+    """既定の設定ファイルパスを解決する。
+
+    歴史的に既定は main/config/config.json を指していたが、リポジトリで実際に
+    バージョン管理されている設定はルートの config/config.json にある。前者が
+    存在しない環境では get_config() が常に空 {} を返していた（＝設定が一切
+    読み込まれない）。存在する候補を優先し、どれも無ければ従来の書き込み先
+    （main/config/config.json）を返す。
+    """
+    candidates = [
+        Path(__file__).parent / "config" / "config.json",          # main/config/config.json
+        Path(__file__).parent.parent / "config" / "config.json",   # <repo>/config/config.json
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+DEFAULT_CONFIG_FILE = _resolve_default_config_file()
 
 @dataclass
 class ConfigSchema:
