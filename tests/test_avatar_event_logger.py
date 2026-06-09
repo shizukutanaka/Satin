@@ -120,6 +120,21 @@ class AvatarEventLoggerTests(unittest.TestCase):
         )
         self.assertEqual(received_types, events)
 
+    def test_replay_skips_malformed_lines(self):
+        """A corrupted/truncated line (e.g. from a crash mid-write) must be
+        skipped, not crash the whole replay."""
+        self.logger.log_event("good1")
+        # Append a broken line directly, then another valid event.
+        with open(self._logfile, "a", encoding="utf-8") as f:
+            f.write("{not valid json\n")
+        self.logger.log_event("good2")
+
+        received = []
+        # Must not raise json.JSONDecodeError.
+        self.logger.replay_events(lambda ev: received.append(ev["event_type"]),
+                                  delay_factor=0.0)
+        self.assertEqual(received, ["good1", "good2"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,8 +22,16 @@ class AvatarEventLogger:
         callback(event)でイベントを再生
         delay_factor=1.0で実時間通り、<1.0で高速再生
         """
+        events = []
         with open(self.logfile, encoding="utf-8") as f:
-            events = [json.loads(line) for line in f if line.strip()]
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    # 壊れた行（クラッシュで途中まで書かれた等）はスキップ
+                    continue
         if not events:
             return
         base = events[0]["timestamp"]

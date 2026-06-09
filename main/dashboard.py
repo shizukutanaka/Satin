@@ -85,9 +85,12 @@ def logs(i18n):
         with open(event_log_path, encoding='utf-8') as f:
             for line in f:
                 if not line.strip(): continue
-                ev = json.loads(line)
-                ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-                events.append({'ts': ts, 'type': ev['event_type'], 'details': ev['details']})
+                try:
+                    ev = json.loads(line)
+                    ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                    events.append({'ts': ts, 'type': ev['event_type'], 'details': ev['details']})
+                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    continue  # 壊れた/不完全な行はスキップしてページ全体を落とさない
     content = f'<h3>{i18n.t("event_log")}</h3><table border=1 cellpadding=4><tr>' \
         f'<th>{i18n.t("time")}</th><th>{i18n.t("type")}</th><th>{i18n.t("details")}</th></tr>'
     for e in events[-100:]:
@@ -100,7 +103,9 @@ def logs(i18n):
 def backups(i18n):
     lang = get_lang()
     switcher = LANG_SWITCHER_HTML.format(en='selected' if lang=='en' else '', ja='selected' if lang=='ja' else '')
-    files = [f for f in os.listdir(backup_dir) if f.endswith('.png') or f.endswith('.gz')]
+    files = []
+    if os.path.isdir(backup_dir):
+        files = [f for f in os.listdir(backup_dir) if f.endswith('.png') or f.endswith('.gz')]
     content = f'<h3>{i18n.t("backups")}</h3><ul>'
     for f in files:
         content += f'<li><a href="/download/{f}?lang={lang}">{f}</a></li>'
