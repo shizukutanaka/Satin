@@ -260,6 +260,32 @@ SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10
 - Set `SATIN_DISABLE_DOTENV=1` to skip auto-loading, or call
   `config.env.load_dotenv(path, override=True)` explicitly for full control.
 
+#### Layered (multi-environment) config
+
+Set `SATIN_ENV` to select an environment-specific overlay file that is
+deep-merged over the base `config.json` (as in Dynaconf/Hydra):
+
+```
+config/
+  config.json              # base, always loaded
+  config.production.json   # loaded & merged when SATIN_ENV=production
+  config.development.json  # loaded & merged when SATIN_ENV=development
+```
+
+```bash
+export SATIN_ENV=production
+```
+
+The overlay only needs to contain the keys it changes; everything else falls
+through to the base. The full precedence chain, lowest to highest, is:
+
+```
+base config.json  <  config.<env>.json  <  .env file  <  real environment vars
+```
+
+If no `SATIN_ENV` is set, or the matching overlay file is absent, only the base
+config is loaded.
+
 ## Getting Started
 
 ### Prerequisites

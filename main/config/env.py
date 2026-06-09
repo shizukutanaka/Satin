@@ -19,6 +19,18 @@ ENV_PREFIX = 'SATIN_'
 #   SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10  ->  settings.backup.max_backups = 10
 NESTED_DELIMITER = '__'
 
+# Environment variable that selects the active config layer (e.g. "production"),
+# used to load a sibling overlay file config.<env>.json over the base config.
+ENV_SELECTOR_VAR = 'SATIN_ENV'
+
+# Prefixed vars that are *control* knobs consumed directly by Satin rather than
+# generic config overrides. They are excluded from the dynamic SECTION__KEY
+# overlay so they never inject spurious top-level keys into the config.
+#   SATIN_ENV            -> selects the environment layer (handled in load_config)
+#   SATIN_DISABLE_DOTENV -> opt out of .env auto-loading
+#   SATIN_LANG           -> i18n language selector (consumed by i18n.py)
+CONTROL_KEYS = frozenset({'ENV', 'DISABLE_DOTENV', 'LANG'})
+
 # Guards one-time auto-loading of a ./.env file on first config read.
 _DOTENV_AUTOLOADED = False
 
@@ -80,10 +92,10 @@ def get_dynamic_env_config(prefix: str = ENV_PREFIX) -> Dict[str, Any]:
         if not env_var.startswith(prefix):
             continue
         remainder = env_var[plen:]
-        # Keys handled by the explicit ENV_MAPPING alias table are applied
-        # separately (and take precedence), so skip them here to avoid creating
-        # spurious top-level keys.
-        if not remainder or remainder in ENV_MAPPING:
+        # Skip (a) keys handled by the explicit ENV_MAPPING alias table — applied
+        # separately and taking precedence — and (b) control vars consumed
+        # directly by Satin, so neither injects spurious top-level config keys.
+        if not remainder or remainder in ENV_MAPPING or remainder in CONTROL_KEYS:
             continue
 
         segments = [seg.lower() for seg in remainder.split(NESTED_DELIMITER) if seg != '']

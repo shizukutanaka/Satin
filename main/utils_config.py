@@ -16,9 +16,10 @@ except ImportError:  # PyYAML is optional; only needed for .yaml/.yml config fil
 try:
     # 環境変数オーバーレイ (12-factor)。config パッケージが import 出来ない環境でも
     # 設定読み込み自体は壊れないよう、失敗時は無効化する。
-    from config.env import apply_env_overrides
+    from config.env import apply_env_overrides, ENV_SELECTOR_VAR
 except Exception:  # pragma: no cover - defensive
     apply_env_overrides = None
+    ENV_SELECTOR_VAR = 'SATIN_ENV'
 
 # ロガーの設定
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
@@ -44,13 +45,45 @@ class ConfigSchema:
             plugins=data.get("plugins", [])
         )
 
+def _read_config_file(file_path: Path) -> Dict[str, Any]:
+    """単一の設定ファイルを読み込む（環境レイヤーの合成は行わない）。"""
+    if not file_path.exists():
+        logger.warning(f"設定ファイルが存在しません: {file_path}")
+        return {}
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            if file_path.suffix.lower() == '.json':
+                return json.load(f) or {}
+            elif file_path.suffix.lower() in ('.yaml', '.yml'):
+                if yaml is None:
+                    logger.error("YAML 設定の読み込みには PyYAML が必要です: pip install pyyaml")
+                    return {}
+                return yaml.safe_load(f) or {}
+            else:
+                logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
+                return {}
+    except Exception as e:
+        logger.error(f"設定ファイルの読み込みに失敗しました: {file_path}\n{str(e)}")
+        return {}
+
+def _environment_layer_path(base_path: Path, env_name: str) -> Path:
+    """ベース config.json に対する環境レイヤー config.<env>.json のパスを返す。"""
+    return base_path.with_name(f"{base_path.stem}.{env_name}{base_path.suffix}")
+
 def load_config(file_path: Union[str, Path] = None) -> Dict[str, Any]:
     """
-    設定ファイルを読み込む
-    
+    設定ファイルを読み込む（レイヤード・マルチ環境対応）。
+
+    ベース設定ファイルを読み込んだ後、環境変数 ``SATIN_ENV`` が設定されていて
+    対応する隣接ファイル ``config.<env>.json`` が存在する場合は、それをベース上に
+    ディープマージする（Dynaconf / Hydra のレイヤード設定に相当）。
+    環境変数によるオーバーレイ（個別キーの上書き）は get_config() 側で更に上に
+    適用されるため、優先順位は「実環境変数/.env > 環境レイヤーファイル > ベース」。
+
     Args:
         file_path: 設定ファイルのパス。Noneの場合はデフォルトパスを使用
-        
+
     Returns:
         Dict[str, Any]: 設定値の辞書
     """
@@ -58,26 +91,18 @@ def load_config(file_path: Union[str, Path] = None) -> Dict[str, Any]:
         file_path = DEFAULT_CONFIG_FILE
     else:
         file_path = Path(file_path)
-    
-    if not file_path.exists():
-        logger.warning(f"設定ファイルが存在しません: {file_path}")
-        return {}
-    
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            if file_path.suffix.lower() == '.json':
-                return json.load(f)
-            elif file_path.suffix.lower() in ('.yaml', '.yml'):
-                if yaml is None:
-                    logger.error("YAML 設定の読み込みには PyYAML が必要です: pip install pyyaml")
-                    return {}
-                return yaml.safe_load(f)
-            else:
-                logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
-                return {}
-    except Exception as e:
-        logger.error(f"設定ファイルの読み込みに失敗しました: {file_path}\n{str(e)}")
-        return {}
+
+    config = _read_config_file(file_path)
+
+    env_name = os.environ.get(ENV_SELECTOR_VAR)
+    if env_name:
+        layer_path = _environment_layer_path(file_path, env_name)
+        if layer_path.exists():
+            layer = _read_config_file(layer_path)
+            config = merge_configs(config, layer)
+            logger.info(f"環境レイヤーを適用しました ({env_name}): {layer_path.name}")
+
+    return config
 
 def save_config(config: Dict[str, Any], file_path: Union[str, Path] = None) -> bool:
     """
