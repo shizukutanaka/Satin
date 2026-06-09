@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
 import traceback
+import inspect
 from functools import wraps
 import uuid
 
@@ -400,8 +401,31 @@ class HealthChecker:
 def trace_operation(operation_name: str):
     """
     デコレータ: 自動トレーシング
+
+    sync / async どちらの関数にも対応する。async 関数に対しては内部で await
+    するため、実行時間・例外・スパン終了が正しく記録される（旧実装は sync
+    ラッパーのみで、async 関数では未 await のコルーチンを返し、レイテンシは
+    常に ~0ms、例外も捕捉できなかった）。
     """
     def decorator(func: Callable) -> Callable:
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                trace_provider = TraceProvider()
+                span = trace_provider.start_span(operation_name)
+                start_time = time.time()
+                try:
+                    result = await func(*args, **kwargs)
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    span.end(status="OK")
+                    global_metrics.record_operation_latency(operation_name, elapsed_ms)
+                    return result
+                except Exception as e:
+                    span.end(status="ERROR", error=str(e))
+                    global_metrics.record_error(type(e).__name__)
+                    raise
+            return async_wrapper
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             trace_provider = TraceProvider()
@@ -431,8 +455,24 @@ def trace_operation(operation_name: str):
 def observe_metrics(operation_name: str):
     """
     デコレータ: メトリクス自動記録
+
+    trace_operation と同様に sync / async 双方に対応する。
     """
     def decorator(func: Callable) -> Callable:
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                start_time = time.time()
+                try:
+                    result = await func(*args, **kwargs)
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    global_metrics.record_operation_latency(operation_name, elapsed_ms)
+                    return result
+                except Exception as e:
+                    global_metrics.record_error(type(e).__name__)
+                    raise
+            return async_wrapper
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             start_time = time.time()
