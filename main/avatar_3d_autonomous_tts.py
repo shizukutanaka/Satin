@@ -116,8 +116,9 @@ class AutonomousAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else obj
         if self.mode == 'run':
             # 駆け回る
             speed = 0.03
-            self.position[0] += speed * np.cos(np.radians(self.direction))
-            self.position[1] += speed * np.sin(np.radians(self.direction))
+            if np is not None:
+                self.position[0] += speed * np.cos(np.radians(self.direction))
+                self.position[1] += speed * np.sin(np.radians(self.direction))
             # ランダムに方向転換
             if random.random() < 0.05:
                 self.direction += random.uniform(-60, 60)

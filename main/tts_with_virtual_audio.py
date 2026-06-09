@@ -93,13 +93,16 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         self.input.setGeometry(10, 50, 350, 30)
         self.input.setPlaceholderText('コメントを入力してEnterで読み上げ')
         self.input.returnPressed.connect(self.handle_comment)
-        self.status = QLabel('出力先: ' + self.device_list[0][1], self)
+        initial_device = self.device_list[0][1] if self.device_list else '(デバイスなし)'
+        self.status = QLabel('出力先: ' + initial_device, self)
         self.status.setGeometry(10, 90, 350, 30)
         self.tts_worker = TTSWorker(self.tts_queue, self.get_device_idx)
         self.tts_worker.start()
 
     def select_device(self):
         idx = self.device_box.currentIndex()
+        if idx < 0 or idx >= len(self.device_list):
+            return
         self.device_idx = self.device_list[idx][0]
         self.status.setText('出力先: ' + self.device_list[idx][1])
 
