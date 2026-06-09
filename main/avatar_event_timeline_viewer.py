@@ -44,11 +44,14 @@ class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
                 for line in f:
                     if not line.strip():
                         continue
-                    ev = json.loads(line)
-                    self.events.append(ev)
+                    try:
+                        ev = json.loads(line)
+                        self.events.append(ev)
+                    except json.JSONDecodeError:
+                        continue
             for ev in self.events:
-                ts = datetime.fromtimestamp(ev["timestamp"]).strftime("%m-%d %H:%M:%S")
-                etype = ev["event_type"]
+                ts = datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%m-%d %H:%M:%S")
+                etype = ev.get("event_type", "")
                 summary = f"[{ts}] {etype}"
                 self.list_widget.addItem(summary)
         except Exception as e:
@@ -57,9 +60,9 @@ class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
     def show_detail(self, idx):
         if 0 <= idx < len(self.events):
             ev = self.events[idx]
-            details = json.dumps(ev["details"], ensure_ascii=False, indent=2)
-            ts = datetime.fromtimestamp(ev["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
-            self.detail_label.setText(f"<b>時刻:</b> {ts}<br><b>種別:</b> {ev['event_type']}<br><b>詳細:</b><pre>{details}</pre>")
+            details = json.dumps(ev.get("details", {}), ensure_ascii=False, indent=2)
+            ts = datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%Y-%m-%d %H:%M:%S")
+            self.detail_label.setText(f"<b>時刻:</b> {ts}<br><b>種別:</b> {ev.get('event_type','')}<br><b>詳細:</b><pre>{details}</pre>")
         else:
             self.detail_label.setText("")
 

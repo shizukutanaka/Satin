@@ -15,7 +15,10 @@ def load_events(logfile):
         for line in f:
             if not line.strip():
                 continue
-            events.append(json.loads(line))
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
     return events
 
 def event_stats(events):
@@ -28,6 +31,9 @@ def event_stats(events):
     return counts, by_hour, times
 
 def plot_stats(counts, by_hour, times, outdir):
+    if plt is None:
+        print("matplotlib がインストールされていません。グラフ出力をスキップします。")
+        return
     os.makedirs(outdir, exist_ok=True)
     # イベント種別ごと発生回数
     plt.figure(figsize=(6,4))
