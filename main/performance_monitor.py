@@ -69,7 +69,8 @@ class PerformanceMonitor:
         """モニタリングを停止"""
         self.running = False
         if self.monitor_thread:
-            self.monitor_thread.join()
+            # Bound the join so a sleeping interval doesn't hang the caller.
+            self.monitor_thread.join(timeout=self.interval + 2)
             logger.info("パフォーマンス監視を停止しました")
     
     def _monitor(self) -> None:

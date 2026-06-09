@@ -6,6 +6,7 @@ scheduler 機能を無効化して gracefully に動作します。
 """
 from __future__ import annotations
 
+import threading
 import time
 import logging
 from datetime import datetime
@@ -36,6 +37,7 @@ class BackupScheduler:
         self.notification_system = notification_system
         self.backup_target_dir = backup_target_dir
         self.running = False
+        self._stop_event = threading.Event()
         self.backup_history: List[Dict[str, Any]] = []
         self.max_history = 30
 
@@ -115,7 +117,8 @@ class BackupScheduler:
         try:
             while self.running:
                 self._scheduler.run_pending()
-                time.sleep(60)
+                # Use event.wait so stop() wakes this loop in <1s instead of ≤60s.
+                self._stop_event.wait(60)
         except Exception as e:
             msg = f"Error in backup scheduler: {e}"
             self.notification_system.send_notification(
@@ -126,6 +129,7 @@ class BackupScheduler:
     def stop(self) -> None:
         """スケジューラーを停止する。"""
         self.running = False
+        self._stop_event.set()
         self.notification_system.send_notification(
             title="Backup Scheduler", message="Backup scheduler stopped", level="info"
         )

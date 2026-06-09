@@ -83,8 +83,10 @@ class LoggingManager:
             root_logger.addHandler(console_handler)
             
             # ログファイル圧縮スレッドの開始
-            self.compression_thread = threading.Thread(target=self._compress_old_logs)
-            self.compression_thread.daemon = True
+            self._compression_stop = threading.Event()
+            self.compression_thread = threading.Thread(
+                target=self._compress_old_logs, name="log-compression", daemon=True
+            )
             self.compression_thread.start()
     
     def set_log_level(self, level: str) -> None:
@@ -95,9 +97,16 @@ class LoggingManager:
             root_logger.setLevel(self.log_levels[level])
             logger.info(f"ログレベルを {level} に変更しました")
     
+    def stop(self, wait: bool = True) -> None:
+        """圧縮スレッドを停止する。"""
+        if hasattr(self, '_compression_stop'):
+            self._compression_stop.set()
+        if wait and hasattr(self, 'compression_thread') and self.compression_thread.is_alive():
+            self.compression_thread.join(timeout=5)
+
     def _compress_old_logs(self) -> None:
         """古いログファイルの圧縮"""
-        while True:
+        while not self._compression_stop.is_set():
             try:
                 # .log.1 以降のファイルを検索
                 for file in sorted(self.log_dir.glob("*.log.*")):
@@ -109,12 +118,12 @@ class LoggingManager:
                         # 元のファイルを削除
                         file.unlink()
                         logger.info(f"ログファイルを圧縮しました: {file}")
-                
-                # 30分間隔で実行
-                time.sleep(1800)
+
+                # 30分間隔で実行（stop()で即時起床）
+                self._compression_stop.wait(1800)
             except Exception as e:
                 logger.error(f"ログファイルの圧縮中にエラーが発生しました: {e}")
-                time.sleep(1800)
+                self._compression_stop.wait(1800)
     
     def search_logs(self, keyword: str, start_date: str = None, end_date: str = None) -> List[Dict]:
         """
