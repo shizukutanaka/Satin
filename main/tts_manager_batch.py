@@ -46,7 +46,7 @@ def batch_backup_tts(tts_dir="."):
         # zipfile.ZipFile はスレッドセーフではないため逐次書き込みする。
         with zipfile.ZipFile(zipname, 'w', zipfile.ZIP_DEFLATED) as zf:
             for fname in files:
-                zf.write(fname)
+                zf.write(fname, arcname=os.path.basename(fname))
         log_info(f"TTS設定ファイルを {zipname} にバックアップしました")
     except Exception as e:
         log_error(f"[ERROR] TTSバックアップ失敗: {e}")

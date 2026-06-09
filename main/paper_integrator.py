@@ -91,16 +91,20 @@ class PaperIntegrator:
                     break
                 bib = result.get("bib", {})
                 year = bib.get("pub_year")
-                if year_low and year and int(year) < year_low:
+                try:
+                    year_int = int(year) if year else None
+                except (ValueError, TypeError):
+                    year_int = None
+                if year_low and year_int is not None and year_int < year_low:
                     continue
-                if year_high and year and int(year) > year_high:
+                if year_high and year_int is not None and year_int > year_high:
                     continue
                 papers.append(AcademicPaper(
                     paper_id=result.get("url_scholarbib", str(i)),
                     title=bib.get("title", ""),
                     abstract=bib.get("abstract", ""),
                     authors=bib.get("author", []),
-                    published_date=datetime(int(year), 1, 1) if year else None,
+                    published_date=datetime(year_int, 1, 1) if year_int else None,
                     url=result.get("pub_url", ""),
                     source="scholar",
                     citations=result.get("num_citations", 0),

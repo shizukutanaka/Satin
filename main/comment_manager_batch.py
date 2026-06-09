@@ -47,7 +47,7 @@ def batch_backup_comments(comment_dir="."):
         # で並列に zf.write すると書庫が破損する。逐次書き込みする。
         with zipfile.ZipFile(zipname, 'w', zipfile.ZIP_DEFLATED) as zf:
             for fname in files:
-                zf.write(fname)
+                zf.write(fname, arcname=os.path.basename(fname))
         log_info(f"コメント設定ファイルを {zipname} にバックアップしました")
     except Exception as e:
         log_error(f"[ERROR] コメントバックアップ失敗: {e}")

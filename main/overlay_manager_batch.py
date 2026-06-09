@@ -46,7 +46,7 @@ def batch_backup_overlays(overlay_dir="."):
         # zipfile.ZipFile はスレッドセーフではないため逐次書き込みする。
         with zipfile.ZipFile(zipname, 'w', zipfile.ZIP_DEFLATED) as zf:
             for fname in files:
-                zf.write(fname)
+                zf.write(fname, arcname=os.path.basename(fname))
         log_info(f"オーバーレイ設定ファイルを {zipname} にバックアップしました")
     except Exception as e:
         log_error(f"[ERROR] オーバーレイバックアップ失敗: {e}")
