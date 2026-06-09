@@ -93,6 +93,23 @@ class WebPage:
             data['published_date'] = self.published_date.isoformat()
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WebPage':
+        """to_dict() の逆変換。fetch_time / published_date の ISO 文字列を
+        datetime に戻す。
+
+        （キャッシュ復元時に日時フィールドが文字列のままになり、消費側で
+        .year 等を呼ぶと AttributeError になっていた不具合への対処。）
+        """
+        data = dict(data)
+        ft = data.get('fetch_time')
+        if isinstance(ft, str):
+            data['fetch_time'] = datetime.fromisoformat(ft)
+        pd = data.get('published_date')
+        if isinstance(pd, str):
+            data['published_date'] = datetime.fromisoformat(pd)
+        return cls(**data)
+
 
 @dataclass
 class SitemapEntry:
@@ -233,7 +250,7 @@ class WebIntegrator:
             cached = self.cache_manager.get(cache_key)
             if cached:
                 self.logger.debug(f"Cache hit for {url}")
-                return WebPage(**cached)
+                return WebPage.from_dict(cached)
 
         # HTML取得
         html = self._fetch_html(url)

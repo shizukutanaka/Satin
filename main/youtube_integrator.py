@@ -64,6 +64,19 @@ class YouTubeVideo:
         data['published_at'] = self.published_at.isoformat()
         return data
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'YouTubeVideo':
+        """to_dict() の逆変換。published_at の ISO 文字列を datetime に戻す。
+
+        （キャッシュ復元時に published_at が文字列のままになり、消費側で
+        .year 等を呼ぶと TypeError になっていた不具合への対処。）
+        """
+        data = dict(data)
+        pub = data.get('published_at')
+        if isinstance(pub, str):
+            data['published_at'] = datetime.fromisoformat(pub)
+        return cls(**data)
+
 
 @dataclass
 class YouTubeChannel:
@@ -256,7 +269,7 @@ class YouTubeIntegrator:
         cached = self.cache_manager.get(cache_key)
         if cached:
             self.logger.debug(f"Cache hit for video {video_id}")
-            return YouTubeVideo(**cached)
+            return YouTubeVideo.from_dict(cached)
 
         video_info = None
 
@@ -615,7 +628,7 @@ class YouTubeIntegrator:
                 cache_key = f"video_{vid}_{include_transcript}"
                 cached = self.cache_manager.get(cache_key)
                 if cached:
-                    cached_videos.append(YouTubeVideo(**cached))
+                    cached_videos.append(YouTubeVideo.from_dict(cached))
                 else:
                     uncached_ids.append(vid)
 
