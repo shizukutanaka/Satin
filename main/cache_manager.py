@@ -370,8 +370,10 @@ class CacheManager:
             if entry is None:
                 continue
             _, timestamp = entry
-            if datetime.now() - timestamp >= timedelta(seconds=self.cache_ttl):
+            ttl = self._ttl_overrides.get(key, self.cache_ttl)
+            if datetime.now() - timestamp >= timedelta(seconds=ttl):
                 del self.memory_cache[key]
+                self._ttl_overrides.pop(key, None)
                 removed_memory += 1
 
         removed_disk = 0

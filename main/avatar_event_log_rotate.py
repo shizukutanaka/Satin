@@ -19,7 +19,10 @@ def rotate_log(logfile, max_size=5*1024*1024, max_backups=5):
         pass  # 空ファイルで再作成
     # 古いバックアップ削除
     log_dir = os.path.dirname(os.path.abspath(logfile))
-    backups = sorted([f for f in os.listdir(log_dir) if f.startswith(os.path.basename(logfile)+'.') and f.endswith('.gz')])
+    backups = sorted(
+        [f for f in os.listdir(log_dir) if f.startswith(os.path.basename(logfile) + '.') and f.endswith('.gz')],
+        key=lambda f: os.path.getmtime(os.path.join(log_dir, f)),
+    )
     if len(backups) > max_backups:
         for old in backups[:-max_backups]:
             try:
