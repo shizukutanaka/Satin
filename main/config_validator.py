@@ -53,5 +53,6 @@ class ConfigValidator:
     def _validate_network(self) -> None:
         """Validate network configuration"""
         network_config = self.config.get('network', {})
-        if not isinstance(network_config.get('port'), int):
+        port = network_config.get('port')
+        if port is not None and not isinstance(port, int):
             raise ConfigurationError("Invalid network port configuration")
