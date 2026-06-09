@@ -7,7 +7,7 @@ import asyncio
 import signal
 import logging
 import sys
-from typing import Callable, Optional, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps

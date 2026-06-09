@@ -352,7 +352,13 @@ class GCRALimiter(RateLimiter):
             emission_interval: Time between allowed cells (1/rate)
             capacity: Burst tolerance (how many cells early acceptable)
             name: Limiter identifier
+
+        Raises:
+            ValueError: emission_interval が 0 以下の場合（レート計算で 1/interval
+                を用いるため、ゼロ除算を防ぐ）。
         """
+        if emission_interval <= 0:
+            raise ValueError("emission_interval must be > 0")
         self.emission_interval = emission_interval
         self.capacity = capacity
         self.name = name
