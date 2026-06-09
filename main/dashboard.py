@@ -22,7 +22,9 @@ except ImportError:
 
 if _FLASK_AVAILABLE:
     app = Flask(__name__)
-    app.secret_key = 'satin_dashboard_secret'
+    # ハードコードされた秘密鍵はセッション/CSRF 偽造を許す。環境変数を優先し、
+    # 未設定ならプロセス毎のランダム値にフォールバックする。
+    app.secret_key = os.environ.get('SATIN_DASHBOARD_SECRET') or os.urandom(24).hex()
 else:
     class _NoopApp:
         def route(self, *a, **kw): return lambda f: f
@@ -31,6 +33,18 @@ else:
 
 event_log_path = 'avatar_event_log.jsonl'
 backup_dir = 'event_report'
+
+
+def _safe_backup_path(fname):
+    """backup_dir 内に収まる実パスのみを返す。ディレクトリトラバーサル
+    (例: ../../etc/passwd) を防ぐため、解決後のパスが backup_dir 配下に
+    あることを検証する。範囲外なら None。
+    """
+    base = os.path.abspath(backup_dir)
+    target = os.path.abspath(os.path.join(base, fname))
+    if target != base and not target.startswith(base + os.sep):
+        return None
+    return target
 
 def get_lang():
     lang = request.args.get('lang') or session.get('lang')
@@ -115,8 +129,8 @@ def backups(i18n):
 @app.route('/download/<fname>')
 @with_lang
 def download(i18n, fname):
-    path = os.path.join(backup_dir, fname)
-    if os.path.exists(path):
+    path = _safe_backup_path(fname)
+    if path and os.path.isfile(path):
         return send_file(path, as_attachment=True)
     return i18n.t('no_file'), 404
 
@@ -134,4 +148,7 @@ def sync(i18n):
     return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5003)
+    # debug=True は Werkzeug デバッガ経由の任意コード実行を許すため、
+    # 既定では無効。SATIN_DASHBOARD_DEBUG=1 のときのみ有効化する。
+    _debug = os.environ.get('SATIN_DASHBOARD_DEBUG') == '1'
+    app.run(debug=_debug, port=5003)
