@@ -52,6 +52,8 @@ class TTSWorker(threading.Thread):
         self.running = True
 
     def run(self):
+        if self.engine is None:
+            return
         while self.running:
             try:
                 text = self.tts_queue.get(timeout=0.1)

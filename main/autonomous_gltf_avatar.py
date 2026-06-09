@@ -35,6 +35,8 @@ class GLTFModel:
         self.load_gltf()
 
     def load_gltf(self):
+        if pygltflib is None or np is None:
+            return
         # 頂点・面・アニメーションの簡易ローダー
         gltf = pygltflib.GLTF2().load(self.filename)
         if not gltf.meshes:
@@ -152,8 +154,9 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else
         if self.mode == 'run':
             # 駆け回る
             speed = 0.03
-            self.position[0] += speed * np.cos(np.radians(self.direction))
-            self.position[1] += speed * np.sin(np.radians(self.direction))
+            if np is not None:
+                self.position[0] += speed * np.cos(np.radians(self.direction))
+                self.position[1] += speed * np.sin(np.radians(self.direction))
             # 画面端で反射
             for i in range(2):
                 if abs(self.position[i]) > 1.2:
