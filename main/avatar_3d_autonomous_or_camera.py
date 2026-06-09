@@ -72,8 +72,10 @@ class CameraThread(threading.Thread):
                     right_eye = face_landmarks.landmark[263]
                     pose = (nose.x, nose.y, left_eye.x, left_eye.y, right_eye.x, right_eye.y)
                 self.pose_queue.put(pose)
-                # オーバーレイ表示
-                mp_drawing.draw_landmarks(image, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION)
+                # オーバーレイ表示（顔検出時のみ。未検出時は face_landmarks が
+                # 未定義となり NameError になるため必ずガードする）
+                if results.multi_face_landmarks:
+                    mp_drawing.draw_landmarks(image, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION)
                 cv2.imshow('Webcam FaceMesh', image)
                 if cv2.waitKey(1) & 0xFF == 27:
                     self.running = False

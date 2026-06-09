@@ -23,6 +23,7 @@ except ImportError:
 try:
     from OpenGL.GL import *  # noqa: F401,F403
     from OpenGL.GLU import *  # noqa: F401,F403
+    from OpenGL.GLUT import *  # noqa: F401,F403  # glutWireTeapot は GLUT 由来
 except ImportError:
     pass
 try:
