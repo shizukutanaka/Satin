@@ -10,7 +10,12 @@ import unittest
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
-from task_scheduler import ScheduledTask, TaskScheduler, TaskStatus  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+
+from task_scheduler import (  # noqa: E402
+    ScheduledTask, TaskScheduler, TaskStatus, TaskPriority,
+)
 
 
 class ScheduledTaskRetryTests(unittest.TestCase):
@@ -59,6 +64,65 @@ class SchedulerEndToEndTests(unittest.TestCase):
         tid = sched.schedule(lambda: 1 / 0, delay=10)
         self.assertTrue(sched.cancel_task(tid))
         self.assertEqual(sched.get_task_status(tid), TaskStatus.CANCELLED)
+
+
+class StopSentinelCollisionTests(unittest.TestCase):
+    """A LOW-priority task has queue-priority 0, identical to the (0, None)
+    shutdown sentinel. Before the sequence-tiebreaker fix, having both in the
+    PriorityQueue made heapq compare a ScheduledTask against None and raise
+    TypeError, crashing stop()."""
+
+    def test_stop_does_not_raise_with_queued_low_task(self):
+        sched = TaskScheduler(num_workers=1)
+        sched.start()
+        try:
+            sched.schedule(lambda: time.sleep(0.8))  # occupy the worker
+            time.sleep(0.15)
+            sched.schedule(lambda: None, priority=TaskPriority.LOW)
+            time.sleep(0.05)
+
+            result = {}
+            def do_stop():
+                try:
+                    sched.stop(wait=True)
+                    result["ok"] = True
+                except Exception as e:  # pragma: no cover
+                    result["ok"] = False
+                    result["err"] = repr(e)
+
+            t = threading.Thread(target=do_stop)
+            t.start()
+            t.join(timeout=8)
+            self.assertTrue(result.get("ok"), msg=result.get("err", "stop() hung"))
+        finally:
+            sched.running = False
+
+    def test_many_low_tasks_then_stop(self):
+        sched = TaskScheduler(num_workers=2)
+        sched.start()
+        try:
+            sched.schedule(lambda: time.sleep(0.4))
+            sched.schedule(lambda: time.sleep(0.4))
+            time.sleep(0.1)
+            for _ in range(5):
+                sched.schedule(lambda: None, priority=TaskPriority.LOW)
+            sched.stop(wait=True)  # must not raise
+        finally:
+            sched.running = False
+
+    def test_priority_ordering_preserved(self):
+        sched = TaskScheduler(num_workers=1)
+        sched.start()
+        try:
+            order = []
+            sched.schedule(lambda: time.sleep(0.4))  # occupy worker
+            time.sleep(0.05)
+            sched.schedule(lambda: order.append("low"), priority=TaskPriority.LOW)
+            sched.schedule(lambda: order.append("high"), priority=TaskPriority.HIGH)
+            time.sleep(1.0)
+            self.assertEqual(order, ["high", "low"])
+        finally:
+            sched.stop(wait=True)
 
 
 if __name__ == "__main__":

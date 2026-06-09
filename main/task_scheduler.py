@@ -6,6 +6,7 @@ import time
 import threading
 import queue
 import uuid
+import itertools
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Callable, Any, Dict, List, Optional, Tuple, Union
@@ -70,6 +71,12 @@ class TaskScheduler:
         self.workers: List[threading.Thread] = []
         self.running = False
         self.lock = threading.RLock()
+        # Monotonic tiebreaker for ready_queue entries. Without it, two queue
+        # items with equal priority fall back to comparing the payload, and a
+        # real task vs the (priority, None) shutdown sentinel raises
+        # TypeError: '<' not supported between NoneType and ScheduledTask.
+        # itertools.count().__next__ is atomic under the GIL.
+        self._seq = itertools.count()
         self.worker_semaphore = threading.Semaphore(num_workers)
         self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
     
@@ -98,15 +105,17 @@ class TaskScheduler:
             
         self.running = False
         
-        # Wake up all threads
+        # Wake up all threads (sentinel: lowest tuple, unique seq, None payload)
         with self.lock:
             for _ in range(len(self.workers)):
-                self.ready_queue.put((0, None))
-        
+                self.ready_queue.put((0, next(self._seq), None))
+
         if wait:
-            self.scheduler_thread.join()
+            # Bounded joins so a worker stuck in a long task cannot hang stop()
+            # indefinitely; workers are daemon threads and exit with the process.
+            self.scheduler_thread.join(timeout=5)
             for worker in self.workers:
-                worker.join()
+                worker.join(timeout=5)
     
     def schedule(
         self,
@@ -140,10 +149,10 @@ class TaskScheduler:
         
         with self.lock:
             if delay <= 0:
-                self.ready_queue.put((task.priority, task))
+                self.ready_queue.put((task.priority, next(self._seq), task))
             else:
                 heapq.heappush(self.scheduled_tasks, (scheduled_time, task))
-            
+
             self.tasks[task_id] = task
         
         return task_id
@@ -231,7 +240,7 @@ class TaskScheduler:
                 while self.scheduled_tasks and self.scheduled_tasks[0][0] <= now:
                     _, task = heapq.heappop(self.scheduled_tasks)
                     if task.status == TaskStatus.PENDING:
-                        self.ready_queue.put((task.priority, task))
+                        self.ready_queue.put((task.priority, next(self._seq), task))
             
             # Sleep until the next scheduled task or 1 second
             next_run = max(0, (self.scheduled_tasks[0][0] - now) if self.scheduled_tasks else 1)
@@ -243,7 +252,7 @@ class TaskScheduler:
             try:
                 # Get a task with timeout to allow checking self.running
                 try:
-                    _, task = self.ready_queue.get(timeout=1)
+                    _, _, task = self.ready_queue.get(timeout=1)
                     if task is None:  # Shutdown signal
                         break
                 except queue.Empty:
