@@ -1,7 +1,43 @@
-# Satin requirements
-# 必要なPythonパッケージはここに記載
+# Satin — Python 依存パッケージ
+# pip install -r setup/requirements.txt
+#
+# [必須]
+tqdm            # 進捗バー
 
-tkinter
-pillow
-tqdm  # 進捗バー表示用
-# 配信・コメント管理系で必要なものがあれば追記
+# [GUI / アバター]
+pillow          # 画像処理 (avatar_loader, thumbnails)
+# tkinter は Python 標準ライブラリに含まれます
+
+# [3D / カメラ]
+numpy
+opencv-python   # cv2
+mediapipe
+pygltflib
+
+# [音声]
+pyttsx3
+sounddevice
+pydub
+
+# [Web / API]
+flask
+httpx
+beautifulsoup4  # bs4
+selenium
+
+# [システム監視]
+psutil
+
+# [信頼性]
+tenacity        # リトライ戦略
+
+# [可視化]
+matplotlib
+
+# [学術論文検索 (任意)]
+# arxiv
+# scholarly
+
+# [開発・テスト]
+pytest
+pytest-asyncio
