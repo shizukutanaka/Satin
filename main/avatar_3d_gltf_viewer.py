@@ -41,52 +41,7 @@ except ImportError:
     pygltflib = None  # type: ignore
 import os
 
-# --- MediaPipe FaceMesh Setup ---
-mp_face_mesh = mp.solutions.face_mesh if mp is not None else None
-mp_drawing = mp.solutions.drawing_utils if mp is not None else None
-
-class CameraThread(threading.Thread):
-    def __init__(self, pose_queue):
-        super().__init__()
-        self.pose_queue = pose_queue
-        self.running = True
-
-    def run(self):
-        if cv2 is None or mp_face_mesh is None:
-            return
-        cap = cv2.VideoCapture(0)
-        try:
-            with mp_face_mesh.FaceMesh(
-                max_num_faces=1,
-                refine_landmarks=True,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5) as face_mesh:
-                while self.running and cap.isOpened():
-                    success, image = cap.read()
-                    if not success:
-                        continue
-                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    results = face_mesh.process(image_rgb)
-                    pose = None
-                    if results.multi_face_landmarks:
-                        face_landmarks = results.multi_face_landmarks[0]
-                        # 顔の中心・左右目座標
-                        nose = face_landmarks.landmark[1]
-                        left_eye = face_landmarks.landmark[33]
-                        right_eye = face_landmarks.landmark[263]
-                        pose = (nose.x, nose.y, left_eye.x, left_eye.y, right_eye.x, right_eye.y)
-                    self.pose_queue.put(pose)
-                    # オーバーレイ表示（顔検出時のみ。未検出時は face_landmarks が
-                    # 未定義となり NameError になるため必ずガードする）
-                    if results.multi_face_landmarks:
-                        mp_drawing.draw_landmarks(image, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION)
-                    cv2.imshow('Webcam FaceMesh', image)
-                    if cv2.waitKey(1) & 0xFF == 27:
-                        self.running = False
-                        break
-        finally:
-            cap.release()
-            cv2.destroyAllWindows()
+from camera_thread import CameraThread  # noqa: E402
 
 class GLTFModel:
     def __init__(self, filename):
