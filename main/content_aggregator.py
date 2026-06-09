@@ -545,7 +545,10 @@ class ContentAggregator:
 
             # 論文全文
             if include_full_text and content.content_type == ContentType.PAPER:
-                paper = AcademicPaper(**content.content_data)
+                data = dict(content.content_data)
+                if isinstance(data.get('published_date'), str):
+                    data['published_date'] = datetime.fromisoformat(data['published_date'])
+                paper = AcademicPaper(**data)
                 enriched_paper = self.paper.get_paper_with_full_text(paper)
                 content.content_data = enriched_paper.to_dict()
 

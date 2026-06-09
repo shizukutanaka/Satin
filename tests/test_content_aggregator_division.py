@@ -64,5 +64,53 @@ class ContentAggregatorImportTest(unittest.TestCase):
         self.assertTrue(hasattr(content_aggregator, "ContentAggregator"))
 
 
+class AcademicPaperPublishedDateRoundtripTest(unittest.TestCase):
+    """Regression: AcademicPaper(**to_dict()) raised TypeError because
+    published_date was serialized as ISO string but constructor expects datetime."""
+
+    def test_iso_string_parsed_before_construction(self):
+        from datetime import datetime
+        from paper_integrator import AcademicPaper
+
+        paper = AcademicPaper(
+            paper_id="1234",
+            title="Test",
+            abstract="abs",
+            authors=["A"],
+            published_date=datetime(2024, 1, 15),
+            url="http://example.com",
+            source="arxiv",
+        )
+        serialized = paper.to_dict()
+        self.assertIsInstance(serialized["published_date"], str)
+
+        # Simulate what content_aggregator.py does after the fix
+        data = dict(serialized)
+        if isinstance(data.get("published_date"), str):
+            data["published_date"] = datetime.fromisoformat(data["published_date"])
+
+        reconstructed = AcademicPaper(**data)
+        self.assertEqual(reconstructed.published_date, paper.published_date)
+
+    def test_none_published_date_survives_roundtrip(self):
+        from paper_integrator import AcademicPaper
+
+        paper = AcademicPaper(
+            paper_id="x",
+            title="T",
+            abstract="a",
+            authors=[],
+            published_date=None,
+            url="http://x.com",
+            source="scholar",
+        )
+        data = paper.to_dict()
+        if isinstance(data.get("published_date"), str):
+            from datetime import datetime
+            data["published_date"] = datetime.fromisoformat(data["published_date"])
+        reconstructed = AcademicPaper(**data)
+        self.assertIsNone(reconstructed.published_date)
+
+
 if __name__ == "__main__":
     unittest.main()

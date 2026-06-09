@@ -126,5 +126,43 @@ class MonitorLogDeduplicationTest(unittest.TestCase):
         self.assertEqual(len(alerts), 1)
 
 
+class MissingKeysRobustnessTest(unittest.TestCase):
+    """Regression: bracket access on ev['event_type'] etc. raised KeyError for incomplete events."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._logfile = os.path.join(self._tmp, "events.log")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_event_missing_type_does_not_crash(self):
+        with open(self._logfile, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"timestamp": 1.0}) + "\n")  # no event_type
+
+        with patch.object(avatar_event_alert, "send_slack_alert", lambda *a: None):
+            with patch("avatar_event_alert.time") as mt:
+                mt.sleep.side_effect = KeyboardInterrupt
+                try:
+                    avatar_event_alert.monitor_log(self._logfile, "http://hook")
+                except (KeyboardInterrupt, SystemExit):
+                    pass  # must not raise KeyError
+
+    def test_event_missing_details_does_not_crash(self):
+        with open(self._logfile, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"timestamp": 1.0, "event_type": "error"}) + "\n")  # no details
+
+        alerts = []
+        with patch.object(avatar_event_alert, "send_slack_alert", lambda url, msg: alerts.append(msg)):
+            with patch("avatar_event_alert.time") as mt:
+                mt.sleep.side_effect = KeyboardInterrupt
+                try:
+                    avatar_event_alert.monitor_log(self._logfile, "http://hook")
+                except (KeyboardInterrupt, SystemExit):
+                    pass
+        self.assertEqual(len(alerts), 1)  # alert fires despite missing details
+
+
 if __name__ == "__main__":
     unittest.main()
