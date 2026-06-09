@@ -1,3 +1,4 @@
+import html as _html
 import os
 import json
 from datetime import datetime
@@ -108,7 +109,11 @@ def logs(i18n):
     content = f'<h3>{i18n.t("event_log")}</h3><table border=1 cellpadding=4><tr>' \
         f'<th>{i18n.t("time")}</th><th>{i18n.t("type")}</th><th>{i18n.t("details")}</th></tr>'
     for e in events[-100:]:
-        content += f"<tr><td>{e['ts']}</td><td>{e['type']}</td><td>{e['details']}</td></tr>"
+        content += (
+            f"<tr><td>{_html.escape(e['ts'])}</td>"
+            f"<td>{_html.escape(str(e['type']))}</td>"
+            f"<td>{_html.escape(str(e['details']))}</td></tr>"
+        )
     content += '</table>'
     return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
 
@@ -122,7 +127,8 @@ def backups(i18n):
         files = [f for f in os.listdir(backup_dir) if f.endswith('.png') or f.endswith('.gz')]
     content = f'<h3>{i18n.t("backups")}</h3><ul>'
     for f in files:
-        content += f'<li><a href="/download/{f}?lang={lang}">{f}</a></li>'
+        f_esc = _html.escape(f)
+        content += f'<li><a href="/download/{f_esc}?lang={lang}">{f_esc}</a></li>'
     content += '</ul>'
     return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
 

@@ -244,7 +244,8 @@ class LoggingManager:
                 
                 # ログレベルのカウント
                 level = line.split(' - ')[2]
-                analysis[f"{level.lower()}_count"] += 1
+                count_key = f"{level.lower()}_count"
+                analysis[count_key] = analysis.get(count_key, 0) + 1
                 analysis["total_logs"] += 1
                 
                 # エラーの分析

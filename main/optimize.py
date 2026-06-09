@@ -223,11 +223,6 @@ class PerformanceMonitor:
             # Implementation depends on resource type
             pass
             
-        async def _optimize_load_balancing(self, resource: str):
-            """Balance resource load"""
-            # Implementation depends on resource type
-            pass
-            
         async def _optimize_priority_adjustment(self, resource: str):
             """Adjust process priority"""
             # Implementation depends on resource type
@@ -903,9 +898,9 @@ async def batch_process(items: List[T], process_func: Callable, batch_size: int 
     
     async def process_batch(batch: List[T]) -> List[T]:
         loop = asyncio.get_event_loop()
-        # Optimize batch size based on system resources
+        batch_size = len(batch)
         if optimize:
-            batch_size = optimize_batch_size(len(batch))
+            batch_size = optimize_batch_size(batch_size)
         return await loop.run_in_executor(executor, process_func, batch[:batch_size])
     
     def optimize_batch_size(total: int) -> int:
