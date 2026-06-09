@@ -124,5 +124,27 @@ class RecordMetricSyncTest(unittest.TestCase):
         self.assertEqual(m["timing"]["max"], 5.0)
 
 
+class PercentileEdgeCaseTests(unittest.TestCase):
+    """Regression: _calculate_percentile(values, 100) raised IndexError."""
+
+    def setUp(self):
+        self.pm = PerformanceMonitor()
+
+    def test_percentile_100_does_not_raise(self):
+        """percentile=100 used to yield index == len → IndexError."""
+        result = self.pm._calculate_percentile([1, 2, 3, 4, 5], 100)
+        self.assertEqual(result, 5)
+
+    def test_percentile_0_returns_minimum(self):
+        result = self.pm._calculate_percentile([3, 1, 4, 1, 5], 0)
+        self.assertEqual(result, 1)
+
+    def test_percentile_empty_returns_zero(self):
+        self.assertEqual(self.pm._calculate_percentile([], 95), 0)
+
+    def test_percentile_single_element(self):
+        self.assertEqual(self.pm._calculate_percentile([42.0], 99), 42.0)
+
+
 if __name__ == "__main__":
     unittest.main()

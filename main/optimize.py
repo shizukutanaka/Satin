@@ -789,9 +789,11 @@ class PerformanceMonitor:
         """Calculate percentile value"""
         if not values:
             return 0
-            
+
         sorted_values = sorted(values)
-        index = int(len(sorted_values) * (percentile / 100))
+        # Clamp to valid index range; percentile=100 would otherwise produce
+        # index == len, which is one past the end of the list.
+        index = min(int(len(sorted_values) * (percentile / 100)), len(sorted_values) - 1)
         return sorted_values[index]
     
     def get_metrics(self) -> dict:
