@@ -134,10 +134,14 @@ def compare_versions(version1: str, version2: str) -> Dict[str, Any]:
             
         with open(version1, 'r', encoding='utf-8') as f1:
             config1 = json.load(f1)
-            
+            if not isinstance(config1, dict):
+                config1 = {}
+
         with open(version2, 'r', encoding='utf-8') as f2:
             config2 = json.load(f2)
-            
+            if not isinstance(config2, dict):
+                config2 = {}
+
         # Compare configurations
         differences = {}
         for key in set(config1.keys()).union(config2.keys()):

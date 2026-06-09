@@ -51,6 +51,8 @@ class CameraThread(threading.Thread):
         self.running = True
 
     def run(self):
+        if cv2 is None or mp_face_mesh is None:
+            return
         cap = cv2.VideoCapture(0)
         with mp_face_mesh.FaceMesh(
             max_num_faces=1,
