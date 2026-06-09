@@ -45,11 +45,13 @@ class TTSThread(threading.Thread):
     def __init__(self, tts_queue):
         super().__init__()
         self.tts_queue = tts_queue
-        self.engine = pyttsx3.init()
+        self.engine = pyttsx3.init() if pyttsx3 is not None else None
         self.daemon = True
         self.running = True
 
     def run(self):
+        if self.engine is None:
+            return
         while self.running:
             try:
                 text = self.tts_queue.get(timeout=0.1)

@@ -50,6 +50,9 @@ class MicVolumeThread(threading.Thread):
         self.volume = 0.0
 
     def run(self):
+        if np is None or sd is None:
+            return
+
         def callback(indata, frames, time, status):
             vol = np.linalg.norm(indata) / frames
             self.volume = min(vol * 10, 1.0)  # 正規化
@@ -62,12 +65,14 @@ class TTSThread(threading.Thread):
     def __init__(self, tts_queue):
         super().__init__()
         self.tts_queue = tts_queue
-        self.engine = pyttsx3.init()
+        self.engine = pyttsx3.init() if pyttsx3 is not None else None
         self.daemon = True
         self.running = True
         self.is_speaking = False
 
     def run(self):
+        if self.engine is None:
+            return
         while self.running:
             try:
                 text = self.tts_queue.get(timeout=0.1)

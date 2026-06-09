@@ -94,6 +94,8 @@ class PerformanceMonitor:
     
     def _collect_stats(self) -> Dict[str, Any]:
         """パフォーマンス統計を収集"""
+        if psutil is None:
+            return {}
         return {
             "timestamp": datetime.now().isoformat(),
             "memory": {
