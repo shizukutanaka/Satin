@@ -335,7 +335,7 @@ class YouTubeIntegrator:
             comment_count=int(statistics.get('commentCount', 0)),
             tags=snippet.get('tags', []),
             category_id=snippet.get('categoryId', ''),
-            thumbnail_url=snippet['thumbnails']['high']['url'],
+            thumbnail_url=(snippet.get('thumbnails', {}).get('high') or snippet.get('thumbnails', {}).get('medium') or snippet.get('thumbnails', {}).get('default') or {}).get('url', ''),
             language=snippet.get('defaultLanguage', 'ja')
         )
 
@@ -467,7 +467,7 @@ class YouTubeIntegrator:
                 subscriber_count=int(statistics.get('subscriberCount', 0)),
                 video_count=int(statistics.get('videoCount', 0)),
                 view_count=int(statistics.get('viewCount', 0)),
-                thumbnail_url=snippet['thumbnails']['high']['url'],
+                thumbnail_url=(snippet.get('thumbnails', {}).get('high') or snippet.get('thumbnails', {}).get('medium') or snippet.get('thumbnails', {}).get('default') or {}).get('url', ''),
                 custom_url=snippet.get('customUrl'),
                 country=snippet.get('country')
             )
@@ -706,7 +706,7 @@ class YouTubeIntegrator:
                 comment_count=int(statistics.get('commentCount', 0)),
                 tags=snippet.get('tags', []),
                 category_id=snippet.get('categoryId', ''),
-                thumbnail_url=snippet['thumbnails']['high']['url'],
+                thumbnail_url=(snippet.get('thumbnails', {}).get('high') or snippet.get('thumbnails', {}).get('medium') or snippet.get('thumbnails', {}).get('default') or {}).get('url', ''),
                 language=snippet.get('defaultLanguage', 'ja')
             )
         except Exception as e:

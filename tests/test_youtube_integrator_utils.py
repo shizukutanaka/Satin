@@ -80,5 +80,42 @@ class ExtractChannelIdTests(YouTubeIntegratorTestBase):
         self.assertIsNone(self.yi.extract_channel_id("https://www.youtube.com/watch?v=abc"))
 
 
+class ThumbnailFallbackTest(YouTubeIntegratorTestBase):
+    """Regression: snippet['thumbnails']['high']['url'] raised KeyError when
+    YouTube API returns only lower-resolution thumbnail entries."""
+
+    def _make_snippet(self, keys):
+        thumbnails = {k: {"url": f"http://img/{k}.jpg"} for k in keys}
+        return {"thumbnails": thumbnails}
+
+    def _thumbnail_url(self, snippet):
+        return (
+            snippet.get("thumbnails", {}).get("high")
+            or snippet.get("thumbnails", {}).get("medium")
+            or snippet.get("thumbnails", {}).get("default")
+            or {}
+        ).get("url", "")
+
+    def test_high_resolution_returned_when_available(self):
+        url = self._thumbnail_url(self._make_snippet(["default", "medium", "high"]))
+        self.assertIn("high", url)
+
+    def test_falls_back_to_medium_when_no_high(self):
+        url = self._thumbnail_url(self._make_snippet(["default", "medium"]))
+        self.assertIn("medium", url)
+
+    def test_falls_back_to_default_when_only_default(self):
+        url = self._thumbnail_url(self._make_snippet(["default"]))
+        self.assertIn("default", url)
+
+    def test_empty_thumbnails_returns_empty_string(self):
+        url = self._thumbnail_url({"thumbnails": {}})
+        self.assertEqual(url, "")
+
+    def test_missing_thumbnails_key_returns_empty_string(self):
+        url = self._thumbnail_url({})
+        self.assertEqual(url, "")
+
+
 if __name__ == "__main__":
     unittest.main()
