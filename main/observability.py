@@ -85,9 +85,10 @@ class StructuredLogHandler(logging.Handler):
     Python logging 用の構造化ログハンドラ
     """
 
-    def __init__(self, trace_provider=None):
+    def __init__(self, trace_provider=None, max_size: int = 10_000):
         super().__init__()
         self.trace_provider = trace_provider
+        self.max_size = max_size
         self.logs: List[StructuredLog] = []
 
     def emit(self, record: logging.LogRecord):
@@ -125,6 +126,8 @@ class StructuredLogHandler(logging.Handler):
                 custom_attributes=getattr(record, 'custom_attributes', {})
             )
 
+            if len(self.logs) >= self.max_size:
+                self.logs.pop(0)
             self.logs.append(structured)
 
             # 標準出力（JSON）

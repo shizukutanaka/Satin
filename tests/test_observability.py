@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main.observability import Metrics  # noqa: E402
+from main.observability import Metrics, StructuredLogHandler  # noqa: E402
 
 
 class MetricsTests(unittest.TestCase):
@@ -47,6 +47,36 @@ class MetricsTests(unittest.TestCase):
         summary = m.get_summary()
         self.assertEqual(summary["operation_latencies"]["op"]["count"], 2)
         self.assertEqual(summary["operation_latencies"]["op"]["mean_ms"], 15.0)
+
+
+class StructuredLogHandlerMaxSizeTests(unittest.TestCase):
+    """Regression: logs list grew without bound causing unbounded memory growth."""
+
+    def _make_record(self, msg="test"):
+        import logging
+        record = logging.LogRecord(
+            name="test", level=logging.INFO, pathname="", lineno=0,
+            msg=msg, args=(), exc_info=None
+        )
+        return record
+
+    def test_logs_capped_at_max_size(self):
+        handler = StructuredLogHandler(max_size=5)
+        for i in range(10):
+            handler.emit(self._make_record(f"msg{i}"))
+        self.assertEqual(len(handler.logs), 5)
+
+    def test_oldest_evicted_first(self):
+        handler = StructuredLogHandler(max_size=3)
+        for i in range(5):
+            handler.emit(self._make_record(f"msg{i}"))
+        messages = [log.message for log in handler.logs]
+        # Oldest 2 evicted; last 3 remain
+        self.assertEqual(messages, ["msg2", "msg3", "msg4"])
+
+    def test_default_max_size_is_large(self):
+        handler = StructuredLogHandler()
+        self.assertEqual(handler.max_size, 10_000)
 
 
 if __name__ == "__main__":

@@ -240,6 +240,9 @@ def manage_resources(cleanup_handlers: Dict[str, Callable]) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
             manager = ResourceManager()
+            for name, handler in cleanup_handlers.items():
+                if name in kwargs:
+                    manager.register(name, kwargs[name], handler)
             try:
                 result = func(*args, **kwargs)
                 return result

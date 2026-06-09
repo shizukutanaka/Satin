@@ -31,8 +31,12 @@ class BackupManager:
         self._cloud_bucket_obj = None
         if self.cloud_enabled and _gcs is not None:
             bucket_name = self.cloud_enabled.get("bucket_name")
-            client = _gcs.Client()
-            self._cloud_bucket_obj = client.get_bucket(bucket_name)
+            try:
+                client = _gcs.Client()
+                self._cloud_bucket_obj = client.get_bucket(bucket_name)
+            except Exception as e:
+                logger.error(f"クラウドバックアップの初期化に失敗しました: {e}")
+                self.cloud_enabled = None
 
     # ------------------------------------------------------------------
     # Public API

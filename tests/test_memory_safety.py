@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main.memory_safety import MemoryWatcher, WeakReferencedCache  # noqa: E402
+from main.memory_safety import MemoryWatcher, WeakReferencedCache, manage_resources  # noqa: E402
 
 
 class _Obj:
@@ -47,6 +47,42 @@ class WeakReferencedCacheTtlTests(unittest.TestCase):
         self.assertIn("real", cache._ttl_map)
         # _ttl_map must not exceed the live cache size by accumulation
         self.assertLessEqual(len(cache._ttl_map), len(cache._cache) + 0)
+
+
+class ManageResourcesDecoratorTests(unittest.TestCase):
+    """Regression: manage_resources used to be a no-op (never registered handlers)."""
+
+    def test_cleanup_called_on_success(self):
+        log = []
+
+        @manage_resources({'conn': lambda c: log.append(('close', c))})
+        def work(conn):
+            return conn * 2
+
+        result = work(conn=42)
+        self.assertEqual(result, 84)
+        self.assertEqual(log, [('close', 42)])
+
+    def test_cleanup_called_on_exception(self):
+        log = []
+
+        @manage_resources({'conn': lambda c: log.append('cleaned')})
+        def failing(conn):
+            raise ValueError("boom")
+
+        with self.assertRaises(ValueError):
+            failing(conn='x')
+        self.assertEqual(log, ['cleaned'])
+
+    def test_no_handler_for_unregistered_kwarg(self):
+        log = []
+
+        @manage_resources({'other': lambda x: log.append(x)})
+        def work(conn):
+            return 1
+
+        work(conn='ignored')
+        self.assertEqual(log, [])  # 'conn' not in cleanup_handlers → nothing registered
 
 
 if __name__ == "__main__":
