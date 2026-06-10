@@ -137,6 +137,19 @@ class MissingKeysRobustnessTest(unittest.TestCase):
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
+    def test_null_timestamp_does_not_crash(self):
+        """Regression: ev['timestamp'] == null caused fromtimestamp(None) TypeError."""
+        with open(self._logfile, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"timestamp": None, "event_type": "error"}) + "\n")
+
+        with patch.object(avatar_event_alert, "send_slack_alert", lambda *a: None):
+            with patch("avatar_event_alert.time") as mt:
+                mt.sleep.side_effect = KeyboardInterrupt
+                try:
+                    avatar_event_alert.monitor_log(self._logfile, "http://hook")
+                except (KeyboardInterrupt, SystemExit):
+                    pass  # must not raise TypeError
+
     def test_event_missing_type_does_not_crash(self):
         with open(self._logfile, "w", encoding="utf-8") as f:
             f.write(json.dumps({"timestamp": 1.0}) + "\n")  # no event_type

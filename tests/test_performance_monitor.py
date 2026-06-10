@@ -86,5 +86,41 @@ class CheckAlertsTests(unittest.TestCase):
         self.assertTrue(pm._check_alerts(_stats(sent=900_000, recv=200_000)))
 
 
+class CollectStatsNullDiskIOTest(unittest.TestCase):
+    """Regression: psutil.disk_io_counters() returning None raised AttributeError."""
+
+    def test_collect_stats_with_null_disk_io_counters(self):
+        from performance_monitor import PerformanceMonitor
+        import unittest.mock as mock
+
+        pm = object.__new__(PerformanceMonitor)
+
+        fake_vmem = mock.MagicMock()
+        fake_vmem.total = 8_000_000_000
+        fake_vmem.used = 4_000_000_000
+        fake_vmem.percent = 50.0
+
+        fake_net = mock.MagicMock()
+        fake_net.bytes_sent = 1024
+        fake_net.bytes_recv = 2048
+
+        fake_disk_usage = mock.MagicMock()
+        fake_disk_usage.percent = 42.0
+
+        with mock.patch('performance_monitor.psutil') as psutil_mock:
+            psutil_mock.virtual_memory.return_value = fake_vmem
+            psutil_mock.cpu_percent.return_value = 30.0
+            psutil_mock.cpu_count.return_value = 4
+            psutil_mock.disk_io_counters.return_value = None  # platform with no counters
+            psutil_mock.disk_usage.return_value = fake_disk_usage
+            psutil_mock.net_io_counters.return_value = fake_net
+
+            stats = pm._collect_stats()
+
+        self.assertEqual(stats['disk']['io_read'], 0)
+        self.assertEqual(stats['disk']['io_write'], 0)
+        self.assertEqual(stats['disk']['percent'], 42.0)
+
+
 if __name__ == "__main__":
     unittest.main()
