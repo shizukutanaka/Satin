@@ -111,5 +111,57 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(d.ticks, 1)
 
 
+class _StartStopDummy(_Dummy):
+    def __init__(self):
+        super().__init__()
+        self.is_autonomous = False
+        self.updated = 0
+
+    def update(self):
+        self.updated += 1
+
+
+class _ExtraFieldDummy(_StartStopDummy):
+    EXTRA_TEXT_FIELDS = ('comment_text',)
+
+    def __init__(self):
+        super().__init__()
+        self.comment_text = 'leftover'
+
+
+class StartStopTests(unittest.TestCase):
+    def test_start_enters_run_mode(self):
+        d = _StartStopDummy()
+        d.talk_text = 'stale'
+        d.ticks = 99
+        d.start_autonomous()
+        self.assertTrue(d.is_autonomous)
+        self.assertEqual(d.mode, 'run')
+        self.assertEqual(d.ticks, 0)
+        self.assertEqual(d.talk_text, '')
+        self.assertTrue(0 <= d.direction <= 360)
+
+    def test_stop_returns_to_idle_and_calls_update(self):
+        d = _StartStopDummy()
+        d.start_autonomous()
+        d.talk_text = 'talking'
+        d.stop_autonomous()
+        self.assertFalse(d.is_autonomous)
+        self.assertEqual(d.mode, 'idle')
+        self.assertEqual(d.talk_text, '')
+        self.assertEqual(d.updated, 1)
+
+    def test_extra_text_fields_reset_on_start(self):
+        d = _ExtraFieldDummy()
+        d.start_autonomous()
+        self.assertEqual(d.comment_text, '')
+
+    def test_extra_text_fields_reset_on_stop(self):
+        d = _ExtraFieldDummy()
+        d.comment_text = 'speaking'
+        d.stop_autonomous()
+        self.assertEqual(d.comment_text, '')
+
+
 if __name__ == "__main__":
     unittest.main()

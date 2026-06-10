@@ -31,19 +31,6 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWi
             'あなたも一緒にどう？'
         ]
 
-    def start_autonomous(self):
-        self.is_autonomous = True
-        self.mode = 'run'
-        self.ticks = 0
-        self.direction = random.uniform(0, 360)
-        self.talk_text = ''
-
-    def stop_autonomous(self):
-        self.is_autonomous = False
-        self.mode = 'idle'
-        self.talk_text = ''
-        self.update()
-
     def update_autonomous(self):
         if not self.is_autonomous:
             return

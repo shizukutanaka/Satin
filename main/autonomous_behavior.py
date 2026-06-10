@@ -10,6 +10,8 @@ avatar_3d_autonomous / avatar_3d_autonomous_tts / autonomous_gltf_avatar が
   - _autonomous_run_extra(): run 中の移動直後に呼ばれる（例: 画面端反射）
   - _on_talk_start(text):    talk 開始時に呼ばれる（例: TTS キュー投入）
   - reset_direction_on_run:  talk → run 復帰時に方向をランダムリセットするか
+  - EXTRA_TEXT_FIELDS:       start/stop で空文字にリセットする追加属性名のタプル
+                             （例: TTS 版の 'comment_text'）
 """
 from __future__ import annotations
 
@@ -22,6 +24,27 @@ class AutonomousBehaviorMixin:
     REST_TEXTS = ['ふう…ちょっと休憩。', 'すこし止まります。']
     # talk → run 復帰時に direction をランダムリセットするか（サブクラスで上書き）
     reset_direction_on_run = False
+    # start_autonomous / stop_autonomous で空文字へリセットする追加テキスト属性
+    EXTRA_TEXT_FIELDS: tuple = ()
+
+    def start_autonomous(self) -> None:
+        """自律モードを開始し、run 状態へ遷移する。"""
+        self.is_autonomous = True
+        self.mode = 'run'
+        self.ticks = 0
+        self.direction = random.uniform(0, 360)
+        self.talk_text = ''
+        for field in self.EXTRA_TEXT_FIELDS:
+            setattr(self, field, '')
+
+    def stop_autonomous(self) -> None:
+        """自律モードを停止し、idle 状態へ戻す。"""
+        self.is_autonomous = False
+        self.mode = 'idle'
+        self.talk_text = ''
+        for field in self.EXTRA_TEXT_FIELDS:
+            setattr(self, field, '')
+        self.update()
 
     def _autonomous_move(self) -> None:
         """direction 方向へ 1 ティック分移動する。numpy 未導入なら何もしない。"""

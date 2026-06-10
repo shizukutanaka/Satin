@@ -13,6 +13,7 @@ from tts_thread import TTSThread  # noqa: E402,F401
 
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
+    EXTRA_TEXT_FIELDS = ('comment_text',)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,21 +39,6 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWi
 
     def set_tts_queue(self, tts_queue):
         self.tts_queue = tts_queue
-
-    def start_autonomous(self):
-        self.is_autonomous = True
-        self.mode = 'run'
-        self.ticks = 0
-        self.direction = random.uniform(0, 360)
-        self.talk_text = ''
-        self.comment_text = ''
-
-    def stop_autonomous(self):
-        self.is_autonomous = False
-        self.mode = 'idle'
-        self.talk_text = ''
-        self.comment_text = ''
-        self.update()
 
     def speak_comment(self, comment):
         self.comment_text = comment

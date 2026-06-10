@@ -108,19 +108,6 @@ class AutonomousGLTFAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpen
         self.model = GLTFModel(filename)
         self.update()
 
-    def start_autonomous(self):
-        self.is_autonomous = True
-        self.mode = 'run'
-        self.ticks = 0
-        self.direction = random.uniform(0, 360)
-        self.talk_text = ''
-
-    def stop_autonomous(self):
-        self.is_autonomous = False
-        self.mode = 'idle'
-        self.talk_text = ''
-        self.update()
-
     def _autonomous_run_extra(self):
         # 画面端で反射
         for i in range(2):
