@@ -23,8 +23,11 @@ class AvatarLoaderApp:
         tk.Label(root, text="アバターファイルを選択:").pack(padx=10, pady=5)
         entry = tk.Entry(root, textvariable=self.avatar_path, width=50)
         entry.pack(padx=10, pady=5)
-        entry.drop_target_register('DND_Files')
-        entry.dnd_bind('<<Drop>>', self.on_drop)
+        try:
+            entry.drop_target_register('DND_Files')
+            entry.dnd_bind('<<Drop>>', self.on_drop)
+        except AttributeError:
+            pass  # tkinterdnd2 not available; drag-and-drop silently disabled
         tk.Button(root, text="ファイル選択", command=self.browse).pack(padx=10, pady=5)
         tk.Button(root, text="読み込み", command=self.load_avatar).pack(padx=10, pady=10)
         self.status = tk.Label(root, text="", fg="blue")

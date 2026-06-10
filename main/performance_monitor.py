@@ -96,6 +96,9 @@ class PerformanceMonitor:
         """パフォーマンス統計を収集"""
         if psutil is None:
             return {}
+        # disk_io_counters() returns None on platforms where the OS does not
+        # expose per-disk I/O counters (e.g. some VMs / container runtimes).
+        _disk_io = psutil.disk_io_counters()
         return {
             "timestamp": datetime.now().isoformat(),
             "memory": {
@@ -108,8 +111,8 @@ class PerformanceMonitor:
                 "count": psutil.cpu_count()
             },
             "disk": {
-                "io_read": psutil.disk_io_counters().read_bytes,
-                "io_write": psutil.disk_io_counters().write_bytes,
+                "io_read": getattr(_disk_io, 'read_bytes', 0),
+                "io_write": getattr(_disk_io, 'write_bytes', 0),
                 "percent": psutil.disk_usage('/').percent
             },
             "network": {
