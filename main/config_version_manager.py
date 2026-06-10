@@ -227,7 +227,10 @@ if __name__ == "__main__":
                 idx1 = input("Enter first version number: ")
                 idx2 = input("Enter second version number: ")
                 
-                if idx1.isdigit() and idx2.isdigit():
+                n = len(versions)
+                if (idx1.isdigit() and idx2.isdigit()
+                        and 1 <= int(idx1) <= n
+                        and 1 <= int(idx2) <= n):
                     v1 = versions[int(idx1)-1]['path']
                     v2 = versions[int(idx2)-1]['path']
                     differences = compare_versions(v1, v2)
