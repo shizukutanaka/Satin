@@ -34,6 +34,20 @@ class UtilsBatchTests(unittest.TestCase):
         results = utils_batch.batch_process(lambda x: x * 2, [1, 2, 3])
         self.assertEqual(sorted(results), [2, 4, 6])
 
+    def test_batch_process_tolerates_partial_failure(self):
+        import utils_batch
+
+        def boom_on_zero(x):
+            if x == 0:
+                raise ValueError("zero!")
+            return x * 10
+
+        results = utils_batch.batch_process(boom_on_zero, [-1, 0, 1, 2])
+        # One failure: that slot becomes None, others succeed.
+        self.assertIn(None, results)
+        non_null = [r for r in results if r is not None]
+        self.assertEqual(sorted(non_null), [-10, 10, 20])
+
 
 class TtsVirtualAudioTests(unittest.TestCase):
     def test_imports_without_audio_gui_deps(self):

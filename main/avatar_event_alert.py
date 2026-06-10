@@ -35,7 +35,7 @@ def monitor_log(logfile, webhook_url, poll_interval=5):
                     seen.add(key)
                     # 異常イベント検知例
                     if ev.get('event_type') in ('error', 'tts_fail', 'disconnect'):
-                        ts = datetime.fromtimestamp(ev.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')
+                        ts = datetime.fromtimestamp(ev.get('timestamp') or 0).strftime('%Y-%m-%d %H:%M:%S')
                         msg = (f"[Satin異常検知] {ts} {ev.get('event_type','')}\n"
                                f"詳細: {json.dumps(ev.get('details', {}), ensure_ascii=False)}")
                         send_slack_alert(webhook_url, msg)

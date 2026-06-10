@@ -77,19 +77,20 @@ class TaskScheduler:
         # TypeError: '<' not supported between NoneType and ScheduledTask.
         # itertools.count().__next__ is atomic under the GIL.
         self._seq = itertools.count()
+        self._num_workers = num_workers
         self.worker_semaphore = threading.Semaphore(num_workers)
         self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
-    
+
     def start(self) -> None:
         """Start the scheduler"""
         if self.running:
             return
-            
+
         self.running = True
         self.scheduler_thread.start()
-        
+
         # Start worker threads
-        for i in range(self.worker_semaphore._value):
+        for i in range(self._num_workers):
             worker = threading.Thread(
                 target=self._worker_loop,
                 name=f"Worker-{i}",

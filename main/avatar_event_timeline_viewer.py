@@ -1,5 +1,6 @@
 import sys
 import json
+import html as _html
 from datetime import datetime
 try:
     from PyQt5.QtWidgets import QApplication, QMainWindow, QListWidget, QLabel, QVBoxLayout, QWidget, QFileDialog
@@ -62,7 +63,11 @@ class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
             ev = self.events[idx]
             details = json.dumps(ev.get("details", {}), ensure_ascii=False, indent=2)
             ts = datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%Y-%m-%d %H:%M:%S")
-            self.detail_label.setText(f"<b>時刻:</b> {ts}<br><b>種別:</b> {ev.get('event_type','')}<br><b>詳細:</b><pre>{details}</pre>")
+            self.detail_label.setText(
+                f"<b>時刻:</b> {_html.escape(ts)}<br>"
+                f"<b>種別:</b> {_html.escape(ev.get('event_type', ''))}<br>"
+                f"<b>詳細:</b><pre>{_html.escape(details)}</pre>"
+            )
         else:
             self.detail_label.setText("")
 
