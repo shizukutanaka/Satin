@@ -24,7 +24,7 @@ def load_events(logfile):
 def event_stats(events):
     event_types = [ev['event_type'] for ev in events]
     counts = Counter(event_types)
-    times = [datetime.fromtimestamp(ev['timestamp']) for ev in events]
+    times = [datetime.fromtimestamp(ev.get('timestamp') or 0) for ev in events if ev.get('timestamp') is not None]
     by_hour = defaultdict(int)
     for t in times:
         by_hour[t.hour] += 1

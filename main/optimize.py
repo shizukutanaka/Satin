@@ -807,6 +807,10 @@ class PerformanceMonitor:
             for name, times in self.metrics.items()
         }
 
+    def shutdown(self) -> None:
+        """Release the internal executor. Call when done with this monitor."""
+        self._executor.shutdown(wait=True)
+
 def cache_result(ttl: int = 300, max_size: int = 1000, compression: bool = False):
     """Enhanced caching decorator with size limit, async support, and compression"""
     def decorator(func):
