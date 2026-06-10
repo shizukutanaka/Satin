@@ -11,6 +11,7 @@ from optional_deps import (  # noqa: E402
 
 from camera_thread import CameraThread  # noqa: E402
 from gltf_utils import load_first_mesh_vertices  # noqa: E402
+from gl_widget_base import GLViewportMixin  # noqa: E402
 
 class GLTFModel:
     def __init__(self, filename):
@@ -38,7 +39,7 @@ class GLTFModel:
             glVertex3f(*v)
         glEnd()
 
-class Avatar3DGLTFViewer(QOpenGLWidget if QOpenGLWidget is not None else object):
+class Avatar3DGLTFViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, pose_queue, parent=None):
         super().__init__(parent)
         self.pose_queue = pose_queue
@@ -63,17 +64,6 @@ class Avatar3DGLTFViewer(QOpenGLWidget if QOpenGLWidget is not None else object)
         except queue.Empty:
             pass
         self.update()
-
-    def initializeGL(self):
-        glClearColor(0.2, 0.2, 0.2, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45.0, float(w)/float(h), 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)

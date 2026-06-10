@@ -10,8 +10,9 @@ from optional_deps import (  # noqa: E402
 )
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 from tts_thread import TTSThread  # noqa: E402,F401
+from gl_widget_base import GLViewportMixin  # noqa: E402
 
-class AutonomousAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
+class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
     EXTRA_TEXT_FIELDS = ('comment_text',)
 
@@ -65,17 +66,6 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWi
         else:
             self._advance_autonomous_state()
         self.update()
-
-    def initializeGL(self):
-        glClearColor(0.2, 0.2, 0.2, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45.0, float(w)/float(h), 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)

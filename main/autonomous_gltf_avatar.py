@@ -9,6 +9,7 @@ from optional_deps import (  # noqa: E402
 
 from gltf_utils import load_first_mesh_vertices  # noqa: E402
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
+from gl_widget_base import GLViewportMixin  # noqa: E402
 
 class GLTFModel:
     def __init__(self, filename):
@@ -78,7 +79,9 @@ class GLTFModel:
         glEnd()
 
 
-class AutonomousGLTFAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
+class AutonomousGLTFAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
+    GL_CLEAR_COLOR = (0.8, 0.9, 1.0, 1.0)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -135,17 +138,6 @@ class AutonomousGLTFAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpen
         else:
             self.anim_state.setText('アニメーション: なし')
         self.update()
-
-    def initializeGL(self):
-        glClearColor(0.8, 0.9, 1.0, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45, w / h if h != 0 else 1, 0.1, 100)
-        glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
