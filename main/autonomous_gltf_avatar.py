@@ -8,6 +8,7 @@ from optional_deps import (  # noqa: E402
 )
 
 from gltf_utils import load_first_mesh_vertices  # noqa: E402
+from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 
 class GLTFModel:
     def __init__(self, filename):
@@ -77,7 +78,7 @@ class GLTFModel:
         glEnd()
 
 
-class AutonomousGLTFAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else object):
+class AutonomousGLTFAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -120,10 +121,15 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else
         self.talk_text = ''
         self.update()
 
+    def _autonomous_run_extra(self):
+        # 画面端で反射
+        for i in range(2):
+            if abs(self.position[i]) > 1.2:
+                self.direction += 180
+
     def update_autonomous(self):
         if not self.is_autonomous:
             return
-        self.ticks += 1
         # 状態ごとにアニメーションを進める
         if self.model and self.model.animations:
             if self.mode == 'run':
@@ -133,36 +139,7 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else
             elif self.mode == 'talk':
                 self.model.current_animation = 2 if len(self.model.animations) > 2 else 0
             self.model.advance_animation(0.05, self.model.current_animation)
-        if self.mode == 'run':
-            # 駆け回る
-            speed = 0.03
-            if np is not None:
-                self.position[0] += speed * np.cos(np.radians(self.direction))
-                self.position[1] += speed * np.sin(np.radians(self.direction))
-            # 画面端で反射
-            for i in range(2):
-                if abs(self.position[i]) > 1.2:
-                    self.direction += 180
-            # ランダムに方向転換
-            if random.random() < 0.05:
-                self.direction += random.uniform(-60, 60)
-            if self.ticks > 60 + random.randint(0, 40):  # 3秒程度
-                self.mode = 'rest'
-                self.ticks = 0
-        elif self.mode == 'rest':
-            # 休憩
-            if self.ticks == 1:
-                self.talk_text = random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
-            if self.ticks > 40 + random.randint(0, 20):  # 2秒程度
-                self.mode = 'talk'
-                self.ticks = 0
-        elif self.mode == 'talk':
-            if self.ticks == 1:
-                self.talk_text = random.choice(self.talks)
-            if self.ticks > 40 + random.randint(0, 20):
-                self.mode = 'run'
-                self.talk_text = ''
-                self.ticks = 0
+        self._advance_autonomous_state()
         # UIアニメーション状態表示
         if self.model and self.model.animations:
             anim_name = ['歩行','待機','トーク']

@@ -6,8 +6,11 @@ from optional_deps import (  # noqa: E402
     QPushButton, QLabel, QLineEdit, QFileDialog, Qt, QTimer,
     pyttsx3, sd, pygltflib,
 )
+from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 
-class AutonomousAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else object):
+class AutonomousAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
+    reset_direction_on_run = True
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -44,35 +47,7 @@ class AutonomousAvatarViewer(QOpenGLWidget if QOpenGLWidget is not None else obj
     def update_autonomous(self):
         if not self.is_autonomous:
             return
-        self.ticks += 1
-        if self.mode == 'run':
-            # 駆け回る
-            speed = 0.03
-            if np is not None:
-                self.position[0] += speed * np.cos(np.radians(self.direction))
-                self.position[1] += speed * np.sin(np.radians(self.direction))
-            # ランダムに方向転換
-            if random.random() < 0.05:
-                self.direction += random.uniform(-60, 60)
-            if self.ticks > 60 + random.randint(0, 40):  # 3秒程度
-                self.mode = 'rest'
-                self.ticks = 0
-        elif self.mode == 'rest':
-            # 休憩
-            if self.ticks == 1:
-                self.talk_text = random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
-            if self.ticks > 40 + random.randint(0, 20):  # 2秒程度
-                self.mode = 'talk'
-                self.ticks = 0
-        elif self.mode == 'talk':
-            # お話し
-            if self.ticks == 1:
-                self.talk_text = random.choice(self.talks)
-            if self.ticks > 40 + random.randint(0, 20):  # 2秒程度
-                self.mode = 'run'
-                self.direction = random.uniform(0, 360)
-                self.ticks = 0
-                self.talk_text = ''
+        self._advance_autonomous_state()
         self.update()
 
     def initializeGL(self):

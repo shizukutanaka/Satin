@@ -4,27 +4,10 @@ import threading
 import tempfile
 import os
 
-try:
-    import sounddevice as sd
-except ImportError:
-    sd = None  # type: ignore
-try:
-    import numpy as np
-except ImportError:
-    np = None  # type: ignore
-try:
-    import pyttsx3
-except ImportError:
-    pyttsx3 = None  # type: ignore
-try:
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLineEdit, QLabel, QComboBox
-    from PyQt5.QtCore import QTimer
-except ImportError:
-    QApplication = QMainWindow = QPushButton = QLineEdit = QLabel = QComboBox = QTimer = None  # type: ignore
-try:
-    from scipy.io import wavfile
-except ImportError:
-    wavfile = None  # type: ignore
+from optional_deps import (  # noqa: E402
+    np, sd, pyttsx3,
+    QApplication, QMainWindow, QLineEdit, QLabel, QComboBox,
+)
 try:
     from pydub import AudioSegment
 except ImportError:
@@ -70,6 +53,8 @@ class TTSWorker(threading.Thread):
                 continue
 
     def play_wav_on_device(self, wav_path, device_idx):
+        if AudioSegment is None or np is None or sd is None:
+            return
         # pydubで読み込み
         audio = AudioSegment.from_wav(wav_path)
         samples = np.array(audio.get_array_of_samples())
