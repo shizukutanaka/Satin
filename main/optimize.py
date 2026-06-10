@@ -894,32 +894,29 @@ def optimize_memory():
 async def batch_process(items: List[T], process_func: Callable, batch_size: int = 10, max_workers: int = 4, optimize: bool = True) -> List[T]:
     """Enhanced batch processing with async support, worker pool, and optimization"""
     results = []
-    executor = ThreadPoolExecutor(max_workers=max_workers)
-    
-    async def process_batch(batch: List[T]) -> List[T]:
-        loop = asyncio.get_running_loop()
-        batch_size = len(batch)
-        if optimize:
-            batch_size = optimize_batch_size(batch_size)
-        return await loop.run_in_executor(executor, process_func, batch[:batch_size])
-    
+
     def optimize_batch_size(total: int) -> int:
         """Optimize batch size based on system resources"""
         import psutil
         memory = psutil.virtual_memory()
         cpu_count = psutil.cpu_count()
-        
-        # Adjust batch size based on available resources
+
         if memory.percent > 80:
             return max(1, total // 2)
         elif cpu_count > 4:
             return min(total, 100)
         return min(total, 50)
-    
-    for i in range(0, len(items), batch_size):
-        batch = items[i:i + batch_size]
-        results.extend(await process_batch(batch))
-    
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        async def process_batch(batch: List[T]) -> List[T]:
+            loop = asyncio.get_running_loop()
+            effective = optimize_batch_size(len(batch)) if optimize else len(batch)
+            return await loop.run_in_executor(executor, process_func, batch[:effective])
+
+        for i in range(0, len(items), batch_size):
+            batch = items[i:i + batch_size]
+            results.extend(await process_batch(batch))
+
     return results
     
 async def parallel_process(items: List[T], process_func: Callable, max_workers: int = 4, optimize: bool = True) -> List[T]:
