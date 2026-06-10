@@ -12,6 +12,11 @@ from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 from tts_thread import TTSThread  # noqa: E402,F401
 from gl_widget_base import GLViewportMixin  # noqa: E402
 
+try:
+    from conversation_log import get_conversation_log  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    get_conversation_log = None
+
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
     EXTRA_TEXT_FIELDS = ('comment_text',)
@@ -53,6 +58,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 generated = ""
             if generated:
                 reply = generated
+        # 会話履歴を記録（失敗しても UI/TTS を壊さない）
+        if get_conversation_log is not None:
+            try:
+                get_conversation_log().log_exchange(comment, reply)
+            except Exception:
+                pass
         self.comment_text = reply
         self.mode = 'comment'
         self.ticks = 0

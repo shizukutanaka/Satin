@@ -206,6 +206,23 @@ replies never repeat the previous line, and if no rule matches the avatar gives 
 friendly fallback acknowledgment. If the persona is unavailable or returns nothing
 the avatar falls back to echoing your text, preserving the original behavior.
 
+#### Conversation history
+
+Every exchange (your comment + the avatar's reply) is recorded to the avatar
+event log (`avatar_event_log.jsonl`), so conversations show up in the existing
+event tooling — the timeline viewer, the Flask dashboard's `/logs` page, and the
+event report. You can also read the history programmatically:
+
+```python
+from main.conversation_log import get_conversation_log
+
+log = get_conversation_log()
+log.recent(10)        # last 10 conversation events (dicts, oldest first)
+log.recent_texts(10)  # ["You: こんにちは", "Avatar: こんにちは！会えてうれしいな。", ...]
+```
+
+Logging failures (e.g. disk full) never interrupt the avatar's speech or UI.
+
 ### Plugin System
 
 Satin now includes a robust plugin system that:

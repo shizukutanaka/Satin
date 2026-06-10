@@ -16,3 +16,7 @@ __pycache__/
 # ランタイム生成キャッシュ(CacheManager)
 main/config/cache/
 config/cache/
+
+# アバターイベント/会話ログ(ランタイム生成)
+avatar_event_log.jsonl
+*.jsonl.gz

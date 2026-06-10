@@ -45,7 +45,13 @@ _RESPONSE_PERSONA = Persona.from_dict({
 
 
 class SpeakCommentTests(unittest.TestCase):
+    def setUp(self):
+        # 会話ログを無効化して CWD に avatar_event_log.jsonl を作らない
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+
     def tearDown(self):
+        self._log_patcher.stop()
         _persona_mod.reset_persona()
 
     def test_matching_keyword_replies_not_echoes(self):
