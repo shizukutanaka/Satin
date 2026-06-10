@@ -24,6 +24,8 @@ try:
 except ImportError:
     pygltflib = None  # type: ignore
 
+from gltf_utils import load_first_mesh_vertices  # noqa: E402
+
 class GLTFModel:
     def __init__(self, filename):
         self.filename = filename
@@ -39,14 +41,11 @@ class GLTFModel:
             return
         # 頂点・面・アニメーションの簡易ローダー
         gltf = pygltflib.GLTF2().load(self.filename)
-        if not gltf.meshes:
+        vertices = load_first_mesh_vertices(gltf, np)
+        if vertices is None:
             return
+        self.vertices = vertices
         mesh = gltf.meshes[0]
-        accessor = gltf.accessors[mesh.primitives[0].attributes.POSITION]
-        buffer_view = gltf.bufferViews[accessor.bufferView]
-        buffer = gltf.buffers[buffer_view.buffer]
-        data = np.frombuffer(buffer.data, dtype=np.float32)
-        self.vertices = data.reshape(-1, 3)
         if mesh.primitives[0].indices is not None:
             idx_accessor = gltf.accessors[mesh.primitives[0].indices]
             idx_buffer_view = gltf.bufferViews[idx_accessor.bufferView]

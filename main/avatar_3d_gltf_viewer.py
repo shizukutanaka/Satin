@@ -42,6 +42,7 @@ except ImportError:
 import os
 
 from camera_thread import CameraThread  # noqa: E402
+from gltf_utils import load_first_mesh_vertices  # noqa: E402
 
 class GLTFModel:
     def __init__(self, filename):
@@ -55,15 +56,10 @@ class GLTFModel:
             return
         # シンプルなGLTF/GLB読み込み（バイナリメッシュのみ対応）
         gltf = pygltflib.GLTF2().load(self.filename)
-        if not gltf.meshes:
+        vertices = load_first_mesh_vertices(gltf, np)
+        if vertices is None:
             return
-        # ここでは最初のメッシュのみ
-        mesh = gltf.meshes[0]
-        accessor = gltf.accessors[gltf.meshes[0].primitives[0].attributes.POSITION]
-        buffer_view = gltf.bufferViews[accessor.bufferView]
-        buffer = gltf.buffers[buffer_view.buffer]
-        data = np.frombuffer(buffer.get_data(), dtype=np.float32)
-        self.vertices = data.reshape(-1, 3)
+        self.vertices = vertices
         # 顔情報は省略（サンプルではワイヤーフレームのみ）
 
     def draw(self):
