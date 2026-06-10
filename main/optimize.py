@@ -897,7 +897,7 @@ async def batch_process(items: List[T], process_func: Callable, batch_size: int 
     executor = ThreadPoolExecutor(max_workers=max_workers)
     
     async def process_batch(batch: List[T]) -> List[T]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         batch_size = len(batch)
         if optimize:
             batch_size = optimize_batch_size(batch_size)
@@ -927,7 +927,7 @@ async def parallel_process(items: List[T], process_func: Callable, max_workers: 
     results = []
     
     async def process_item(item: T) -> T:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         # Optimize processing based on item type
         if optimize:
             item = optimize_item(item)

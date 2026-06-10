@@ -400,7 +400,7 @@ class WebIntegrator:
                     elif property_attr == 'article:published_time':
                         try:
                             published_date = datetime.fromisoformat(content_attr.replace('Z', '+00:00'))
-                        except:
+                        except Exception:
                             pass
 
                 # 本文抽出（フォールバック）
@@ -683,7 +683,7 @@ class WebIntegrator:
                     if lastmod:
                         try:
                             entry.lastmod = datetime.fromisoformat(lastmod.get_text(strip=True).replace('Z', '+00:00'))
-                        except:
+                        except Exception:
                             pass
 
                     changefreq = url_tag.find('changefreq')
@@ -694,7 +694,7 @@ class WebIntegrator:
                     if priority:
                         try:
                             entry.priority = float(priority.get_text(strip=True))
-                        except:
+                        except Exception:
                             pass
 
                     entries.append(entry)
