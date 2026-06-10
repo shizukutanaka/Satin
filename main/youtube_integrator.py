@@ -202,7 +202,8 @@ class YouTubeIntegrator:
         """YouTube URLからチャンネルIDを抽出"""
         patterns = [
             r'youtube\.com\/channel\/([a-zA-Z0-9_-]+)',
-            r'youtube\.com\/@([a-zA-Z0-9_-]+)',
+            # Handle names can contain dots (e.g. @user.name)
+            r'youtube\.com\/@([a-zA-Z0-9_.%-]+)',
         ]
 
         for pattern in patterns:
