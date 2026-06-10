@@ -53,9 +53,9 @@ class PluginManager:
     
     def _load_plugin(self, plugin_file: Path) -> None:
         """Load a single plugin"""
+        plugin_name = plugin_file.stem
         try:
             # Get plugin name from filename
-            plugin_name = plugin_file.stem
             
             # Skip __init__.py
             if plugin_name == "__init__":

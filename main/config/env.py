@@ -284,7 +284,7 @@ def _set_nested(config: Dict[str, Any], path: str, value: Any) -> None:
     current = config
     
     for key in keys[:-1]:
-        if key not in current:
+        if not isinstance(current.get(key), dict):
             current[key] = {}
         current = current[key]
     

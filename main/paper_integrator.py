@@ -104,7 +104,7 @@ class PaperIntegrator:
                     title=bib.get("title", ""),
                     abstract=bib.get("abstract", ""),
                     authors=bib.get("author", []),
-                    published_date=datetime(year_int, 1, 1) if year_int else None,
+                    published_date=datetime(year_int, 1, 1) if year_int and 1 <= year_int <= 9999 else None,
                     url=result.get("pub_url", ""),
                     source="scholar",
                     citations=result.get("num_citations", 0),
