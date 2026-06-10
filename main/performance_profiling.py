@@ -222,7 +222,7 @@ class PerformanceProfiler:
             ]
         }
 
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2)
 
         logger.info(f"Profiling report exported to {filepath}")
@@ -311,7 +311,7 @@ class MemoryProfiler:
             ]
         }
 
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2, default=str)
 
         logger.info(f"Memory report exported to {filepath}")
