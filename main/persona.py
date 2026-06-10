@@ -79,6 +79,59 @@ _DEFAULT_DIALOGUE: Dict[str, Dict] = {
 }
 
 
+# --------------------------------------------------------------------------- #
+# 既定の応答ルール（config に responses が無くても会話できるフォールバック）
+# --------------------------------------------------------------------------- #
+# 各言語: {"rules": [{"keywords": [...], "replies": [...]}, ...], "fallback": [...]}
+# rules は順序付きリストで first-match-wins（具体的なルールを先頭に置く）。
+_DEFAULT_RESPONSES: Dict[str, Dict] = {
+    "ja": {
+        "rules": [
+            {"keywords": ["こんにちは", "こんばんは", "おはよう", "やあ", "ハロー"],
+             "replies": ["こんにちは！会えてうれしいな。", "やっほー！元気だった？"]},
+            {"keywords": ["元気", "調子"],
+             "replies": ["元気だよ！あなたは？", "ばっちり！今日も走るよ。"]},
+            {"keywords": ["かわいい", "可愛い", "好き"],
+             "replies": ["えへへ、ありがとう！", "うれしいこと言ってくれるね。"]},
+            {"keywords": ["ありがとう", "感謝"],
+             "replies": ["どういたしまして！", "お役に立てたならよかった。"]},
+            {"keywords": ["さようなら", "ばいばい", "またね", "おやすみ"],
+             "replies": ["またね！いつでも来てね。", "ばいばい、気をつけてね。"]},
+            {"keywords": ["疲れ", "つかれ", "休"],
+             "replies": ["無理しないでね。少し休もう？", "ひと息つくのも大事だよ。"]},
+        ],
+        "fallback": [
+            "なるほど、そうなんだ。",
+            "うんうん、聞いてるよ。",
+            "へえ、もっと教えて！",
+            "そっか、いいね。",
+        ],
+    },
+    "en": {
+        "rules": [
+            {"keywords": ["hello", "good morning", "good evening", "hey", "hi there"],
+             "replies": ["Hello! Great to see you.", "Hey there! How have you been?"]},
+            {"keywords": ["how are you", "how's it going", "how are u"],
+             "replies": ["I'm great! How about you?", "Feeling good and ready to run!"]},
+            {"keywords": ["cute", "love you", "like you"],
+             "replies": ["Aw, thank you!", "You're so kind to say that."]},
+            {"keywords": ["thank", "thanks"],
+             "replies": ["You're welcome!", "Happy to help!"]},
+            {"keywords": ["goodbye", "bye bye", "see you", "good night"],
+             "replies": ["See you! Come back anytime.", "Bye, take care!"]},
+            {"keywords": ["tired", "exhausted", "take a rest"],
+             "replies": ["Don't push yourself. Let's rest a bit.", "Taking a breather is important too."]},
+        ],
+        "fallback": [
+            "I see, got it.",
+            "Mhm, I'm listening.",
+            "Oh, tell me more!",
+            "Nice, sounds good.",
+        ],
+    },
+}
+
+
 def _time_of_day(hour: int) -> str:
     """時刻(0-23)を morning / afternoon / evening / night に区分する。"""
     if 5 <= hour < 11:
@@ -104,17 +157,20 @@ class Persona:
         dialogue: Optional[Dict[str, Dict]] = None,
         default_lang: str = _DEFAULT_LANG,
         lang: Optional[str] = None,
+        responses: Optional[Dict[str, Dict]] = None,
     ):
         self.name = name or _DEFAULT_NAME
         self.default_lang = default_lang or _DEFAULT_LANG
         self._dialogue = dialogue if dialogue else _DEFAULT_DIALOGUE
+        self._responses = responses if responses else _DEFAULT_RESPONSES
         self.lang = (lang or self.default_lang).lower()
         # カテゴリごとに直前に返したインデックスを記録して連続を避ける
         self._last: Dict[str, str] = {}
 
     # ---- 言語解決 -------------------------------------------------------- #
-    def _resolve_lang_block(self, lang: Optional[str] = None) -> Dict:
-        """要求言語の dialogue ブロックを、フォールバックを辿って返す。"""
+    def _resolve_block(self, source: Dict[str, Dict], lang: Optional[str] = None) -> Dict:
+        """source（dialogue または responses）から要求言語のブロックを、
+        フォールバックチェーン（要求言語 → 地域コード → 既定 → en → 任意）で返す。"""
         candidates: List[str] = []
         if lang:
             candidates.append(lang.lower())
@@ -125,14 +181,22 @@ class Persona:
         candidates.append(self.default_lang)
         candidates.append("en")
         for cand in candidates:
-            block = self._dialogue.get(cand)
+            block = source.get(cand)
             if block:
                 return block
         # どれも無ければ任意の最初のブロック、それも無ければ空
-        for block in self._dialogue.values():
+        for block in source.values():
             if block:
                 return block
         return {}
+
+    def _resolve_lang_block(self, lang: Optional[str] = None) -> Dict:
+        """要求言語の dialogue ブロックを、フォールバックを辿って返す。"""
+        return self._resolve_block(self._dialogue, lang)
+
+    def _resolve_responses_block(self, lang: Optional[str] = None) -> Dict:
+        """要求言語の responses ブロックを、フォールバックを辿って返す。"""
+        return self._resolve_block(self._responses, lang)
 
     # ---- 台詞選択 -------------------------------------------------------- #
     def _pick(self, category_key: str, options: List[str]) -> str:
@@ -178,6 +242,35 @@ class Persona:
             return self.talk(lang)
         return self._pick(f"greeting:{slot}:{lang or self.lang}", options)
 
+    def respond(self, text: str, lang: Optional[str] = None) -> str:
+        """ユーザー入力 text に対する応答を 1 つ返す（ルールベース）。
+
+        キーワード（大文字小文字を無視した部分一致）が最初に一致したルールの
+        replies から選ぶ。日本語には語境界が無いため部分一致を採用する。どの
+        ルールにも一致しなければ fallback プールから返す。空入力や fallback も
+        無い場合は空文字を返す（呼び出し側がオウム返し等のフォールバックを判断）。
+        """
+        if not text or not str(text).strip():
+            return ""
+        norm = str(text).strip().lower()
+
+        block = self._resolve_responses_block(lang)
+        rules = block.get("rules") or []
+        fallback = list(block.get("fallback") or [])
+
+        for idx, rule in enumerate(rules):
+            if not isinstance(rule, dict):
+                continue
+            for kw in rule.get("keywords") or []:
+                if kw and str(kw).strip().lower() in norm:
+                    replies = list(rule.get("replies") or [])
+                    if replies:
+                        # ルールごとに直前重複を避ける（キーはルール順インデックス）
+                        return self._pick(f"respond:{lang or self.lang}:rule:{idx}", replies)
+        if fallback:
+            return self._pick(f"respond:{lang or self.lang}:fallback", fallback)
+        return ""
+
     # ---- 構築 ------------------------------------------------------------ #
     @classmethod
     def from_dict(cls, data: Dict, lang: Optional[str] = None) -> "Persona":
@@ -187,11 +280,15 @@ class Persona:
         dialogue = data.get("dialogue")
         if not isinstance(dialogue, dict) or not dialogue:
             dialogue = None
+        responses = data.get("responses")
+        if not isinstance(responses, dict) or not responses:
+            responses = None
         return cls(
             name=data.get("name", _DEFAULT_NAME),
             dialogue=dialogue,
             default_lang=data.get("default_lang", _DEFAULT_LANG),
             lang=lang,
+            responses=responses,
         )
 
     @classmethod

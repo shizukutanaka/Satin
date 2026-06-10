@@ -70,5 +70,83 @@
         ]
       }
     }
+  },
+  "responses": {
+    "ja": {
+      "rules": [
+        {
+          "keywords": ["こんにちは", "こんばんは", "おはよう", "やあ", "ハロー"],
+          "replies": ["こんにちは！会えてうれしいな。", "やっほー！元気だった？"]
+        },
+        {
+          "keywords": ["元気", "調子はどう", "調子どう"],
+          "replies": ["元気だよ！あなたは？", "ばっちり！今日も走るよ。"]
+        },
+        {
+          "keywords": ["かわいい", "可愛い", "大好き", "好きだよ"],
+          "replies": ["えへへ、ありがとう！", "うれしいこと言ってくれるね。"]
+        },
+        {
+          "keywords": ["ありがとう", "感謝", "助かった"],
+          "replies": ["どういたしまして！", "お役に立てたならよかった。"]
+        },
+        {
+          "keywords": ["さようなら", "ばいばい", "またね", "おやすみ"],
+          "replies": ["またね！いつでも来てね。", "ばいばい、気をつけてね。"]
+        },
+        {
+          "keywords": ["疲れた", "つかれた", "しんどい", "眠い"],
+          "replies": ["無理しないでね。少し休もう？", "ひと息つくのも大事だよ。"]
+        },
+        {
+          "keywords": ["天気", "晴れ", "雨"],
+          "replies": ["今日はどんな空かな？", "お天気の話、いいね。"]
+        }
+      ],
+      "fallback": [
+        "なるほど、そうなんだ。",
+        "うんうん、聞いてるよ。",
+        "へえ、もっと教えて！",
+        "そっか、いいね。"
+      ]
+    },
+    "en": {
+      "rules": [
+        {
+          "keywords": ["hello", "good morning", "good evening", "hi there", "hey there"],
+          "replies": ["Hello! Great to see you.", "Hey there! How have you been?"]
+        },
+        {
+          "keywords": ["how are you", "how's it going", "how are u"],
+          "replies": ["I'm great! How about you?", "Feeling good and ready to run!"]
+        },
+        {
+          "keywords": ["cute", "love you", "like you", "adorable"],
+          "replies": ["Aw, thank you!", "You're so kind to say that."]
+        },
+        {
+          "keywords": ["thank you", "thanks", "appreciate"],
+          "replies": ["You're welcome!", "Happy to help!"]
+        },
+        {
+          "keywords": ["goodbye", "bye bye", "see you", "good night"],
+          "replies": ["See you! Come back anytime.", "Bye, take care!"]
+        },
+        {
+          "keywords": ["tired", "exhausted", "sleepy", "take a rest"],
+          "replies": ["Don't push yourself. Let's rest a bit.", "Taking a breather is important too."]
+        },
+        {
+          "keywords": ["weather", "sunny", "rainy"],
+          "replies": ["I wonder what the sky looks like today.", "Talking about the weather, nice."]
+        }
+      ],
+      "fallback": [
+        "I see, got it.",
+        "Mhm, I'm listening.",
+        "Oh, tell me more!",
+        "Nice, sounds good."
+      ]
+    }
   }
 }

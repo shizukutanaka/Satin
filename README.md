@@ -173,6 +173,39 @@ print(persona.talk())            # a random idle line (never repeats the last)
 If `config/persona.json` is missing or malformed, the avatar falls back to
 built-in default phrases, so the feature degrades gracefully.
 
+#### Replies to what you say
+
+When you type a comment to the avatar (the autonomous + TTS companion view), it
+now **replies** instead of just reading your words back. Replies are driven by
+configurable keyword rules in the `responses` section of `config/persona.json` —
+no LLM or network is involved, so it works fully offline:
+
+```jsonc
+// config/persona.json  →  "responses"
+"responses": {
+  "ja": {
+    "rules": [
+      { "keywords": ["こんにちは", "やあ"], "replies": ["こんにちは！会えてうれしいな。"] },
+      { "keywords": ["ありがとう"],         "replies": ["どういたしまして！"] }
+    ],
+    "fallback": ["なるほど、そうなんだ。", "うんうん、聞いてるよ。"]
+  }
+}
+```
+
+```python
+from main.persona import get_persona
+
+persona = get_persona()
+persona.respond("こんにちは")        # -> a greeting reply from the matching rule
+persona.respond("今日はどうかな")     # -> a generic acknowledgment from "fallback"
+```
+
+Rules are matched in order (first keyword hit wins, case-insensitive substring),
+replies never repeat the previous line, and if no rule matches the avatar gives a
+friendly fallback acknowledgment. If the persona is unavailable or returns nothing
+the avatar falls back to echoing your text, preserving the original behavior.
+
 ### Plugin System
 
 Satin now includes a robust plugin system that:

@@ -178,6 +178,89 @@ class LoadFromFileTests(unittest.TestCase):
         p = Persona.load(config_path=repo_cfg, lang="ja")
         self.assertTrue(p.talk())
         self.assertTrue(p.greeting())
+        # The shipped config ships response rules: a known keyword must reply.
+        self.assertTrue(p.respond("こんにちは"))
+
+
+class RespondTests(unittest.TestCase):
+    """Rule-based respond() — keyword match, fallback, empty input, lang fallback."""
+
+    def _persona(self, lang="en"):
+        data = {
+            "default_lang": "en",
+            "responses": {
+                "en": {
+                    "rules": [
+                        {"keywords": ["hello", "hi there"], "replies": ["HELLO_A", "HELLO_B"]},
+                        {"keywords": ["thank"], "replies": ["THANKS"]},
+                    ],
+                    "fallback": ["FB_A", "FB_B"],
+                },
+            },
+        }
+        return Persona.from_dict(data, lang=lang)
+
+    def test_keyword_match_returns_rule_reply(self):
+        p = self._persona()
+        self.assertIn(p.respond("hello"), {"HELLO_A", "HELLO_B"})
+
+    def test_match_is_case_insensitive_substring(self):
+        p = self._persona()
+        self.assertIn(p.respond("Oh HELLO there, friend"), {"HELLO_A", "HELLO_B"})
+
+    def test_first_matching_rule_wins(self):
+        p = self._persona()
+        # "thank" rule has a single deterministic reply
+        self.assertEqual(p.respond("thank you so much"), "THANKS")
+
+    def test_no_match_returns_fallback(self):
+        p = self._persona()
+        self.assertIn(p.respond("quantum chromodynamics"), {"FB_A", "FB_B"})
+
+    def test_empty_input_returns_empty(self):
+        p = self._persona()
+        self.assertEqual(p.respond(""), "")
+        self.assertEqual(p.respond("   "), "")
+
+    def test_none_input_returns_empty(self):
+        p = self._persona()
+        self.assertEqual(p.respond(None), "")  # type: ignore[arg-type]
+
+    def test_language_fallback_to_en(self):
+        p = self._persona(lang="fr")  # fr has no responses → falls back to en
+        self.assertIn(p.respond("hello"), {"HELLO_A", "HELLO_B"})
+
+    def test_region_code_falls_back_to_base_lang(self):
+        p = self._persona(lang="en-US")
+        self.assertIn(p.respond("hello"), {"HELLO_A", "HELLO_B"})
+
+    def test_no_immediate_repeat_in_rule_pool(self):
+        p = self._persona()
+        prev = p.respond("hello")
+        for _ in range(40):
+            cur = p.respond("hello")
+            self.assertNotEqual(cur, prev)
+            prev = cur
+
+    def test_no_immediate_repeat_in_fallback_pool(self):
+        p = self._persona()
+        prev = p.respond("xyzzy")
+        for _ in range(40):
+            cur = p.respond("plover")  # both miss → fallback pool
+            self.assertNotEqual(cur, prev)
+            prev = cur
+
+    def test_default_persona_responds_without_config(self):
+        """Persona() with no config still replies (built-in _DEFAULT_RESPONSES)."""
+        p = Persona(lang="en")
+        self.assertTrue(p.respond("hello"))      # keyword path
+        self.assertTrue(p.respond("blahblah"))   # fallback path
+
+    def test_empty_fallback_returns_empty_on_no_match(self):
+        data = {"responses": {"en": {"rules": [
+            {"keywords": ["hi"], "replies": ["HI"]}], "fallback": []}}}
+        p = Persona.from_dict(data, lang="en")
+        self.assertEqual(p.respond("no keywords here"), "")
 
 
 class SingletonTests(unittest.TestCase):

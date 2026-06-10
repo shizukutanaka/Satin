@@ -42,11 +42,22 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self.tts_queue = tts_queue
 
     def speak_comment(self, comment):
-        self.comment_text = comment
+        # ペルソナが応答を返せばそれを表示・読み上げ、無ければ入力をそのまま
+        # 読み上げる（後方互換のオウム返し）。respond の失敗で TTS は壊さない。
+        reply = comment
+        persona = self.persona
+        if persona is not None:
+            try:
+                generated = persona.respond(comment)
+            except Exception:
+                generated = ""
+            if generated:
+                reply = generated
+        self.comment_text = reply
         self.mode = 'comment'
         self.ticks = 0
         if self.tts_queue:
-            self.tts_queue.put(comment)
+            self.tts_queue.put(reply)
 
     def _on_talk_start(self, text):
         if self.tts_queue:
