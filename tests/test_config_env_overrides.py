@@ -137,5 +137,31 @@ class GetConfigOverlayTests(_EnvSandbox):
         self.assertEqual(cfg["settings"]["backup"]["max_backups"], 5)
 
 
+class SetNestedTests(unittest.TestCase):
+    """Unit tests for _set_nested — specifically the scalar-overwrite fix."""
+
+    def test_basic_nested_set(self):
+        d: dict = {}
+        cenv._set_nested(d, "a.b.c", 42)
+        self.assertEqual(d, {"a": {"b": {"c": 42}}})
+
+    def test_scalar_intermediate_is_replaced_with_dict(self):
+        # Bug: if an intermediate key holds a scalar, _set_nested used to crash
+        # with TypeError when trying to subscript the scalar.
+        d = {"a": "existing_scalar"}
+        cenv._set_nested(d, "a.b", "new_value")
+        self.assertEqual(d, {"a": {"b": "new_value"}})
+
+    def test_existing_dict_intermediate_is_preserved(self):
+        d = {"a": {"existing": 1}}
+        cenv._set_nested(d, "a.b", 2)
+        self.assertEqual(d, {"a": {"existing": 1, "b": 2}})
+
+    def test_top_level_set(self):
+        d = {"x": 10}
+        cenv._set_nested(d, "y", 20)
+        self.assertEqual(d, {"x": 10, "y": 20})
+
+
 if __name__ == "__main__":
     unittest.main()
