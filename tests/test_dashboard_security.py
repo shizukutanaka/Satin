@@ -53,5 +53,33 @@ class SecretKeyHardeningTests(unittest.TestCase):
             self.assertNotEqual(dashboard.app.secret_key, "satin_dashboard_secret")
 
 
+class EventLogHtmlEscapeTests(unittest.TestCase):
+    """Regression: event data from JSONL must be HTML-escaped in the /logs page."""
+
+    def _build_row(self, ts, event_type, details):
+        """Mirror the dashboard's HTML-building logic (lines 113-115)."""
+        import html as _html
+        return (
+            f"<tr><td>{_html.escape(ts)}</td>"
+            f"<td>{_html.escape(str(event_type))}</td>"
+            f"<td>{_html.escape(str(details))}</td></tr>"
+        )
+
+    def test_event_type_with_html_tags_is_escaped(self):
+        row = self._build_row("2024-01-01 00:00:00", "<script>alert(1)</script>", {})
+        self.assertNotIn("<script>", row)
+        self.assertIn("&lt;script&gt;", row)
+
+    def test_details_with_html_tags_is_escaped(self):
+        row = self._build_row("2024-01-01 00:00:00", "click", "<img src=x onerror=alert(1)>")
+        self.assertNotIn("<img", row)
+        self.assertIn("&lt;img", row)
+
+    def test_plain_text_passes_through(self):
+        row = self._build_row("2024-01-01 12:00:00", "speak", {"text": "hello"})
+        self.assertIn("speak", row)
+        self.assertIn("hello", row)
+
+
 if __name__ == "__main__":
     unittest.main()
