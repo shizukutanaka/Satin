@@ -9,26 +9,7 @@ from optional_deps import (  # noqa: E402
     pyttsx3, sd, pygltflib,
 )
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
-
-class TTSThread(threading.Thread):
-    def __init__(self, tts_queue):
-        super().__init__()
-        self.tts_queue = tts_queue
-        self.engine = pyttsx3.init() if pyttsx3 is not None else None
-        self.daemon = True
-        self.running = True
-
-    def run(self):
-        if self.engine is None:
-            return
-        while self.running:
-            try:
-                text = self.tts_queue.get(timeout=0.1)
-                if text:
-                    self.engine.say(text)
-                    self.engine.runAndWait()
-            except queue.Empty:
-                continue
+from tts_thread import TTSThread  # noqa: E402,F401
 
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True

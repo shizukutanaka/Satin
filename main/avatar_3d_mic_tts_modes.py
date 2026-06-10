@@ -28,29 +28,8 @@ class MicVolumeThread(threading.Thread):
             while self.running:
                 sd.sleep(50)
 
-# --- TTSスレッド ---
-class TTSThread(threading.Thread):
-    def __init__(self, tts_queue):
-        super().__init__()
-        self.tts_queue = tts_queue
-        self.engine = pyttsx3.init() if pyttsx3 is not None else None
-        self.daemon = True
-        self.running = True
-        self.is_speaking = False
-
-    def run(self):
-        if self.engine is None:
-            return
-        while self.running:
-            try:
-                text = self.tts_queue.get(timeout=0.1)
-                if text:
-                    self.is_speaking = True
-                    self.engine.say(text)
-                    self.engine.runAndWait()
-                    self.is_speaking = False
-            except queue.Empty:
-                continue
+# --- TTSスレッド (共有実装) ---
+from tts_thread import TTSThread  # noqa: E402,F401
 
 class Avatar3DModesViewer(QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
