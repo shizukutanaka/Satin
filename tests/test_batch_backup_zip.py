@@ -81,15 +81,15 @@ class BatchBackupZipTests(unittest.TestCase):
                 os.chdir(cwd)
 
     def test_no_concurrent_zf_write(self):
-        # Static guard: the backup functions must not pass zf.write through
-        # batch_process (which would run it across threads).
-        for mod, fname in (
-            (cmb, "batch_backup_comments"),
-        ):
-            src = inspect.getsource(getattr(mod, fname))
-            # zf.write should appear in a plain for-loop, not inside a
-            # function handed to batch_process
-            self.assertIn("for fname in files", src)
+        # Static guard: the shared backup helper must write files sequentially
+        # (not via batch_process/ThreadPoolExecutor) to avoid zip corruption.
+        import batch_config_utils as bcu
+        src = inspect.getsource(bcu.backup_configs)
+        # zf.write must appear inside a plain for-loop, not in a callable
+        # passed to batch_process.
+        self.assertIn("for fname in files", src)
+        # batch_process must NOT appear in the backup path.
+        self.assertNotIn("batch_process", src)
 
 
 if __name__ == "__main__":

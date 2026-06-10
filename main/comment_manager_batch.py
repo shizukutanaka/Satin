@@ -1,56 +1,34 @@
-import glob
-import os
-import json
-from utils_profile import profile_time, log_info, log_error
-from utils_batch import batch_process
+from utils_profile import profile_time
+from batch_config_utils import validate_configs, backup_configs
+
+_GLOB = "comment_manager_*.json"
+_REQUIRED = ["comment_source", "output_enabled"]
+
 
 @profile_time
 def batch_validate_comments(comment_dir="."):
-    """
-    comment_manager_*.pyやコメント用設定jsonのバリデーションを並列実行＋進捗バー＋ログ
-    """
-    files = glob.glob(os.path.join(comment_dir, "comment_manager_*.json"))
-    def validate_one(fname):
-        try:
-            with open(fname, encoding="utf-8") as f:
-                data = json.load(f)
-            # 例: 必須キーの確認
-            required = ["comment_source", "output_enabled"]
-            for k in required:
-                if k not in data:
-                    log_error(f"[WARN] {fname}: '{k}' 未設定")
-                    return f"{fname}: '{k}' 未設定"
-            return None
-        except Exception as e:
-            log_error(f"[ERROR] {fname} 読み込み失敗: {e}")
-            return f"{fname}: 読み込み失敗: {e}"
-    results = batch_process(validate_one, files, desc="コメント設定バリデーション中")
-    errors = [r for r in results if r]
-    if errors:
-        for e in errors:
-            print(e)
-        log_error("コメント設定ファイルバリデーションエラーあり")
-    else:
-        log_info("全コメント設定ファイルが正常です")
+    """comment_manager_*.json のバリデーションを並列実行＋進捗バー＋ログ"""
+    validate_configs(
+        search_dir=comment_dir,
+        glob_pattern=_GLOB,
+        required_keys=_REQUIRED,
+        desc="コメント設定バリデーション中",
+        error_summary="コメント設定ファイルバリデーションエラーあり",
+        ok_message="全コメント設定ファイルが正常です",
+    )
+
 
 @profile_time
 def batch_backup_comments(comment_dir="."):
-    """
-    コメント設定ファイルを一括バックアップ(zip化)＋進捗表示
-    """
-    import zipfile, datetime
-    files = glob.glob(os.path.join(comment_dir, "comment_manager_*.json"))
-    now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    zipname = f"satin_comments_backup_{now}.zip"
-    try:
-        # zipfile.ZipFile はスレッドセーフではないため、batch_process(=ThreadPoolExecutor)
-        # で並列に zf.write すると書庫が破損する。逐次書き込みする。
-        with zipfile.ZipFile(zipname, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for fname in files:
-                zf.write(fname, arcname=os.path.basename(fname))
-        log_info(f"コメント設定ファイルを {zipname} にバックアップしました")
-    except Exception as e:
-        log_error(f"[ERROR] コメントバックアップ失敗: {e}")
+    """コメント設定ファイルを一括バックアップ(zip化)＋進捗表示"""
+    backup_configs(
+        search_dir=comment_dir,
+        glob_pattern=_GLOB,
+        zip_prefix="satin_comments_backup",
+        ok_message_template="コメント設定ファイルを {zipname} にバックアップしました",
+        error_prefix="コメントバックアップ失敗",
+    )
+
 
 if __name__ == "__main__":
     print("[INFO] コメント管理バッチツール")
