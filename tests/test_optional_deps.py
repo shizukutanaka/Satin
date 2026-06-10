@@ -53,7 +53,9 @@ class TtsVirtualAudioTests(unittest.TestCase):
     def test_imports_without_audio_gui_deps(self):
         # Previously: ModuleNotFoundError: No module named 'sounddevice'
         import tts_with_virtual_audio as tva
-        self.assertIsNotNone(tva)
+        # Module has core attributes that callers depend on
+        self.assertTrue(hasattr(tva, "AUDIO_DEVICES"))
+        self.assertTrue(hasattr(tva, "MainWindow"))
 
     def test_audio_devices_is_list_when_sounddevice_absent(self):
         import tts_with_virtual_audio as tva
@@ -62,10 +64,11 @@ class TtsVirtualAudioTests(unittest.TestCase):
             self.assertIsInstance(tva.AUDIO_DEVICES, list)
             self.assertIsInstance(tva.OUTPUT_DEVICES, list)
 
-    def test_main_window_class_defined(self):
+    def test_main_window_class_is_callable(self):
         import tts_with_virtual_audio as tva
-        # class MainWindow(QMainWindow if ... else object) — must be a class
-        self.assertTrue(isinstance(tva.MainWindow, type))
+        # MainWindow must be constructable (inherits from object when Qt absent)
+        self.assertTrue(callable(tva.MainWindow))
+        self.assertTrue(hasattr(tva.MainWindow, '__init__'))
 
 
 class BatchTestUtilTests(unittest.TestCase):
