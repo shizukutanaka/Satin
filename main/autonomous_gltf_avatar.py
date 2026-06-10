@@ -2,27 +2,10 @@ import sys
 import random
 import os
 
-try:
-    import numpy as np
-except ImportError:
-    np = None  # type: ignore
-try:
-    from PyQt5.QtWidgets import (
-        QApplication, QMainWindow, QOpenGLWidget, QFileDialog, QPushButton, QLabel,
-    )
-    from PyQt5.QtCore import Qt, QTimer
-except ImportError:
-    QApplication = QMainWindow = QOpenGLWidget = QFileDialog = QPushButton = QLabel = None  # type: ignore
-    Qt = QTimer = None  # type: ignore
-try:
-    from OpenGL.GL import *  # noqa: F401,F403
-    from OpenGL.GLU import *  # noqa: F401,F403
-except ImportError:
-    pass
-try:
-    import pygltflib
-except ImportError:
-    pygltflib = None  # type: ignore
+from optional_deps import (  # noqa: E402
+    np, QApplication, QMainWindow, QOpenGLWidget,
+    QFileDialog, QPushButton, QLabel, Qt, QTimer, pygltflib,
+)
 
 from gltf_utils import load_first_mesh_vertices  # noqa: E402
 
