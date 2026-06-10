@@ -51,7 +51,7 @@ class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
                     except json.JSONDecodeError:
                         continue
             for ev in self.events:
-                ts = datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%m-%d %H:%M:%S")
+                ts = datetime.fromtimestamp(ev.get("timestamp") or 0).strftime("%m-%d %H:%M:%S")
                 etype = ev.get("event_type", "")
                 summary = f"[{ts}] {etype}"
                 self.list_widget.addItem(summary)
@@ -62,7 +62,7 @@ class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
         if 0 <= idx < len(self.events):
             ev = self.events[idx]
             details = json.dumps(ev.get("details", {}), ensure_ascii=False, indent=2)
-            ts = datetime.fromtimestamp(ev.get("timestamp", 0)).strftime("%Y-%m-%d %H:%M:%S")
+            ts = datetime.fromtimestamp(ev.get("timestamp") or 0).strftime("%Y-%m-%d %H:%M:%S")
             self.detail_label.setText(
                 f"<b>時刻:</b> {_html.escape(ts)}<br>"
                 f"<b>種別:</b> {_html.escape(ev.get('event_type', ''))}<br>"
