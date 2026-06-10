@@ -411,7 +411,7 @@ class StructuredErrorFormatter(logging.Formatter):
         }
 
         # エラー情報を追加
-        if record.exc_info:
+        if record.exc_info and record.exc_info[0] is not None:
             log_data['exception'] = {
                 'type': record.exc_info[0].__name__,
                 'message': str(record.exc_info[1]),
