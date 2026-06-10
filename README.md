@@ -130,6 +130,49 @@ comparison = compare_versions(versions[0]['path'], versions[1]['path'])
 print(f"Differences found: {len(comparison['differences'])}")
 ```
 
+### Avatar Persona / Dialogue
+
+The autonomous 3D avatar's spoken lines (idle chatter, rest phrases and
+time-aware greetings) are no longer hardcoded — they are loaded from
+`config/persona.json` and can be customized without editing source code. The
+system supports per-language dialogue with the same fallback chain as the UI
+i18n (requested language → `default_lang` → `en`), picks lines without
+repeating the previous one, and greets the user differently by time of day
+(morning / afternoon / evening / night).
+
+```jsonc
+// config/persona.json
+{
+  "name": "Satin",
+  "default_lang": "ja",
+  "dialogue": {
+    "ja": {
+      "talk":  ["こんにちは！", "走るの大好き！"],
+      "rest":  ["ふう…ちょっと休憩。"],
+      "greeting": {
+        "morning":   ["おはよう！"],
+        "afternoon": ["こんにちは！"],
+        "evening":   ["こんばんは。"],
+        "night":     ["こんな時間まで…おつかれさま。"]
+      }
+    },
+    "en": { "talk": ["Hello!"], "rest": ["Phew, a short break."] }
+  }
+}
+```
+
+```python
+from main.persona import get_persona
+
+persona = get_persona()          # loads config/persona.json once (cached)
+print(persona.name)              # "Satin"
+print(persona.greeting())        # time-aware: "おはよう！" in the morning
+print(persona.talk())            # a random idle line (never repeats the last)
+```
+
+If `config/persona.json` is missing or malformed, the avatar falls back to
+built-in default phrases, so the feature degrades gracefully.
+
 ### Plugin System
 
 Satin now includes a robust plugin system that:

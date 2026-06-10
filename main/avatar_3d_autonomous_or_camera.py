@@ -11,6 +11,11 @@ from optional_deps import (  # noqa: E402
 from camera_thread import CameraThread  # noqa: E402
 from gl_widget_base import GLViewportMixin  # noqa: E402
 
+try:
+    from persona import get_persona  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    get_persona = None
+
 class Avatar3DAutoOrCamViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -36,6 +41,22 @@ class Avatar3DAutoOrCamViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_logic)
         self.timer.start(50)
+
+    def _pick_rest_text(self):
+        """休憩台詞。ペルソナ優先、無ければハードコード配列にフォールバック。"""
+        if get_persona is not None:
+            text = get_persona().rest()
+            if text:
+                return text
+        return random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
+
+    def _pick_talk_text(self):
+        """雑談台詞。ペルソナ優先、無ければ self.talks にフォールバック。"""
+        if get_persona is not None:
+            text = get_persona().talk()
+            if text:
+                return text
+        return random.choice(self.talks)
 
     def set_mode(self, mode):
         if mode == self.mode:
@@ -85,10 +106,10 @@ class Avatar3DAutoOrCamViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is
                 self.direction += random.uniform(-60, 60)
         elif self.ticks < 100:
             # 休憩
-            self.talk_text = random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
+            self.talk_text = self._pick_rest_text()
         elif self.ticks < 140:
             # お話し
-            self.talk_text = random.choice(self.talks)
+            self.talk_text = self._pick_talk_text()
         else:
             self.ticks = 0
             self.talk_text = ''

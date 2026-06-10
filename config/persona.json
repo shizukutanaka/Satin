@@ -1,0 +1,74 @@
+{
+  "name": "Satin",
+  "default_lang": "ja",
+  "dialogue": {
+    "ja": {
+      "talk": [
+        "こんにちは！",
+        "今日はいい天気ですね。",
+        "ちょっと休憩します…",
+        "走るの大好き！",
+        "あなたも一緒にどう？",
+        "何か手伝えることはある？",
+        "今日も来てくれてうれしいな。"
+      ],
+      "rest": [
+        "ふう…ちょっと休憩。",
+        "すこし止まります。",
+        "ひと息つこうかな。"
+      ],
+      "greeting": {
+        "morning": [
+          "おはよう！今日も一日がんばろう。",
+          "おはよう！よく眠れた？"
+        ],
+        "afternoon": [
+          "こんにちは！調子はどう？",
+          "お昼だね。ちゃんと休憩してる？"
+        ],
+        "evening": [
+          "こんばんは。今日もおつかれさま。",
+          "夕方だね。少しゆっくりしよう。"
+        ],
+        "night": [
+          "こんな時間まで…無理しないでね。",
+          "夜更かしさん、そろそろ休んだら？"
+        ]
+      }
+    },
+    "en": {
+      "talk": [
+        "Hello!",
+        "Nice weather today.",
+        "Taking a little break...",
+        "I love running around!",
+        "Want to join me?",
+        "Anything I can help with?",
+        "I'm glad you're here today."
+      ],
+      "rest": [
+        "Phew, a short break.",
+        "Stopping for a moment.",
+        "Let me catch my breath."
+      ],
+      "greeting": {
+        "morning": [
+          "Good morning! Let's make today great.",
+          "Morning! Did you sleep well?"
+        ],
+        "afternoon": [
+          "Good afternoon! How are you?",
+          "It's midday. Taking your breaks?"
+        ],
+        "evening": [
+          "Good evening. Nice work today.",
+          "Evening already. Let's wind down."
+        ],
+        "night": [
+          "It's late... don't push yourself too hard.",
+          "Night owl, maybe time to rest soon?"
+        ]
+      }
+    }
+  }
+}

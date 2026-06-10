@@ -7,10 +7,12 @@ The mixin operates on plain attributes, so it is testable without Qt/numpy.
 import os
 import sys
 import unittest
+from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
+import autonomous_behavior  # noqa: E402
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 
 
@@ -51,6 +53,16 @@ def _step_until_mode(obj, mode, max_steps=500):
 
 
 class StateMachineTests(unittest.TestCase):
+    """State-machine mechanics — isolated from persona config so the
+    fallback self.talks / REST_TEXTS path is exercised deterministically."""
+
+    def setUp(self):
+        self._patcher = mock.patch.object(autonomous_behavior, "get_persona", None)
+        self._patcher.start()
+
+    def tearDown(self):
+        self._patcher.stop()
+
     def test_run_transitions_to_rest(self):
         d = _Dummy()
         self.assertTrue(_step_until_mode(d, 'rest'))
@@ -130,6 +142,15 @@ class _ExtraFieldDummy(_StartStopDummy):
 
 
 class StartStopTests(unittest.TestCase):
+    """start/stop mechanics — persona disabled so start does not inject a greeting."""
+
+    def setUp(self):
+        self._patcher = mock.patch.object(autonomous_behavior, "get_persona", None)
+        self._patcher.start()
+
+    def tearDown(self):
+        self._patcher.stop()
+
     def test_start_enters_run_mode(self):
         d = _StartStopDummy()
         d.talk_text = 'stale'
@@ -161,6 +182,63 @@ class StartStopTests(unittest.TestCase):
         d.comment_text = 'speaking'
         d.stop_autonomous()
         self.assertEqual(d.comment_text, '')
+
+
+class _FakePersona:
+    """Deterministic stand-in for persona.Persona."""
+    def greeting(self, *a, **kw):
+        return 'GREETING'
+    def talk(self, *a, **kw):
+        return 'PERSONA_TALK'
+    def rest(self, *a, **kw):
+        return 'PERSONA_REST'
+
+
+class PersonaIntegrationTests(unittest.TestCase):
+    """When a persona is available it drives the avatar's lines (overriding the
+    hardcoded self.talks / REST_TEXTS), and start injects a time-aware greeting."""
+
+    def setUp(self):
+        self._patcher = mock.patch.object(
+            autonomous_behavior, "get_persona", lambda *a, **k: _FakePersona()
+        )
+        self._patcher.start()
+
+    def tearDown(self):
+        self._patcher.stop()
+
+    def test_start_sets_greeting_from_persona(self):
+        d = _StartStopDummy()
+        d.start_autonomous()
+        self.assertEqual(d.talk_text, 'GREETING')
+
+    def test_start_greeting_fires_talk_hook(self):
+        d = _TalkHookDummy()
+        d.is_autonomous = False
+        d.start_autonomous()
+        self.assertEqual(d.spoken, ['GREETING'])
+
+    def test_talk_uses_persona_over_talks(self):
+        d = _Dummy()  # self.talks = ['hello', 'world']
+        self.assertTrue(_step_until_mode(d, 'talk'))
+        d._advance_autonomous_state()  # first tick of talk
+        self.assertEqual(d.talk_text, 'PERSONA_TALK')
+
+    def test_rest_uses_persona_over_rest_texts(self):
+        d = _Dummy()
+        self.assertTrue(_step_until_mode(d, 'rest'))
+        d._advance_autonomous_state()  # first tick of rest
+        self.assertEqual(d.talk_text, 'PERSONA_REST')
+
+    def test_empty_persona_line_falls_back_to_talks(self):
+        class _Empty(_FakePersona):
+            def talk(self, *a, **kw):
+                return ''
+        with mock.patch.object(autonomous_behavior, "get_persona", lambda *a, **k: _Empty()):
+            d = _Dummy()
+            self.assertTrue(_step_until_mode(d, 'talk'))
+            d._advance_autonomous_state()
+            self.assertIn(d.talk_text, d.talks)
 
 
 if __name__ == "__main__":
