@@ -243,9 +243,32 @@ You: /quit
 Satin: またね！いつでも来てね。
 ```
 
-Commands: `/help`, `/history` (recent conversation), `/name`, `/quit`
-(`/exit`, `/q`). EOF (Ctrl-D) or Ctrl-C also ends the session cleanly. The loop
-accepts injectable input/output functions, so it is fully unit-testable.
+Commands: `/help`, `/history` (recent conversation), `/mood` (current affinity),
+`/name`, `/quit` (`/exit`, `/q`). EOF (Ctrl-D) or Ctrl-C also ends the session
+cleanly. The loop accepts injectable input/output functions, so it is fully
+unit-testable.
+
+### Affinity / Mood (relationship that grows)
+
+The avatar now remembers how your relationship develops. Positive words
+(thanks, "I love you", "cute"…) raise its **affinity** while hostile words lower
+it; the score (0–100) maps to five levels — distant / reserved / neutral /
+friendly / close (よそよそしい〜親友). Affinity is persisted to `config/mood.json`,
+so the relationship carries over between sessions. In the CLI, `/mood` shows the
+current level, and each message you send nudges it.
+
+```python
+from main.mood import get_mood_tracker
+
+mood = get_mood_tracker()
+mood.register("ありがとう、大好き！")   # positive → affinity rises
+print(mood.level, int(mood.affinity))  # e.g. "friendly 66"
+```
+
+Sentiment keywords and the per-hit deltas are customizable via an optional
+`"mood"` block in `config/persona.json`. Each message can move affinity by at
+most ±10 (so a single spammy line can't swing it), and the value is always
+clamped to 0–100. Mood can be disabled with `--no-mood`.
 
 ### Plugin System
 

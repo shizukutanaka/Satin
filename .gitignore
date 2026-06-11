@@ -20,3 +20,7 @@ config/cache/
 # アバターイベント/会話ログ(ランタイム生成)
 avatar_event_log.jsonl
 *.jsonl.gz
+
+# 好感度/関係性の状態(ランタイム生成)
+config/mood.json
+main/config/mood.json

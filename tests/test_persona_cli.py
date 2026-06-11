@@ -171,17 +171,88 @@ class RunChatHistoryTests(unittest.TestCase):
         self.assertTrue(any("まだ会話履歴" in line for line in d.out))
 
 
+class MoodIntegrationTests(unittest.TestCase):
+    """run_chat updates the injected mood tracker and exposes /mood."""
+
+    def _run(self, inputs, mood):
+        from mood import MoodTracker  # local import; mood is optional
+        d = _Driver(inputs)
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=log, mood=mood,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+        return d.out
+
+    def test_positive_input_raises_affinity(self):
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50)
+        self._run(["thank you", "I love you"], m)
+        self.assertGreater(m.affinity, 50)
+
+    def test_mood_command_shows_level(self):
+        from mood import MoodTracker
+        m = MoodTracker(affinity=85)
+        out = self._run(["/mood"], m)
+        self.assertTrue(any("close" in line for line in out))
+
+    def test_commands_do_not_affect_affinity(self):
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50)
+        self._run(["/help", "/mood", "/name"], m)
+        self.assertEqual(m.affinity, 50)
+        self.assertEqual(m.interactions, 0)
+
+    def test_mood_disabled_when_none(self):
+        d = _Driver(["/mood"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, mood=None,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("無効" in line for line in d.out))
+
+
 class MainEntryTests(unittest.TestCase):
-    def test_main_no_greet_with_immediate_eof(self):
-        # Patch input to raise EOF immediately; main() should return 0.
+    def _eof_input(self):
         import builtins
         orig = builtins.input
         builtins.input = lambda *a, **k: (_ for _ in ()).throw(EOFError())
+        return orig
+
+    def test_main_no_mood_no_greet_immediate_eof(self):
+        # --no-mood avoids touching the real config/mood.json; EOF ends at once.
+        orig = self._eof_input()
         try:
-            rc = persona_cli.main(["--no-greet", "--lang", "en"])
+            rc = persona_cli.main(["--no-greet", "--no-mood", "--lang", "en"])
         finally:
+            import builtins
             builtins.input = orig
         self.assertEqual(rc, 0)
+
+    def test_main_persists_mood_to_default_path(self):
+        """With mood enabled, main() loads and saves the affinity file."""
+        import mood as _mood
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        mood_path = os.path.join(tmp, "mood.json")
+        orig = self._eof_input()
+        try:
+            _mood.reset_mood_tracker()
+            with mock.patch.object(_mood, "_default_mood_path", lambda: mood_path):
+                rc = persona_cli.main(["--no-greet", "--lang", "en"])
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.exists(mood_path), "mood file should be saved")
+        finally:
+            import builtins
+            builtins.input = orig
+            _mood.reset_mood_tracker()
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

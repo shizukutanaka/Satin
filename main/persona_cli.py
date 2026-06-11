@@ -27,6 +27,12 @@ except Exception:  # pragma: no cover - defensive
     ConversationLog = None  # type: ignore
     get_conversation_log = None
 
+try:
+    from mood import MoodTracker, get_mood_tracker
+except Exception:  # pragma: no cover - defensive
+    MoodTracker = None  # type: ignore
+    get_mood_tracker = None
+
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
 _HISTORY_DEFAULT = 10
@@ -55,7 +61,7 @@ def respond_to(
 
 def _help_text() -> str:
     return (
-        "コマンド: /help 一覧 | /history 履歴 | /name 名前 | /quit 終了"
+        "コマンド: /help 一覧 | /history 履歴 | /mood 好感度 | /name 名前 | /quit 終了"
     )
 
 
@@ -65,6 +71,7 @@ def run_chat(
     input_fn: Optional[Callable[[str], str]] = None,
     output_fn: Optional[Callable[[str], None]] = None,
     greet: bool = True,
+    mood: "Optional[MoodTracker]" = None,
 ) -> int:
     """対話ループを実行する。
 
@@ -74,6 +81,7 @@ def run_chat(
         input_fn: 入力取得関数（省略時は組み込み input。テスト用に差し替え可能）。
         output_fn: 出力関数（省略時は組み込み print。テスト用に差し替え可能）。
         greet: 開始時に時刻依存のあいさつを表示するか。
+        mood: 好感度トラッカー（指定時のみ各発話で好感度を更新。None なら無効）。
 
     Returns:
         処理したユーザー発話の件数（コマンドを除く）。
@@ -92,6 +100,7 @@ def run_chat(
             conv_log = None
 
     name = persona.name or "Avatar"
+    lang = "en" if str(persona.lang).startswith("en") else "ja"
     if greet:
         greeting = persona.greeting()
         if greeting:
@@ -127,6 +136,16 @@ def run_chat(
         if text.lower() == "/history":
             _print_history(conv_log, output_fn)
             continue
+        if text.lower() == "/mood":
+            _print_mood(mood, lang, output_fn)
+            continue
+
+        # 好感度を更新（指定時のみ）
+        if mood is not None:
+            try:
+                mood.register(text)
+            except Exception:  # pragma: no cover - defensive
+                pass
 
         # 通常の会話
         reply = respond_to(text, persona, conv_log)
@@ -134,6 +153,21 @@ def run_chat(
         exchanges += 1
 
     return exchanges
+
+
+def _print_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
+    """現在の好感度レベルを表示する。"""
+    if mood is None:
+        output_fn("(好感度は無効です)")
+        return
+    try:
+        label = mood.label(lang)
+        score = int(round(mood.affinity))
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(好感度を取得できません)")
+        return
+    prefix = "Affinity" if lang == "en" else "好感度"
+    output_fn(f"{prefix}: {label} ({score}/100)")
 
 
 def _print_history(conv_log, output_fn: Callable[[str], None]) -> None:
@@ -162,10 +196,28 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--lang", default=None, help="会話言語 (例: ja, en)")
     parser.add_argument("--no-greet", action="store_true", help="開始時のあいさつを省略")
+    parser.add_argument("--no-mood", action="store_true", help="好感度トラッキングを無効化")
     args = parser.parse_args(argv)
 
     persona = Persona.load(lang=args.lang) if args.lang else get_persona()
-    run_chat(persona=persona, greet=not args.no_greet)
+
+    # 好感度は永続トラッカーを使用（セッションを跨いで関係が育つ）
+    mood = None
+    if not args.no_mood and get_mood_tracker is not None:
+        try:
+            mood = get_mood_tracker()
+        except Exception:  # pragma: no cover - defensive
+            mood = None
+
+    run_chat(persona=persona, greet=not args.no_greet, mood=mood)
+
+    # 終了時に好感度を保存
+    if mood is not None:
+        try:
+            from mood import _default_mood_path
+            mood.save(_default_mood_path())
+        except Exception:  # pragma: no cover - defensive
+            pass
     return 0
 
 
