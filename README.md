@@ -270,6 +270,17 @@ Sentiment keywords and the per-hit deltas are customizable via an optional
 most ±10 (so a single spammy line can't swing it), and the value is always
 clamped to 0–100. Mood can be disabled with `--no-mood`.
 
+The relationship is **visible**: the avatar's greeting changes with affinity. Add
+a `greeting_by_affinity` block per language to give level-specific greetings
+(e.g. a cold `distant` greeting and a warm `close` one); the rest fall through to
+the normal time-of-day greeting.
+
+```text
+affinity 10 (distant):  Satin: あ、来たんだ。
+affinity 50 (neutral):  Satin: お昼だね。ちゃんと休憩してる？
+affinity 90 (close):    Satin: やっと来てくれた！今日は何して遊ぶ？
+```
+
 ### Plugin System
 
 Satin now includes a robust plugin system that:

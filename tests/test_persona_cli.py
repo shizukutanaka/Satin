@@ -216,6 +216,27 @@ class MoodIntegrationTests(unittest.TestCase):
         )
         self.assertTrue(any("無効" in line for line in d.out))
 
+    def test_high_affinity_uses_warm_greeting(self):
+        """A close-relationship mood selects the affinity-specific greeting."""
+        from mood import MoodTracker
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "dialogue": {"en": {
+                "greeting": {"morning": ["GENERIC"], "afternoon": ["GENERIC"],
+                             "evening": ["GENERIC"], "night": ["GENERIC"]},
+                "greeting_by_affinity": {"close": ["WELCOME_BACK"]},
+            }},
+            "responses": {"en": {"rules": [], "fallback": ["FB"]}},
+        }
+        persona = Persona.from_dict(data, lang="en")
+        m = MoodTracker(affinity=90)  # 'close'
+        d = _Driver([])
+        persona_cli.run_chat(
+            persona=persona, conv_log=None, mood=m,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+        )
+        self.assertEqual(d.out[0], "Mimi: WELCOME_BACK")
+
 
 class MainEntryTests(unittest.TestCase):
     def _eof_input(self):

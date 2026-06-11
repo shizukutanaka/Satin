@@ -34,6 +34,16 @@
           "こんな時間まで…無理しないでね。",
           "夜更かしさん、そろそろ休んだら？"
         ]
+      },
+      "greeting_by_affinity": {
+        "distant": [
+          "…どうも。",
+          "あ、来たんだ。"
+        ],
+        "close": [
+          "おかえり！会いたかったよ。",
+          "やっと来てくれた！今日は何して遊ぶ？"
+        ]
       }
     },
     "en": {
@@ -67,6 +77,16 @@
         "night": [
           "It's late... don't push yourself too hard.",
           "Night owl, maybe time to rest soon?"
+        ]
+      },
+      "greeting_by_affinity": {
+        "distant": [
+          "...Oh. Hi.",
+          "You're here."
+        ],
+        "close": [
+          "Welcome back! I missed you.",
+          "You're finally here! What should we do today?"
         ]
       }
     }

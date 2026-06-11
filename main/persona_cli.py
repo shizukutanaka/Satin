@@ -102,7 +102,9 @@ def run_chat(
     name = persona.name or "Avatar"
     lang = "en" if str(persona.lang).startswith("en") else "ja"
     if greet:
-        greeting = persona.greeting()
+        # 好感度レベルがあれば、関係性に応じたあいさつを優先する
+        level = mood.level if mood is not None else None
+        greeting = persona.greeting(level=level)
         if greeting:
             output_fn(f"{name}: {greeting}")
     output_fn(_help_text())

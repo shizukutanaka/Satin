@@ -226,9 +226,31 @@ class Persona:
         block = self._resolve_lang_block(lang)
         return self._pick(f"rest:{lang or self.lang}", list(block.get("rest", [])))
 
-    def greeting(self, lang: Optional[str] = None, now: Optional[datetime] = None) -> str:
-        """時刻に応じたあいさつを 1 つ返す。greeting 未定義なら talk にフォールバック。"""
+    def greeting(
+        self,
+        lang: Optional[str] = None,
+        now: Optional[datetime] = None,
+        level: Optional[str] = None,
+    ) -> str:
+        """時刻に応じたあいさつを 1 つ返す。
+
+        level（好感度レベル: distant/reserved/neutral/friendly/close など）が
+        指定され、かつ dialogue ブロックに ``greeting_by_affinity[level]`` が
+        定義されていれば、そのレベル専用のあいさつを優先する。これにより
+        関係が深まるほど（mood の affinity が上がるほど）暖かいあいさつになる。
+        レベル専用が無ければ従来どおり時刻別あいさつ→任意→talk にフォールバック。
+        """
         block = self._resolve_lang_block(lang)
+
+        # 好感度レベル専用あいさつを優先
+        if level:
+            by_level = block.get("greeting_by_affinity") or {}
+            level_options = list(by_level.get(level, []))
+            if level_options:
+                return self._pick(
+                    f"greeting:level:{level}:{lang or self.lang}", level_options
+                )
+
         greetings = block.get("greeting") or {}
         slot = _time_of_day((now or datetime.now()).hour)
         options = list(greetings.get(slot, []))

@@ -121,6 +121,35 @@ class GreetingTimeTests(unittest.TestCase):
         self.assertEqual(p.greeting(), "Hello")
 
 
+class GreetingByAffinityTests(unittest.TestCase):
+    def _persona(self):
+        data = {"dialogue": {"en": {
+            "greeting": {"morning": ["GM"], "afternoon": ["GA"],
+                         "evening": ["GE"], "night": ["GN"]},
+            "greeting_by_affinity": {"close": ["WELCOME_BACK"], "distant": ["MEH"]},
+        }}}
+        return Persona.from_dict(data, lang="en")
+
+    def test_level_specific_greeting_preferred(self):
+        p = self._persona()
+        self.assertEqual(p.greeting(level="close"), "WELCOME_BACK")
+        self.assertEqual(p.greeting(level="distant"), "MEH")
+
+    def test_unknown_level_falls_back_to_time(self):
+        p = self._persona()
+        # 'neutral' has no level-specific pool → time-based greeting used
+        self.assertEqual(p.greeting(level="neutral", now=datetime(2024, 1, 1, 8, 0)), "GM")
+
+    def test_no_level_uses_time_based(self):
+        p = self._persona()
+        self.assertEqual(p.greeting(now=datetime(2024, 1, 1, 13, 0)), "GA")
+
+    def test_level_without_by_affinity_block_falls_back(self):
+        data = {"dialogue": {"en": {"greeting": {"morning": ["GM"]}}}}
+        p = Persona.from_dict(data, lang="en")
+        self.assertEqual(p.greeting(level="close", now=datetime(2024, 1, 1, 8, 0)), "GM")
+
+
 class NoRepeatTests(unittest.TestCase):
     def test_two_options_never_repeat_consecutively(self):
         data = {"dialogue": {"en": {"talk": ["A", "B"]}}}
