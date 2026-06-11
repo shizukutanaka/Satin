@@ -7,6 +7,7 @@ Satin ランチャー
 3. GUI が利用可能なら Avatar Loader を起動、そうでなければ CLI 管理ツールを起動
 
 コマンドライン引数:
+  --chat        ヘッドレスでアバターと会話する CLI を起動
   --dashboard   Flask ダッシュボードを起動
   --manage      CLI 管理バッチツールを起動
   --validate    設定バリデーションのみ実行して終了
@@ -111,6 +112,12 @@ def _launch_dashboard(host: str = "127.0.0.1", port: int = 5000) -> None:
         sys.exit(1)
 
 
+def _launch_chat() -> None:
+    """ヘッドレスのペルソナ対話 CLI を起動する（GUI 不要）。"""
+    from persona_cli import run_chat
+    run_chat()
+
+
 def _launch_manage() -> None:
     from manage_satin import validate_configs
     validate_configs(os.path.join(_ROOT, "config"))
@@ -130,6 +137,7 @@ def main() -> None:
         prog="satin_launcher",
         description="Satin ランチャー",
     )
+    parser.add_argument("--chat",      action="store_true", help="ヘッドレスでアバターと会話する CLI を起動")
     parser.add_argument("--dashboard", action="store_true", help="Flask ダッシュボードを起動")
     parser.add_argument("--manage",    action="store_true", help="CLI 管理バッチツールを起動")
     parser.add_argument("--validate",  action="store_true", help="設定バリデーションのみ実行して終了")
@@ -145,6 +153,8 @@ def main() -> None:
 
     if args.validate:
         _launch_validate()
+    elif args.chat:
+        _launch_chat()
     elif args.manage:
         _launch_manage()
     elif args.dashboard:
