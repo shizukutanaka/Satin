@@ -156,5 +156,42 @@ class SearchRobustnessTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
 
 
+class SearchLegacyAliasTests(unittest.TestCase):
+    """search() must recognize legacy 'user'/'avatar' event aliases, matching
+    the shared USER_EVENT_TYPES/AVATAR_EVENT_TYPES used elsewhere — otherwise
+    it silently drops legacy conversation events the dashboard would show."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._log = _make_log(self._tmp)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_legacy_user_alias_matched(self):
+        _write_event(self._log.logfile, "user", "hello world")
+        result = self._log.search("hello")
+        self.assertEqual(len(result), 1)
+
+    def test_legacy_avatar_alias_matched(self):
+        _write_event(self._log.logfile, "avatar", "greetings")
+        result = self._log.search("greetings")
+        self.assertEqual(len(result), 1)
+
+    def test_canonical_and_legacy_both_counted(self):
+        _write_event(self._log.logfile, "user_comment", "apple")
+        _write_event(self._log.logfile, "user", "apple")
+        _write_event(self._log.logfile, "avatar_reply", "apple")
+        _write_event(self._log.logfile, "avatar", "apple")
+        result = self._log.search("apple")
+        self.assertEqual(len(result), 4)
+
+    def test_non_conversation_event_still_excluded(self):
+        _write_event(self._log.logfile, "system_tick", "apple")
+        result = self._log.search("apple")
+        self.assertEqual(result, [])
+
+
 if __name__ == "__main__":
     unittest.main()

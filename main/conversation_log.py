@@ -117,12 +117,14 @@ class ConversationLog:
             n: 返す最大件数（0 = 全件）。
 
         Returns:
-            event_type が user_comment / avatar_reply のもののうち
-            text フィールドに query を含むイベントのリスト。
+            会話イベント（user/avatar、レガシー別名含む）のうち text フィールドに
+            query を含むイベントのリスト。イベント分類は USER_EVENT_TYPES /
+            AVATAR_EVENT_TYPES（dashboard と共有の正準集合）に従う。
         """
         if not os.path.exists(self.logfile):
             return []
         q_lower = query.strip().lower() if query else ""
+        conv_types = USER_EVENT_TYPES | AVATAR_EVENT_TYPES
         entries: List[Dict] = []
         try:
             with open(self.logfile, encoding="utf-8") as f:
@@ -133,7 +135,7 @@ class ConversationLog:
                         ev = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if ev.get("event_type") not in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
+                    if ev.get("event_type") not in conv_types:
                         continue
                     text = ((ev.get("details") or {}).get("text") or "")
                     if not q_lower or q_lower in str(text).lower():

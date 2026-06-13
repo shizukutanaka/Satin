@@ -545,26 +545,20 @@ def conversation_search(i18n):
 </form>'''
 
     if q:
-        q_lower = q.lower()
+        # Reuse ConversationLog.search() for filtering (event-type + substring)
+        # rather than reinventing the JSONL parse — keeps one search behavior.
+        from conversation_log import ConversationLog
         matches = []
-        if os.path.exists(event_log_path):
-            with open(event_log_path, encoding='utf-8') as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        ev = json.loads(line)
-                        et = ev.get('event_type', '')
-                        if et not in _USER_TYPES and et not in _AVATAR_TYPES:
-                            continue
-                        details = ev.get('details') or {}
-                        text = details.get('text', '') if isinstance(details, dict) else str(details)
-                        if q_lower in text.lower():
-                            ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-                            speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
-                            matches.append({'ts': ts, 'speaker': speaker, 'text': text})
-                    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-                        continue
+        for ev in ConversationLog(event_log_path).search(q):
+            et = ev.get('event_type', '')
+            details = ev.get('details') or {}
+            text = details.get('text', '') if isinstance(details, dict) else str(details)
+            try:
+                ts = datetime.fromtimestamp(ev.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')
+            except (ValueError, OSError, OverflowError):
+                ts = ''
+            speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
+            matches.append({'ts': ts, 'speaker': speaker, 'text': text})
 
         count_label = _html.escape(i18n.t('search_results', 'Results'))
         content += f'<p><b>{count_label}: {len(matches)}</b></p>'
