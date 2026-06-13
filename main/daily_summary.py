@@ -159,8 +159,8 @@ def daily_summary(
 _GREETINGS: Dict[str, Dict] = {
     "ja": {
         "no_data": "今日はまだ会話がありませんね。気軽に話しかけてください！",
-        "few": "今日は{total}回お話ししましたね。",
-        "many": "今日はたくさんお話ししました！{total}回も。",
+        "few": "{total}回お話ししましたね。",
+        "many": "たくさんお話ししました！{total}回も。",
         "affinity_up": "好感度が上がっています（+{delta:.1f}）。嬉しいです！",
         "affinity_down": "好感度が少し下がりました（{delta:.1f}）。どうかしましたか？",
         "peak": "一番活発だった時間帯は{hour}時台でした。",
@@ -169,8 +169,8 @@ _GREETINGS: Dict[str, Dict] = {
     },
     "en": {
         "no_data": "No conversations yet today. Feel free to say hi!",
-        "few": "We've chatted {total} time(s) today.",
-        "many": "We've been chatting a lot today — {total} times!",
+        "few": "we chatted {total} time(s).",
+        "many": "we chatted a lot — {total} times!",
         "affinity_up": "Our bond is growing (+{delta:.1f})! That makes me happy.",
         "affinity_down": "Our bond dropped a bit ({delta:.1f}). Is everything okay?",
         "peak": "You were most active around {hour}:00.",
@@ -223,7 +223,9 @@ def summary_greeting(
         elif change < 0:
             parts.append(msgs["affinity_down"].format(delta=change))
 
-    return "".join(parts)
+    # 日本語は句点で区切れるので連結、英語は文間にスペースを入れる
+    sep = "" if lang_key == "ja" else " "
+    return sep.join(parts)
 
 
 # ---------------------------------------------------------------------------

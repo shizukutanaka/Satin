@@ -254,6 +254,38 @@ class MainDispatcherTests(unittest.TestCase):
         rc = manage_satin.main(["persona", "show"])
         self.assertEqual(rc, 0)
 
+    def test_summary_returns_0(self):
+        rc = manage_satin.main(["summary"])
+        self.assertEqual(rc, 0)
+
+    def test_summary_yesterday_returns_0(self):
+        rc = manage_satin.main(["summary", "--yesterday"])
+        self.assertEqual(rc, 0)
+
+    def test_summary_en_returns_0(self):
+        rc = manage_satin.main(["summary", "--lang", "en"])
+        self.assertEqual(rc, 0)
+
+
+class SummaryCommandTests(unittest.TestCase):
+    def test_cmd_summary_prints_date(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            manage_satin.cmd_summary(lang="ja")
+        output = buf.getvalue()
+        self.assertIn("サマリー", output)
+
+    def test_cmd_summary_prints_interaction_count(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            manage_satin.cmd_summary(lang="ja")
+        output = buf.getvalue()
+        self.assertIn("合計やりとり", output)
+
 
 class MoodImportTests(unittest.TestCase):
     def test_import_updates_tracker(self):

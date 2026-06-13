@@ -265,6 +265,53 @@ def cmd_persona_show() -> None:
         pass
 
 
+def cmd_summary(lang: str = "ja", yesterday: bool = False) -> None:
+    """今日（または昨日）のアクティビティサマリーを表示する。"""
+    try:
+        from daily_summary import daily_summary, summary_greeting
+    except ImportError:
+        print("[ERROR] daily_summary モジュールが見つかりません。")
+        sys.exit(1)
+
+    # CLI/会話ログと同じパスを使う
+    event_log_path = None
+    try:
+        from conversation_log import get_conversation_log
+        event_log_path = get_conversation_log().logfile
+    except Exception:
+        pass
+    mood_history_path = None
+    try:
+        from mood import _default_mood_history_path
+        mood_history_path = _default_mood_history_path()
+    except Exception:
+        pass
+
+    target_date = None
+    if yesterday:
+        from datetime import date, timedelta
+        target_date = date.today() - timedelta(days=1)
+
+    kwargs = {
+        "lang": lang,
+        "event_log_path": event_log_path,
+        "mood_history_path": mood_history_path,
+    }
+    s = daily_summary(target_date=target_date, **kwargs)
+    greeting = summary_greeting(target_date=target_date, **kwargs)
+
+    print(f"=== {s['date']} のサマリー ===")
+    print(f"あなたのメッセージ : {s['user_messages']}")
+    print(f"アバターの返答     : {s['avatar_replies']}")
+    print(f"合計やりとり       : {s['total_interactions']}")
+    if s["peak_hour"] is not None:
+        print(f"ピーク時間帯       : {s['peak_hour']:02d}:00–{s['peak_hour']:02d}:59")
+    if s["affinity"] is not None:
+        print(f"好感度             : {s['affinity']:.1f} ({s['affinity_level']})")
+    if greeting:
+        print(f"\nアバター: {greeting}")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="manage_satin",
@@ -307,6 +354,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_persona = sub.add_parser("persona", help="ペルソナ情報の表示")
     persona_sub = p_persona.add_subparsers(dest="persona_cmd", metavar="<persona-コマンド>")
     persona_sub.add_parser("show", help="現在のペルソナ情報を表示")
+
+    # summary
+    p_summary = sub.add_parser("summary", help="アクティビティサマリーの表示")
+    p_summary.add_argument("--lang", default="ja", help="表示言語（ja/en、デフォルト: ja）")
+    p_summary.add_argument("--yesterday", action="store_true", help="昨日のサマリーを表示")
 
     return parser
 
@@ -368,6 +420,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         if args.persona_cmd == "show":
             cmd_persona_show()
+        return 0
+
+    elif args.command == "summary":
+        cmd_summary(lang=args.lang, yesterday=args.yesterday)
         return 0
 
     return 0
