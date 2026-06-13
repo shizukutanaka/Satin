@@ -246,6 +246,65 @@ class MainDispatcherTests(unittest.TestCase):
         rc = manage_satin.main(["backup"])
         self.assertEqual(rc, 1)
 
+    def test_persona_no_subcommand_returns_1(self):
+        rc = manage_satin.main(["persona"])
+        self.assertEqual(rc, 1)
+
+    def test_persona_show_returns_0(self):
+        rc = manage_satin.main(["persona", "show"])
+        self.assertEqual(rc, 0)
+
+
+class MoodImportTests(unittest.TestCase):
+    def test_import_updates_tracker(self):
+        import mood as _mood
+        _mood.reset_mood_tracker()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                src = os.path.join(tmp, "mood_export.json")
+                with open(src, "w") as f:
+                    json.dump({"affinity": 80.0, "interactions": 42, "last_interaction_time": 0.0}, f)
+                mood_path = os.path.join(tmp, "mood.json")
+                from unittest import mock
+                with mock.patch.object(_mood, "_default_mood_path", lambda: mood_path):
+                    manage_satin.cmd_mood_import(src)
+                tracker = _mood.get_mood_tracker()
+                self.assertAlmostEqual(tracker.affinity, 80.0, places=1)
+                self.assertEqual(tracker.interactions, 42)
+        finally:
+            _mood.reset_mood_tracker()
+
+
+class LogCsvTests(unittest.TestCase):
+    def test_csv_export_creates_file(self):
+        from conversation_log import ConversationLog, reset_conversation_log
+        reset_conversation_log()
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = os.path.join(tmp, "events.jsonl")
+            log = ConversationLog(log_path)
+            log.log_exchange("hello", "hi")
+            dest = os.path.join(tmp, "conv.csv")
+            from unittest import mock
+            import conversation_log as _cl
+            with mock.patch.object(_cl, "DEFAULT_LOGFILE", log_path), \
+                 mock.patch.object(manage_satin, "_ROOT", tmp):
+                manage_satin.cmd_log_csv(dest)
+            self.assertTrue(os.path.exists(dest))
+            content = open(dest, encoding="utf-8-sig").read()
+            self.assertIn("timestamp", content)
+            self.assertIn("hello", content)
+
+
+class PersonaShowTests(unittest.TestCase):
+    def test_persona_show_prints_name(self, capsys=None):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            manage_satin.cmd_persona_show()
+        out = buf.getvalue()
+        self.assertTrue(len(out) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()
