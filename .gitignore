@@ -24,3 +24,5 @@ avatar_event_log.jsonl
 # 好感度/関係性の状態(ランタイム生成)
 config/mood.json
 main/config/mood.json
+config/mood_history.jsonl
+main/config/mood_history.jsonl
