@@ -255,6 +255,76 @@ class MoodIntegrationTests(unittest.TestCase):
         self.assertEqual(d.out[0], "Mimi: WELCOME_BACK")
 
 
+class AbsenceMessageTests(unittest.TestCase):
+    """_absence_message() emits nothing for recent/no interactions, message for long absence."""
+
+    def _mood_with_timestamp(self, hours_ago: float, interactions: int = 5):
+        import time
+        from mood import MoodTracker
+        m = MoodTracker(affinity=70, interactions=interactions)
+        m._last_interaction_time = time.time() - hours_ago * 3600
+        return m
+
+    def test_no_message_when_no_interactions(self):
+        import time
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50, interactions=0)
+        m._last_interaction_time = time.time() - 72 * 3600
+        self.assertEqual(persona_cli._absence_message(m, "Mimi", "en"), "")
+
+    def test_no_message_within_24h(self):
+        m = self._mood_with_timestamp(hours_ago=12)
+        self.assertEqual(persona_cli._absence_message(m, "Mimi", "en"), "")
+
+    def test_no_message_with_no_timestamp(self):
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50, interactions=5)
+        m._last_interaction_time = 0.0
+        self.assertEqual(persona_cli._absence_message(m, "Mimi", "en"), "")
+
+    def test_one_day_absence_en(self):
+        m = self._mood_with_timestamp(hours_ago=25)
+        msg = persona_cli._absence_message(m, "Mimi", "en")
+        self.assertIn("day", msg.lower())
+        self.assertIn("missed", msg.lower())
+
+    def test_multi_day_absence_en(self):
+        m = self._mood_with_timestamp(hours_ago=72)
+        msg = persona_cli._absence_message(m, "Mimi", "en")
+        self.assertIn("3", msg)
+
+    def test_one_day_absence_ja(self):
+        m = self._mood_with_timestamp(hours_ago=25)
+        msg = persona_cli._absence_message(m, "Mimi", "ja")
+        self.assertIn("昨日", msg)
+
+    def test_multi_day_absence_ja(self):
+        m = self._mood_with_timestamp(hours_ago=72)
+        msg = persona_cli._absence_message(m, "Mimi", "ja")
+        self.assertIn("日", msg)
+
+    def test_absence_shown_before_greeting_in_run_chat(self):
+        """When greet=True and mood has a long absence, absence message appears before greeting."""
+        import time
+        from mood import MoodTracker
+        m = MoodTracker(affinity=70, interactions=3)
+        m._last_interaction_time = time.time() - 50 * 3600  # ~2 days ago
+        d = _Driver([])
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=log, mood=m,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+            )
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+        # First line should be the absence message (contains "day" or "日")
+        absence_lines = [l for l in d.out if "day" in l.lower() or "日" in l]
+        self.assertTrue(len(absence_lines) > 0)
+
+
 class MainEntryTests(unittest.TestCase):
     def _eof_input(self):
         import builtins

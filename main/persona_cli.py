@@ -104,6 +104,11 @@ def run_chat(
     name = persona.name or "Avatar"
     lang = "en" if str(persona.lang).startswith("en") else "ja"
     if greet:
+        # 前回の会話から長期間経過していたら不在への言及を先に表示する
+        if mood is not None:
+            absence_msg = _absence_message(mood, name, lang)
+            if absence_msg:
+                output_fn(f"{name}: {absence_msg}")
         # 好感度レベルがあれば、関係性に応じたあいさつを優先する
         level = mood.level if mood is not None else None
         greeting = persona.greeting(level=level)
@@ -160,6 +165,33 @@ def run_chat(
         exchanges += 1
 
     return exchanges
+
+
+def _absence_message(mood, name: str, lang: str) -> str:
+    """前回の会話から長期間経過していた場合に不在への言及メッセージを返す。
+
+    24 時間未満・初回・会話回数 0 の場合は空文字を返す。
+    """
+    import time as _time
+    try:
+        last_ts = mood._last_interaction_time
+        interactions = mood.interactions
+    except Exception:
+        return ""
+    if last_ts <= 0 or interactions == 0:
+        return ""
+    elapsed_hours = (_time.time() - last_ts) / 3600.0
+    if elapsed_hours < 24:
+        return ""
+    elapsed_days = int(elapsed_hours / 24)
+    if lang == "en":
+        if elapsed_days == 1:
+            return "It's been a day since we last spoke. I missed you!"
+        return f"It's been {elapsed_days} days since we last spoke. I really missed you!"
+    else:
+        if elapsed_days == 1:
+            return "昨日ぶりだね。会いたかったよ！"
+        return f"{elapsed_days}日ぶりだね。ずっと待ってたよ！"
 
 
 def _print_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
