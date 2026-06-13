@@ -204,6 +204,55 @@ class MoodTracker:
             logger.warning("好感度の保存に失敗しました: %s", e)
             return False
 
+    def snapshot_to_history(self, history_path: str) -> bool:
+        """今日の好感度スナップショットを JSONL 履歴ファイルに追記する。
+
+        同日内に既にスナップショットがあれば最終行を上書きして最新値を反映。
+        新しい日なら行を追加する。失敗しても例外は送出しない。
+        """
+        try:
+            import datetime
+            today = datetime.date.today().isoformat()
+            now_ts = time.time()
+            entry = {
+                "date": today,
+                "timestamp": now_ts,
+                "affinity": round(self.affinity, 2),
+                "level": self.level,
+                "interactions": self.interactions,
+            }
+            parent = os.path.dirname(history_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+
+            lines: List[str] = []
+            if os.path.exists(history_path):
+                with open(history_path, encoding="utf-8") as f:
+                    lines = [l for l in f.readlines() if l.strip()]
+
+            # 最終行が今日なら上書き、それ以外なら追記
+            new_line = json.dumps(entry, ensure_ascii=False)
+            if lines:
+                try:
+                    last = json.loads(lines[-1])
+                    if last.get("date") == today:
+                        lines[-1] = new_line
+                    else:
+                        lines.append(new_line)
+                except json.JSONDecodeError:
+                    lines.append(new_line)
+            else:
+                lines.append(new_line)
+
+            tmp = f"{history_path}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            os.replace(tmp, history_path)
+            return True
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("好感度履歴の保存に失敗しました: %s", e)
+            return False
+
     @classmethod
     def from_dict(cls, data: Dict, **kwargs) -> "MoodTracker":
         if not isinstance(data, dict):
@@ -259,6 +308,32 @@ def _default_mood_path() -> str:
     """既定の好感度保存先（リポジトリ root の config/mood.json）。"""
     here = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(os.path.dirname(here), "config", "mood.json")
+
+
+def _default_mood_history_path() -> str:
+    """既定の好感度履歴保存先（リポジトリ root の config/mood_history.jsonl）。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(os.path.dirname(here), "config", "mood_history.jsonl")
+
+
+def load_mood_history(history_path: Optional[str] = None, n: int = 30) -> List[Dict]:
+    """好感度履歴の直近 n 件を古い順で返す。ファイルが無ければ空リスト。"""
+    path = history_path or _default_mood_history_path()
+    if not os.path.exists(path):
+        return []
+    entries: List[Dict] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except Exception:
+        return []
+    return entries[-n:]
 
 
 # --------------------------------------------------------------------------- #

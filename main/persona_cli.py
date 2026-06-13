@@ -238,11 +238,12 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     run_chat(persona=persona, greet=not args.no_greet, mood=mood)
 
-    # 終了時に好感度を保存
+    # 終了時に好感度を保存 + 日次スナップショット
     if mood is not None:
         try:
-            from mood import _default_mood_path
+            from mood import _default_mood_path, _default_mood_history_path
             mood.save(_default_mood_path())
+            mood.snapshot_to_history(_default_mood_history_path())
         except Exception:  # pragma: no cover - defensive
             pass
     return 0

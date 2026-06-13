@@ -254,5 +254,94 @@ class SingletonTests(unittest.TestCase):
         self.assertIsNot(a, b)
 
 
+class MoodHistoryTests(unittest.TestCase):
+    """Tests for snapshot_to_history() and load_mood_history()."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._history_path = os.path.join(self._tmp, "mood_history.jsonl")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _make_tracker(self, affinity=60.0, interactions=5):
+        return MoodTracker(affinity=affinity, interactions=interactions)
+
+    def test_snapshot_creates_file(self):
+        t = self._make_tracker()
+        t.snapshot_to_history(self._history_path)
+        self.assertTrue(os.path.exists(self._history_path))
+
+    def test_snapshot_writes_correct_fields(self):
+        t = self._make_tracker(affinity=75.0, interactions=3)
+        t.snapshot_to_history(self._history_path)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history_path)
+        self.assertEqual(len(entries), 1)
+        e = entries[0]
+        self.assertIn("date", e)
+        self.assertAlmostEqual(e["affinity"], 75.0, places=1)
+        self.assertEqual(e["interactions"], 3)
+        self.assertIn("level", e)
+
+    def test_same_day_snapshot_updates_not_appends(self):
+        t = self._make_tracker(affinity=60.0)
+        t.snapshot_to_history(self._history_path)
+        t.affinity = 80.0  # update same day
+        t.snapshot_to_history(self._history_path)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history_path)
+        self.assertEqual(len(entries), 1)
+        self.assertAlmostEqual(entries[0]["affinity"], 80.0, places=1)
+
+    def test_different_day_appends(self):
+        import datetime
+        t = self._make_tracker(affinity=60.0)
+        # Write a fake yesterday entry
+        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        with open(self._history_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"date": yesterday, "affinity": 55.0, "level": "neutral", "interactions": 2, "timestamp": 0.0}) + "\n")
+        t.snapshot_to_history(self._history_path)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history_path)
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["date"], yesterday)
+        self.assertAlmostEqual(entries[1]["affinity"], 60.0, places=1)
+
+    def test_load_history_empty_when_no_file(self):
+        from mood import load_mood_history
+        entries = load_mood_history(os.path.join(self._tmp, "nonexistent.jsonl"))
+        self.assertEqual(entries, [])
+
+    def test_load_history_n_limit(self):
+        import datetime
+        from mood import load_mood_history
+        # Write 10 entries
+        with open(self._history_path, "w", encoding="utf-8") as f:
+            for i in range(10):
+                d = (datetime.date.today() - datetime.timedelta(days=9-i)).isoformat()
+                f.write(json.dumps({"date": d, "affinity": 50.0+i, "level": "neutral", "interactions": i, "timestamp": 0.0}) + "\n")
+        entries = load_mood_history(self._history_path, n=5)
+        self.assertEqual(len(entries), 5)
+        # Should be the most recent 5 in ascending order
+        self.assertAlmostEqual(entries[-1]["affinity"], 59.0, places=1)
+
+    def test_snapshot_skips_zero_interactions(self):
+        """Tracker with 0 interactions should still snapshot (history is always useful)."""
+        t = MoodTracker(affinity=50.0, interactions=0)
+        result = t.snapshot_to_history(self._history_path)
+        self.assertTrue(result)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history_path)
+        self.assertEqual(len(entries), 1)
+
+    def test_default_history_path_is_in_config_dir(self):
+        from mood import _default_mood_history_path
+        path = _default_mood_history_path()
+        self.assertIn("config", path)
+        self.assertTrue(path.endswith(".jsonl"))
+
+
 if __name__ == "__main__":
     unittest.main()

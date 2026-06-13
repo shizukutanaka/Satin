@@ -5,10 +5,17 @@ from datetime import datetime
 from functools import wraps
 
 try:
-    from mood import get_mood_tracker as _get_mood_tracker, affinity_label
+    from mood import (
+        get_mood_tracker as _get_mood_tracker,
+        affinity_label,
+        load_mood_history as _load_mood_history,
+        _default_mood_history_path as _mood_history_path,
+    )
 except Exception:
     _get_mood_tracker = None
     affinity_label = None
+    _load_mood_history = None
+    _mood_history_path = None
 
 try:
     from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
@@ -242,6 +249,7 @@ def mood(i18n):
             # progress bar fill colour: red→yellow→green by score
             colour = f'hsl({int(score * 1.2)}, 70%, 45%)'
             reset_label = _html.escape(i18n.t("reset_mood", "Reset to neutral"))
+            history_link = f'<a href="/mood/history?lang={_html.escape(lang)}">{_html.escape(i18n.t("mood_history", "Affinity History"))}</a>'
             content = f'''
 <h3>{_html.escape(i18n.t("mood", "Mood"))}</h3>
 <table border=0 cellpadding=6>
@@ -258,6 +266,7 @@ def mood(i18n):
 <tr><td><b>{_html.escape(i18n.t("last_interaction", "Last interaction"))}</b></td>
     <td>{_html.escape(last_dt)}</td></tr>
 </table>
+<p>{history_link}</p>
 <br>
 <form method="post" action="/mood/reset?lang={_html.escape(lang)}">
   <button type="submit" onclick="return confirm('{reset_label}?')">
@@ -291,6 +300,56 @@ def mood_reset(i18n):
     if redirect is not None and url_for is not None:
         return redirect(url_for('mood', lang=lang))
     return i18n.t('mood', 'Mood'), 200
+
+
+@app.route('/mood/history')
+@with_lang
+def mood_history(i18n):
+    """好感度の日次履歴を棒グラフ形式で表示する。"""
+    lang = get_lang()
+    is_en = lang.startswith('en')
+    switcher = LANG_SWITCHER_HTML.format(
+        en='selected' if is_en else '', ja='selected' if not is_en else ''
+    )
+    title = _html.escape(i18n.t("mood_history", "Affinity History"))
+    content = f'<h3>{title}</h3>'
+
+    if _load_mood_history is None:
+        content += f'<p>{_html.escape(i18n.t("mood_unavailable", "Mood system unavailable."))}</p>'
+    else:
+        history_path = _mood_history_path() if _mood_history_path else None
+        entries = _load_mood_history(history_path, n=30) if history_path else []
+        if not entries:
+            content += f'<p>{_html.escape(i18n.t("mood_no_history", "No history recorded yet."))}</p>'
+        else:
+            content += '<table border=0 cellpadding=4 cellspacing=2>'
+            content += f'<tr><th>{_html.escape(i18n.t("date", "Date"))}</th>'
+            content += f'<th>{_html.escape(i18n.t("affinity_score", "Affinity"))}</th>'
+            content += f'<th></th>'
+            content += f'<th>{_html.escape(i18n.t("affinity_level", "Level"))}</th></tr>'
+            for e in entries:
+                score = int(round(float(e.get("affinity", 0))))
+                level = _html.escape(str(e.get("level", "")))
+                date = _html.escape(str(e.get("date", "")))
+                colour = f'hsl({int(score * 1.2)}, 70%, 45%)'
+                bar_width = max(1, score * 2)
+                content += (
+                    f'<tr>'
+                    f'<td>{date}</td>'
+                    f'<td style="text-align:right">{score}</td>'
+                    f'<td><div style="background:#ddd;width:200px;height:10px;display:inline-block;vertical-align:middle">'
+                    f'<div style="background:{colour};width:{bar_width}px;height:10px"></div>'
+                    f'</div></td>'
+                    f'<td>{level}</td>'
+                    f'</tr>'
+                )
+            content += '</table>'
+        content += f'<p><a href="/mood?lang={_html.escape(lang)}">&larr; {_html.escape(i18n.t("back_to_mood", "Back to Mood"))}</a></p>'
+
+    return render_template_string(
+        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
+        i18n=i18n, lang=lang, switcher=switcher,
+    )
 
 
 if __name__ == '__main__':

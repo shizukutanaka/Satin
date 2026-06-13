@@ -83,5 +83,9 @@
     "last_interaction": "Last interaction",
     "mood_unavailable": "Mood system unavailable.",
     "mood_no_interactions_yet": "No interactions yet",
-    "reset_mood": "Reset to neutral"
+    "reset_mood": "Reset to neutral",
+    "mood_history": "Affinity History",
+    "mood_no_history": "No history recorded yet.",
+    "date": "Date",
+    "back_to_mood": "Back to Mood"
 }

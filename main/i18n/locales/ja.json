@@ -83,5 +83,9 @@
     "last_interaction": "最後の対話",
     "mood_unavailable": "好感度システムは利用できません。",
     "mood_no_interactions_yet": "まだ対話がありません",
-    "reset_mood": "ニュートラルにリセット"
+    "reset_mood": "ニュートラルにリセット",
+    "mood_history": "好感度の履歴",
+    "mood_no_history": "まだ履歴が記録されていません。",
+    "date": "日付",
+    "back_to_mood": "好感度に戻る"
 }
