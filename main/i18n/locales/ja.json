@@ -89,5 +89,8 @@
     "date": "日付",
     "back_to_mood": "好感度に戻る",
     "total_messages": "総メッセージ数",
-    "download_conversation": "テキストでダウンロード"
+    "download_conversation": "テキストでダウンロード",
+    "search": "検索",
+    "search_placeholder": "キーワードを入力…",
+    "search_results": "検索結果"
 }

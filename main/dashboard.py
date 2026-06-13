@@ -89,6 +89,7 @@ TEMPLATE = '''
 <ul>
   <li><a href="/logs?lang={{lang}}">{{i18n.t('event_log')}}</a></li>
   <li><a href="/conversation?lang={{lang}}">{{i18n.t('conversation', 'Chat')}}</a></li>
+  <li><a href="/conversation/search?lang={{lang}}">{{i18n.t('search', 'Search')}}</a></li>
   <li><a href="/backups?lang={{lang}}">{{i18n.t('backups')}}</a></li>
   <li><a href="/sync?lang={{lang}}">{{i18n.t('cloud_sync')}}</a></li>
   <li><a href="/mood?lang={{lang}}">{{i18n.t('mood', 'Mood')}}</a></li>
@@ -369,6 +370,77 @@ def mood_reset(i18n):
     if redirect is not None and url_for is not None:
         return redirect(url_for('mood', lang=lang))
     return i18n.t('mood', 'Mood'), 200
+
+
+@app.route('/conversation/search')
+@with_lang
+def conversation_search(i18n):
+    """会話履歴をキーワード検索し、一致した交換を表示する。"""
+    lang = get_lang()
+    is_en = lang.startswith('en')
+    switcher = LANG_SWITCHER_HTML.format(
+        en='selected' if is_en else '', ja='selected' if not is_en else ''
+    )
+    q = (request.args.get('q') or '').strip()
+    q_esc = _html.escape(q)
+    search_label = _html.escape(i18n.t('search', 'Search'))
+    search_placeholder = _html.escape(i18n.t('search_placeholder', 'Enter keyword…'))
+    content = f'''<h3>{search_label}</h3>
+<form method="get">
+  <input type="hidden" name="lang" value="{_html.escape(lang)}">
+  <input type="text" name="q" value="{q_esc}" placeholder="{search_placeholder}" style="width:300px;padding:4px">
+  <button type="submit">{search_label}</button>
+</form>'''
+
+    if q:
+        _USER_TYPES = {"user_comment", "user"}
+        _AVATAR_TYPES = {"avatar_reply", "avatar"}
+        q_lower = q.lower()
+        matches = []
+        if os.path.exists(event_log_path):
+            with open(event_log_path, encoding='utf-8') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        ev = json.loads(line)
+                        et = ev.get('event_type', '')
+                        if et not in _USER_TYPES and et not in _AVATAR_TYPES:
+                            continue
+                        details = ev.get('details') or {}
+                        text = details.get('text', '') if isinstance(details, dict) else str(details)
+                        if q_lower in text.lower():
+                            ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                            speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
+                            matches.append({'ts': ts, 'speaker': speaker, 'text': text})
+                    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                        continue
+
+        count_label = _html.escape(i18n.t('search_results', 'Results'))
+        content += f'<p><b>{count_label}: {len(matches)}</b></p>'
+        if matches:
+            content += '<table border=0 cellpadding=6 cellspacing=2 style="width:100%">'
+            for ex in matches[-200:]:
+                is_user = ex['speaker'] == i18n.t('you', 'You')
+                align = 'left' if is_user else 'right'
+                bg = '#e8f4fd' if is_user else '#f0fde8'
+                # Highlight the matched keyword
+                highlighted = _html.escape(ex['text']).replace(
+                    _html.escape(q), f'<mark>{_html.escape(q)}</mark>'
+                )
+                content += (
+                    f'<tr><td align="{align}" style="background:{bg};padding:6px 10px;'
+                    f'border-radius:8px;max-width:70%">'
+                    f'<small style="color:#888">{_html.escape(ex["ts"])}'
+                    f' <b>{_html.escape(ex["speaker"])}</b></small><br>'
+                    f'{highlighted}</td></tr>'
+                )
+            content += '</table>'
+
+    return render_template_string(
+        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
+        i18n=i18n, lang=lang, switcher=switcher,
+    )
 
 
 @app.route('/mood/history')

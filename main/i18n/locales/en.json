@@ -89,5 +89,8 @@
     "date": "Date",
     "back_to_mood": "Back to Mood",
     "total_messages": "Total messages",
-    "download_conversation": "Download as text"
+    "download_conversation": "Download as text",
+    "search": "Search",
+    "search_placeholder": "Enter keyword…",
+    "search_results": "Results"
 }
