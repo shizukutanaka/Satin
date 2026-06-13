@@ -353,6 +353,41 @@ def load_mood_history(history_path: Optional[str] = None, n: int = 30) -> List[D
     return entries[-n:]
 
 
+def mood_history_to_csv(history_path: Optional[str] = None, n: int = 0) -> str:
+    """好感度履歴を CSV 形式の文字列で返す。
+
+    Args:
+        history_path: JSONL 履歴ファイルのパス（省略で既定パス）。
+        n: 直近 n 件（0 = 全件）。
+
+    Returns:
+        header + rows の CSV 文字列（UTF-8、CRLF 改行）。
+        date, datetime, affinity, level, interactions の 5 列。
+    """
+    import csv
+    import io
+    from datetime import datetime as _dt
+
+    entries = load_mood_history(history_path, n=n if n > 0 else 1_000_000)
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\r\n")
+    writer.writerow(["date", "datetime", "affinity", "level", "interactions"])
+    for entry in entries:
+        ts = entry.get("timestamp", 0)
+        try:
+            dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        except (OSError, OverflowError, ValueError):
+            dt_str = ""
+        writer.writerow([
+            entry.get("date", ""),
+            dt_str,
+            entry.get("affinity", ""),
+            entry.get("level", ""),
+            entry.get("interactions", ""),
+        ])
+    return buf.getvalue()
+
+
 # --------------------------------------------------------------------------- #
 # プロセス内シングルトン
 # --------------------------------------------------------------------------- #

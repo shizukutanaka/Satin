@@ -10,12 +10,14 @@ try:
         affinity_label,
         load_mood_history as _load_mood_history,
         _default_mood_history_path as _mood_history_path,
+        mood_history_to_csv as _mood_history_to_csv,
     )
 except Exception:
     _get_mood_tracker = None
     affinity_label = None
     _load_mood_history = None
     _mood_history_path = None
+    _mood_history_to_csv = None
 
 try:
     from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
@@ -382,24 +384,31 @@ def conversation_download_csv(i18n):
 def mood_history_csv(i18n):
     """好感度の日次履歴を CSV としてダウンロードする。"""
     import io
-    import csv
-    rows = []
-    if _load_mood_history is not None and _mood_history_path is not None:
+    csv_str = ""
+    if _mood_history_to_csv is not None and _mood_history_path is not None:
+        try:
+            csv_str = _mood_history_to_csv(_mood_history_path(), n=365)
+        except Exception:
+            csv_str = ""
+    if not csv_str and _load_mood_history is not None and _mood_history_path is not None:
+        import csv
+        rows = []
         try:
             rows = _load_mood_history(_mood_history_path(), n=365)
         except Exception:
             rows = []
-    buf = io.StringIO()
-    writer = csv.writer(buf, lineterminator='\r\n')
-    writer.writerow(['date', 'affinity', 'level', 'interactions'])
-    for e in rows:
-        writer.writerow([
-            e.get('date', ''),
-            e.get('affinity', ''),
-            e.get('level', ''),
-            e.get('interactions', ''),
-        ])
-    csv_bytes = io.BytesIO(buf.getvalue().encode('utf-8-sig'))
+        buf = io.StringIO()
+        writer = csv.writer(buf, lineterminator='\r\n')
+        writer.writerow(['date', 'datetime', 'affinity', 'level', 'interactions'])
+        for e in rows:
+            writer.writerow([
+                e.get('date', ''), '',
+                e.get('affinity', ''),
+                e.get('level', ''),
+                e.get('interactions', ''),
+            ])
+        csv_str = buf.getvalue()
+    csv_bytes = io.BytesIO(csv_str.encode('utf-8-sig'))
     csv_bytes.seek(0)
     return send_file(
         csv_bytes,

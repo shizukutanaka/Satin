@@ -102,6 +102,40 @@ class ConversationLog:
             lines.append(f"{prefix}: {text}")
         return lines
 
+    def search(self, query: str, n: int = 0) -> List[Dict]:
+        """会話履歴からキーワード検索し、一致したイベントを古い順で返す。
+
+        Args:
+            query: 検索クエリ（大文字小文字を無視した部分一致）。空なら全件。
+            n: 返す最大件数（0 = 全件）。
+
+        Returns:
+            event_type が user_comment / avatar_reply のもののうち
+            text フィールドに query を含むイベントのリスト。
+        """
+        if not os.path.exists(self.logfile):
+            return []
+        q_lower = query.strip().lower() if query else ""
+        entries: List[Dict] = []
+        try:
+            with open(self.logfile, encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        ev = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if ev.get("event_type") not in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
+                        continue
+                    text = ((ev.get("details") or {}).get("text") or "")
+                    if not q_lower or q_lower in str(text).lower():
+                        entries.append(ev)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("会話ログの検索に失敗しました: %s", e)
+            return []
+        return entries[-n:] if n > 0 else entries
+
     def to_csv(self, n: int = 0, user_label: str = "You", avatar_label: str = "Avatar") -> str:
         """会話履歴を CSV 形式の文字列で返す。
 
