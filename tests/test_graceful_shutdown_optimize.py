@@ -86,5 +86,131 @@ class PerformanceMonitorTests(unittest.TestCase):
         self.assertFalse(mon.running)
 
 
+class AsyncContextResourceTests(unittest.TestCase):
+    def test_sync_init_and_cleanup(self):
+        log = []
+        resource = {"value": 42}
+
+        resource_ref = []
+
+        async def run():
+            import graceful_shutdown as gs
+            ctx = gs.AsyncContextResource(
+                "test_res",
+                init_func=lambda: resource,
+                cleanup_func=lambda r: log.append(("cleanup", r)),
+            )
+            async with ctx as res:
+                resource_ref.append(res)
+            return res
+
+        result = asyncio.run(run())
+        self.assertEqual(result["value"], 42)
+        self.assertEqual(log, [("cleanup", resource)])
+
+    def test_async_init_supported(self):
+        resource = [1, 2, 3]
+
+        async def run():
+            import graceful_shutdown as gs
+
+            async def async_init():
+                return resource
+
+            ctx = gs.AsyncContextResource(
+                "async_res",
+                init_func=async_init,
+                cleanup_func=lambda r: None,
+            )
+            async with ctx as res:
+                return res
+
+        result = asyncio.run(run())
+        self.assertIs(result, resource)
+
+    def test_registers_cleanup_with_shutdown_manager(self):
+        async def run():
+            import graceful_shutdown as gs
+            mgr = gs.GracefulShutdownManager()
+            ctx = gs.AsyncContextResource(
+                "managed_res",
+                init_func=lambda: object(),
+                cleanup_func=lambda r: None,
+                shutdown_manager=mgr,
+            )
+            async with ctx:
+                pass
+            return len(mgr.cleanup_handlers)
+
+        count = asyncio.run(run())
+        self.assertEqual(count, 1)
+
+
+class GracefulShutdownHealthCheckerTests(unittest.TestCase):
+    def test_all_checks_pass_returns_healthy(self):
+        async def run():
+            import graceful_shutdown as gs
+            mgr = gs.GracefulShutdownManager()
+            checker = gs.HealthChecker(mgr)
+            checker.register_check("db", lambda: True)
+            return await checker.check()
+
+        result = asyncio.run(run())
+        self.assertTrue(result.is_healthy)
+        self.assertEqual(result.message, "Healthy")
+
+    def test_failing_check_returns_unhealthy(self):
+        async def run():
+            import graceful_shutdown as gs
+            mgr = gs.GracefulShutdownManager()
+            checker = gs.HealthChecker(mgr)
+            checker.register_check("db", lambda: False)
+            return await checker.check()
+
+        result = asyncio.run(run())
+        self.assertFalse(result.is_healthy)
+
+    def test_shutting_down_returns_unhealthy(self):
+        async def run():
+            import graceful_shutdown as gs
+            mgr = gs.GracefulShutdownManager()
+            mgr.is_shutting_down = True
+            checker = gs.HealthChecker(mgr)
+            checker.register_check("x", lambda: True)
+            return await checker.check()
+
+        result = asyncio.run(run())
+        self.assertFalse(result.is_healthy)
+        self.assertEqual(result.message, "Shutting down")
+
+    def test_check_exception_treated_as_false(self):
+        async def run():
+            import graceful_shutdown as gs
+            mgr = gs.GracefulShutdownManager()
+            checker = gs.HealthChecker(mgr)
+
+            def broken():
+                raise RuntimeError("db unreachable")
+
+            checker.register_check("db", broken)
+            return await checker.check()
+
+        result = asyncio.run(run())
+        self.assertFalse(result.is_healthy)
+        self.assertFalse(result.checks["db"])
+
+    def test_result_has_checks_dict(self):
+        async def run():
+            import graceful_shutdown as gs
+            mgr = gs.GracefulShutdownManager()
+            checker = gs.HealthChecker(mgr)
+            checker.register_check("cache", lambda: True)
+            return await checker.check()
+
+        result = asyncio.run(run())
+        self.assertIn("cache", result.checks)
+        self.assertTrue(result.checks["cache"])
+
+
 if __name__ == "__main__":
     unittest.main()
