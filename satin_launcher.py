@@ -12,8 +12,8 @@ Satin ランチャー
   --no-greet        --chat 時: 開始あいさつを省略
   --no-mood         --chat 時: 好感度トラッキングを無効化
   --dashboard       Flask ダッシュボードを起動
-  --manage          CLI 管理バッチツールを起動
-  --validate        設定バリデーションのみ実行して終了
+  --manage [args…]  CLI 管理バッチツールを起動（サブコマンドを渡せる: mood show 等）
+  --validate        設定バリデーションのみ実行して終了（エラー時は exit code 1）
   --help / -h       ヘルプを表示して終了
 """
 from __future__ import annotations
@@ -132,15 +132,18 @@ def _launch_chat(lang: str | None = None, no_greet: bool = False, no_mood: bool 
     raise SystemExit(_chat_main(argv))
 
 
-def _launch_manage() -> None:
-    from manage_satin import validate_configs
-    validate_configs(os.path.join(_ROOT, "config"))
+def _launch_manage(manage_args: list[str] | None = None) -> None:
+    """manage_satin CLI を起動する。引数が無い場合はヘルプを表示する。"""
+    from manage_satin import main as _manage_main
+    raise SystemExit(_manage_main(manage_args or []))
 
 
 def _launch_validate() -> None:
     from manage_satin import validate_configs
-    validate_configs(os.path.join(_ROOT, "config"))
+    errors = validate_configs(os.path.join(_ROOT, "config"))
     print("[INFO] バリデーション完了")
+    if errors:
+        raise SystemExit(1)
 
 
 # --------------------------------------------------------------------------- #
@@ -161,6 +164,8 @@ def main() -> None:
     parser.add_argument("--no-greet",  action="store_true", help="--chat 時: 開始あいさつを省略")
     parser.add_argument("--no-mood",   action="store_true", help="--chat 時: 好感度トラッキングを無効化")
     parser.add_argument("--no-dep-check", action="store_true", help="依存チェックをスキップ")
+    parser.add_argument("manage_subargs", nargs=argparse.REMAINDER,
+                        help="--manage 時に manage_satin に転送するサブコマンド引数")
     args = parser.parse_args()
 
     if not args.no_dep_check:
@@ -173,7 +178,7 @@ def main() -> None:
     elif args.chat:
         _launch_chat(lang=args.lang, no_greet=args.no_greet, no_mood=args.no_mood)
     elif args.manage:
-        _launch_manage()
+        _launch_manage(args.manage_subargs or None)
     elif args.dashboard:
         _launch_dashboard(host=args.host, port=args.port)
     else:
