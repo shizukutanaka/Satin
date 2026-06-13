@@ -87,5 +87,7 @@
     "mood_history": "好感度の履歴",
     "mood_no_history": "まだ履歴が記録されていません。",
     "date": "日付",
-    "back_to_mood": "好感度に戻る"
+    "back_to_mood": "好感度に戻る",
+    "total_messages": "総メッセージ数",
+    "download_conversation": "テキストでダウンロード"
 }

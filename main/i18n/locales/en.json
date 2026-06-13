@@ -87,5 +87,7 @@
     "mood_history": "Affinity History",
     "mood_no_history": "No history recorded yet.",
     "date": "Date",
-    "back_to_mood": "Back to Mood"
+    "back_to_mood": "Back to Mood",
+    "total_messages": "Total messages",
+    "download_conversation": "Download as text"
 }

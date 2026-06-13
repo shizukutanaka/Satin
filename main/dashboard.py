@@ -103,7 +103,39 @@ TEMPLATE = '''
 def index(i18n):
     lang = get_lang()
     switcher = LANG_SWITCHER_HTML.format(en='selected' if lang=='en' else '', ja='selected' if lang=='ja' else '')
-    return render_template_string(TEMPLATE, i18n=i18n, lang=lang, switcher=switcher)
+    # Build summary stats block
+    stats_lines = []
+    # Conversation count
+    if os.path.exists(event_log_path):
+        try:
+            total = 0
+            with open(event_log_path, encoding='utf-8') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        ev = json.loads(line)
+                        if ev.get('event_type') in ('user_comment', 'user'):
+                            total += 1
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+            stats_lines.append(f'{_html.escape(i18n.t("total_messages", "Total messages"))}: <b>{total}</b>')
+        except Exception:
+            pass
+    # Current affinity
+    if _get_mood_tracker is not None:
+        try:
+            tracker = _get_mood_tracker()
+            score = int(round(tracker.affinity))
+            level = affinity_label(tracker.affinity, lang) if affinity_label else tracker.level
+            stats_lines.append(f'{_html.escape(i18n.t("affinity_score", "Affinity"))}: <b>{score}/100</b> ({_html.escape(level)})')
+        except Exception:
+            pass
+    stats_html = ''
+    if stats_lines:
+        stats_html = '<ul>' + ''.join(f'<li>{s}</li>' for s in stats_lines) + '</ul>'
+    content = stats_html
+    return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
 
 @app.route('/logs')
 @with_lang
@@ -218,9 +250,46 @@ def conversation(i18n):
                 f'{_html.escape(str(ex["text"]))}</td></tr>'
             )
         content += '</table>'
+    content += f'<p><a href="/conversation/download?lang={_html.escape(lang)}">{_html.escape(i18n.t("download_conversation", "Download as text"))}</a></p>'
     return render_template_string(
         TEMPLATE + '{% block content %}' + content + '{% endblock %}',
         i18n=i18n, lang=lang, switcher=switcher,
+    )
+
+
+@app.route('/conversation/download')
+@with_lang
+def conversation_download(i18n):
+    """会話履歴をプレーンテキストとしてダウンロードする。"""
+    import io
+    _USER_TYPES = {"user_comment", "user"}
+    _AVATAR_TYPES = {"avatar_reply", "avatar"}
+    lines_out = []
+    if os.path.exists(event_log_path):
+        with open(event_log_path, encoding='utf-8') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    ev = json.loads(line)
+                    et = ev.get('event_type', '')
+                    if et not in _USER_TYPES and et not in _AVATAR_TYPES:
+                        continue
+                    ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                    speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
+                    details = ev.get('details') or {}
+                    text = details.get('text', '') if isinstance(details, dict) else str(details)
+                    lines_out.append(f'[{ts}] {speaker}: {text}')
+                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    continue
+    text_content = '\n'.join(lines_out) + '\n'
+    buf = io.BytesIO(text_content.encode('utf-8'))
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name='conversation.txt',
+        mimetype='text/plain; charset=utf-8',
     )
 
 
