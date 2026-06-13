@@ -20,6 +20,7 @@ sys.path.insert(0, _MAIN)
 import avatar_3d_autonomous_tts as _mod  # noqa: E402
 import persona as _persona_mod  # noqa: E402
 from persona import Persona  # noqa: E402
+import mood as _mood_mod  # noqa: E402
 
 
 def _make_viewer(tts_queue=None):
@@ -46,13 +47,17 @@ _RESPONSE_PERSONA = Persona.from_dict({
 
 class SpeakCommentTests(unittest.TestCase):
     def setUp(self):
-        # 会話ログを無効化して CWD に avatar_event_log.jsonl を作らない
+        # 会話ログと好感度を無効化して CWD にファイルを作らない
         self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
         self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
 
     def tearDown(self):
         self._log_patcher.stop()
+        self._mood_patcher.stop()
         _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
 
     def test_matching_keyword_replies_not_echoes(self):
         """A keyword hit makes the avatar speak the reply, not the user's words."""
@@ -122,6 +127,67 @@ class SpeakCommentTests(unittest.TestCase):
         with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
                                property(lambda self: _RESPONSE_PERSONA)):
             v = _make_viewer(None)
+            v.speak_comment("hello")  # must not raise
+            self.assertEqual(v.comment_text, "REPLY_HELLO")
+
+
+class SpeakCommentMoodTests(unittest.TestCase):
+    """speak_comment calls mood.register(comment) so GUI chat builds affinity."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        _mood_mod.reset_mood_tracker()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        _mood_mod.reset_mood_tracker()
+        _persona_mod.reset_persona()
+
+    def _viewer_with_persona(self):
+        v = _make_viewer(queue.Queue())
+        # persona that always replies so the test is stable
+        patcher = mock.patch.object(
+            _mod.AutonomousBehaviorMixin, "persona",
+            property(lambda self: _RESPONSE_PERSONA),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return v
+
+    def test_positive_comment_raises_affinity(self):
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        mood_path = os.path.join(tmp, "mood.json")
+        tracker = _mood_mod.MoodTracker(affinity=50)
+
+        def _fake_get_mood_tracker():
+            return tracker
+
+        with mock.patch.object(_mod, "get_mood_tracker", _fake_get_mood_tracker):
+            v = self._viewer_with_persona()
+            v.speak_comment("thank you so much")
+
+        self.assertGreater(tracker.affinity, 50)
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_mood_register_failure_does_not_crash(self):
+        class _BoomMood:
+            def register(self, text):
+                raise RuntimeError("db locked")
+
+        def _bad_tracker():
+            return _BoomMood()
+
+        with mock.patch.object(_mod, "get_mood_tracker", _bad_tracker):
+            v = self._viewer_with_persona()
+            v.speak_comment("hello")  # must not raise
+            self.assertEqual(v.comment_text, "REPLY_HELLO")
+
+    def test_mood_not_called_when_get_mood_tracker_is_none(self):
+        with mock.patch.object(_mod, "get_mood_tracker", None):
+            v = self._viewer_with_persona()
             v.speak_comment("hello")  # must not raise
             self.assertEqual(v.comment_text, "REPLY_HELLO")
 

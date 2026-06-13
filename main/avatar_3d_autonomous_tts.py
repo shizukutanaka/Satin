@@ -17,6 +17,11 @@ try:
 except Exception:  # pragma: no cover - defensive
     get_conversation_log = None
 
+try:
+    from mood import get_mood_tracker  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    get_mood_tracker = None
+
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
     EXTRA_TEXT_FIELDS = ('comment_text',)
@@ -58,6 +63,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 generated = ""
             if generated:
                 reply = generated
+        # 好感度を更新（失敗しても UI/TTS を壊さない）
+        if get_mood_tracker is not None:
+            try:
+                get_mood_tracker().register(comment)
+            except Exception:
+                pass
         # 会話履歴を記録（失敗しても UI/TTS を壊さない）
         if get_conversation_log is not None:
             try:
