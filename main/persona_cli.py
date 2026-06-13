@@ -43,13 +43,15 @@ def respond_to(
     text: str,
     persona: Persona,
     conv_log: "Optional[ConversationLog]" = None,
+    level: Optional[str] = None,
 ) -> str:
     """1 つの入力に対する応答を決定し、会話ログがあれば記録して返す。
 
-    応答は persona.respond() を使い、空（ルール・fallback とも無し）の場合は
-    オウム返しにフォールバックする。会話ログへの記録失敗は握り潰す。
+    level（好感度レベル）を渡すと persona.respond_by_affinity ルールが優先される。
+    応答が空（ルール・fallback とも無し）の場合はオウム返しにフォールバックする。
+    会話ログへの記録失敗は握り潰す。
     """
-    reply = persona.respond(text)
+    reply = persona.respond(text, level=level)
     if not reply:
         reply = text  # フォールバック: オウム返し
     if conv_log is not None:
@@ -162,8 +164,9 @@ def run_chat(
             except Exception:  # pragma: no cover - defensive
                 pass
 
-        # 通常の会話
-        reply = respond_to(text, persona, conv_log)
+        # 通常の会話 (好感度レベルがあれば mood-specific ルールを優先)
+        level = mood.level if mood is not None else None
+        reply = respond_to(text, persona, conv_log, level=level)
         output_fn(f"{name}: {reply}")
         exchanges += 1
 

@@ -86,6 +86,37 @@ class RespondToTests(unittest.TestCase):
         # must not raise, still returns reply
         self.assertEqual(persona_cli.respond_to("hello", _persona(), _BadLog()), "HI")
 
+    def test_level_passed_to_persona_respond(self):
+        """respond_to() with level= uses respond_by_affinity rules when available."""
+        data = {
+            "name": "Test", "default_lang": "en",
+            "responses": {"en": {
+                "rules": [{"keywords": ["hello"], "replies": ["GENERIC"]}],
+                "fallback": ["FB"],
+                "respond_by_affinity": {
+                    "close": [{"keywords": ["hello"], "replies": ["CLOSE_HI"]}],
+                },
+            }},
+        }
+        p = Persona.from_dict(data, lang="en")
+        reply = persona_cli.respond_to("hello", p, level="close")
+        self.assertEqual(reply, "CLOSE_HI")
+
+    def test_level_none_uses_generic_rules(self):
+        data = {
+            "name": "Test", "default_lang": "en",
+            "responses": {"en": {
+                "rules": [{"keywords": ["hello"], "replies": ["GENERIC"]}],
+                "fallback": [],
+                "respond_by_affinity": {
+                    "close": [{"keywords": ["hello"], "replies": ["CLOSE_HI"]}],
+                },
+            }},
+        }
+        p = Persona.from_dict(data, lang="en")
+        reply = persona_cli.respond_to("hello", p, level=None)
+        self.assertEqual(reply, "GENERIC")
+
 
 class RunChatTests(unittest.TestCase):
     def setUp(self):
