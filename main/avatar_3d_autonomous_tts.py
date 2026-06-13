@@ -169,6 +169,12 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
 
     def closeEvent(self, event):
         self.tts_thread.running = False
+        # ウィンドウを閉じるときに好感度を保存する（会話中に保存済みでも上書きで最新を維持）
+        if get_mood_tracker is not None and _default_mood_path is not None:
+            try:
+                get_mood_tracker().save(_default_mood_path())
+            except Exception:
+                pass
         event.accept()
 
 if __name__ == "__main__":

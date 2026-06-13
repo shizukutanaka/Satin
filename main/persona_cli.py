@@ -36,6 +36,7 @@ except Exception:  # pragma: no cover - defensive
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
 _HISTORY_DEFAULT = 10
+_MOOD_RESET_COMMANDS = {"/reset-mood", "/resetmood"}
 
 
 def respond_to(
@@ -61,7 +62,8 @@ def respond_to(
 
 def _help_text() -> str:
     return (
-        "コマンド: /help 一覧 | /history 履歴 | /mood 好感度 | /name 名前 | /quit 終了"
+        "コマンド: /help 一覧 | /history 履歴 | /mood 好感度 | "
+        "/reset-mood リセット | /name 名前 | /quit 終了"
     )
 
 
@@ -141,6 +143,9 @@ def run_chat(
         if text.lower() == "/mood":
             _print_mood(mood, lang, output_fn)
             continue
+        if text.lower() in _MOOD_RESET_COMMANDS:
+            _reset_mood(mood, lang, output_fn)
+            continue
 
         # 好感度を更新（指定時のみ）
         if mood is not None:
@@ -170,6 +175,24 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
         return
     prefix = "Affinity" if lang == "en" else "好感度"
     output_fn(f"{prefix}: {label} ({score}/100)")
+
+
+def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
+    """好感度をデフォルト（neutral）にリセットする。"""
+    if mood is None:
+        output_fn("(好感度は無効です)")
+        return
+    try:
+        from mood import AFFINITY_START
+        mood.affinity = AFFINITY_START
+        mood.interactions = 0
+        mood._last_interaction_time = 0.0
+        if lang == "en":
+            output_fn(f"Affinity reset to neutral ({int(AFFINITY_START)}/100).")
+        else:
+            output_fn(f"好感度をニュートラル（{int(AFFINITY_START)}/100）にリセットしました。")
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(好感度のリセットに失敗しました)")
 
 
 def _print_history(conv_log, output_fn: Callable[[str], None]) -> None:

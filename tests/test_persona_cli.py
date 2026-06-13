@@ -208,6 +208,23 @@ class MoodIntegrationTests(unittest.TestCase):
         self.assertEqual(m.affinity, 50)
         self.assertEqual(m.interactions, 0)
 
+    def test_reset_mood_command_resets_to_neutral(self):
+        from mood import MoodTracker, AFFINITY_START
+        m = MoodTracker(affinity=90, interactions=10)
+        out = self._run(["/reset-mood"], m)
+        self.assertEqual(m.affinity, AFFINITY_START)
+        self.assertEqual(m.interactions, 0)
+        self.assertTrue(any("50" in line or "neutral" in line or "ニュートラル" in line
+                            for line in out))
+
+    def test_reset_mood_disabled_when_none(self):
+        d = _Driver(["/reset-mood"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, mood=None,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("無効" in line for line in d.out))
+
     def test_mood_disabled_when_none(self):
         d = _Driver(["/mood"])
         persona_cli.run_chat(
