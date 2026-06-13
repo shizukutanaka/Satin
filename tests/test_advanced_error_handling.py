@@ -3,6 +3,7 @@ Tests for advanced_error_handling.py exception hierarchy and recovery strategies
 
 Run: python -m unittest tests.test_advanced_error_handling -v
 """
+import logging
 import os
 import sys
 import unittest
@@ -15,6 +16,11 @@ from advanced_error_handling import (  # noqa: E402
     WebScrapingError, RateLimitError, DataValidationError,
     ResourceCleanupError, ErrorContext, ErrorRecoveryInfo,
     ErrorRecoveryStrategy,
+    ErrorContextManager,
+    handle_errors_gracefully,
+    with_error_context,
+    StructuredErrorFormatter,
+    ErrorStatistics,
 )
 
 
@@ -119,6 +125,194 @@ class ErrorRecoveryStrategyTests(unittest.TestCase):
         self.assertEqual(d["operation"], "fetch_video")
         self.assertEqual(d["retry_count"], 2)
         self.assertEqual(d["extra_context"]["video_id"], "abc")
+
+
+class ErrorContextManagerTests(unittest.TestCase):
+    def test_returns_self_on_enter(self):
+        mgr = ErrorContextManager("test_op")
+        result = mgr.__enter__()
+        self.assertIs(result, mgr)
+
+    def test_exit_records_duration(self):
+        with ErrorContextManager("op") as mgr:
+            pass
+        self.assertGreaterEqual(mgr.context.duration_ms, 0.0)
+
+    def test_add_context_stores_value(self):
+        with ErrorContextManager("op") as mgr:
+            mgr.add_context("key", "value")
+        self.assertEqual(mgr.context.extra_context["key"], "value")
+
+    def test_record_retry_increments_count(self):
+        with ErrorContextManager("op") as mgr:
+            mgr.record_retry()
+            mgr.record_retry()
+        self.assertEqual(mgr.context.retry_count, 2)
+
+    def test_exception_propagates(self):
+        with self.assertRaises(ValueError):
+            with ErrorContextManager("op"):
+                raise ValueError("boom")
+
+    def test_exit_returns_false_so_exception_propagates(self):
+        mgr = ErrorContextManager("op")
+        mgr.__enter__()
+        result = mgr.__exit__(ValueError, ValueError("err"), None)
+        self.assertFalse(result)
+
+
+class HandleErrorsGracefullyTests(unittest.TestCase):
+    def test_returns_fallback_on_exception(self):
+        @handle_errors_gracefully(exceptions=(ValueError,), fallback_value=-1)
+        def bad():
+            raise ValueError("fail")
+
+        self.assertEqual(bad(), -1)
+
+    def test_returns_normal_result_on_success(self):
+        @handle_errors_gracefully(exceptions=(ValueError,), fallback_value=-1)
+        def good():
+            return 42
+
+        self.assertEqual(good(), 42)
+
+    def test_recovery_func_called_on_exception(self):
+        called = []
+
+        @handle_errors_gracefully(exceptions=(RuntimeError,),
+                                  fallback_value=None,
+                                  recovery_func=lambda: called.append(1))
+        def fail():
+            raise RuntimeError("err")
+
+        fail()
+        self.assertEqual(called, [1])
+
+    def test_non_matching_exception_propagates(self):
+        @handle_errors_gracefully(exceptions=(ValueError,), fallback_value=None)
+        def boom():
+            raise TypeError("wrong type")
+
+        with self.assertRaises(TypeError):
+            boom()
+
+    def test_satin_exception_handled(self):
+        @handle_errors_gracefully(exceptions=(SatinException,), fallback_value="safe")
+        def satin_fail():
+            raise SatinException("satin error")
+
+        self.assertEqual(satin_fail(), "safe")
+
+
+class WithErrorContextTests(unittest.TestCase):
+    def test_decorated_function_returns_result(self):
+        @with_error_context("my_op")
+        def add(a, b):
+            return a + b
+
+        self.assertEqual(add(3, 4), 7)
+
+    def test_exception_still_propagates(self):
+        @with_error_context("my_op")
+        def fail():
+            raise RuntimeError("explode")
+
+        with self.assertRaises(RuntimeError):
+            fail()
+
+
+class StructuredErrorFormatterTests(unittest.TestCase):
+    def _make_record(self, msg="test message", level=logging.ERROR):
+        record = logging.LogRecord(
+            name="test_logger", level=level,
+            pathname="", lineno=0, msg=msg,
+            args=(), exc_info=None,
+        )
+        return record
+
+    def test_format_returns_valid_json(self):
+        import json
+        formatter = StructuredErrorFormatter()
+        output = formatter.format(self._make_record())
+        parsed = json.loads(output)
+        self.assertIn("timestamp", parsed)
+        self.assertIn("message", parsed)
+        self.assertIn("level", parsed)
+
+    def test_format_includes_exception_info(self):
+        import json, sys
+        try:
+            raise ValueError("test error")
+        except ValueError:
+            exc_info = sys.exc_info()
+        record = logging.LogRecord(
+            name="test", level=logging.ERROR,
+            pathname="", lineno=0, msg="err",
+            args=(), exc_info=exc_info,
+        )
+        parsed = json.loads(StructuredErrorFormatter().format(record))
+        self.assertIn("exception", parsed)
+        self.assertEqual(parsed["exception"]["type"], "ValueError")
+
+    def test_format_includes_level_name(self):
+        import json  # noqa: F401
+        formatter = StructuredErrorFormatter()
+        parsed = json.loads(formatter.format(self._make_record(level=logging.WARNING)))
+        self.assertEqual(parsed["level"], "WARNING")
+
+
+class ErrorStatisticsTests(unittest.TestCase):
+    def test_initial_state(self):
+        stats = ErrorStatistics()
+        self.assertEqual(stats.total_errors, 0)
+        self.assertEqual(stats.recoverable_count, 0)
+        self.assertIsNone(stats.last_error)
+
+    def test_record_error_increments_total(self):
+        stats = ErrorStatistics()
+        stats.record_error(ValueError("x"), "op1")
+        self.assertEqual(stats.total_errors, 1)
+
+    def test_record_error_tracks_type(self):
+        stats = ErrorStatistics()
+        stats.record_error(ValueError("x"), "op1")
+        self.assertIn("ValueError", stats.error_by_type)
+        self.assertEqual(stats.error_by_type["ValueError"], 1)
+
+    def test_record_error_tracks_operation(self):
+        stats = ErrorStatistics()
+        stats.record_error(RuntimeError("y"), "my_op")
+        self.assertEqual(stats.error_by_operation["my_op"], 1)
+
+    def test_recoverable_counted_for_satin_exception(self):
+        stats = ErrorStatistics()
+        exc = RateLimitError("limited", retry_after=10.0)
+        stats.record_error(exc, "op")
+        self.assertGreaterEqual(stats.recoverable_count, 1)
+
+    def test_get_error_rate_empty_returns_empty(self):
+        stats = ErrorStatistics()
+        self.assertEqual(stats.get_error_rate(), {})
+
+    def test_get_error_rate_with_errors(self):
+        stats = ErrorStatistics()
+        stats.record_error(ValueError("x"), "op")
+        rate = stats.get_error_rate()
+        self.assertIn("recoverable_rate", rate)
+        self.assertIn("unrecoverable_rate", rate)
+
+    def test_to_dict_has_expected_keys(self):
+        stats = ErrorStatistics()
+        d = stats.to_dict()
+        for key in ("total_errors", "error_by_type", "error_by_operation",
+                    "recoverable_count", "unrecoverable_count", "error_rates"):
+            self.assertIn(key, d)
+
+    def test_last_error_stored(self):
+        stats = ErrorStatistics()
+        exc = RuntimeError("last one")
+        stats.record_error(exc, "op")
+        self.assertIs(stats.last_error, exc)
 
 
 if __name__ == "__main__":
