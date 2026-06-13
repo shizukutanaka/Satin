@@ -129,8 +129,10 @@ class DailySummaryWithDataTests(unittest.TestCase):
         ]
         _write_events(self._ev_path, events)
 
+        # History keeps one snapshot per day; change is measured vs the prior day.
+        yesterday_str = (today - timedelta(days=1)).strftime("%Y-%m-%d")
         mood_entries = [
-            {"date": today_str, "affinity": 50.0, "level": "neutral"},
+            {"date": yesterday_str, "affinity": 50.0, "level": "neutral"},
             {"date": today_str, "affinity": 55.0, "level": "neutral"},
         ]
         _write_mood(self._mood_path, mood_entries)
@@ -164,7 +166,9 @@ class DailySummaryWithDataTests(unittest.TestCase):
         self.assertAlmostEqual(result["affinity"], 55.0)
 
     def test_affinity_change_computed(self):
+        # today 55.0 vs previous day 50.0 → +5.0 (must actually fire, not None)
         result = daily_summary(**self._kwargs())
+        self.assertIsNotNone(result["affinity_change"])
         self.assertAlmostEqual(result["affinity_change"], 5.0)
 
     def test_event_counts_dict(self):
@@ -262,6 +266,71 @@ class LegacyAliasConsistencyTests(unittest.TestCase):
         import conversation_log as cl
         self.assertIs(ds.USER_EVENT_TYPES, cl.USER_EVENT_TYPES)
         self.assertIs(ds.AVATAR_EVENT_TYPES, cl.AVATAR_EVENT_TYPES)
+
+
+class AffinityChangeTests(unittest.TestCase):
+    """affinity_change is measured vs the PREVIOUS day's snapshot. History keeps
+    one entry per day (same-day overwrites), so an intra-day delta is impossible;
+    the old len(day_moods)>=2 check could never fire."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        open(self._ev_path, "w").close()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _summary(self, target=None):
+        return daily_summary(
+            target_date=target,
+            event_log_path=self._ev_path,
+            mood_history_path=self._mood_path,
+        )
+
+    def test_increase_vs_previous_day(self):
+        today = date.today()
+        y = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        t = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": y, "affinity": 40.0, "level": "neutral"},
+            {"date": t, "affinity": 48.0, "level": "neutral"},
+        ])
+        self.assertAlmostEqual(self._summary()["affinity_change"], 8.0)
+
+    def test_decrease_vs_previous_day(self):
+        today = date.today()
+        y = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        t = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": y, "affinity": 60.0, "level": "friendly"},
+            {"date": t, "affinity": 52.0, "level": "neutral"},
+        ])
+        self.assertAlmostEqual(self._summary()["affinity_change"], -8.0)
+
+    def test_first_day_has_no_change(self):
+        # Only one day of history → no prior baseline → None (not 0, not crash).
+        t = date.today().strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [{"date": t, "affinity": 50.0, "level": "neutral"}])
+        self.assertIsNone(self._summary()["affinity_change"])
+
+    def test_no_mood_history_has_no_change(self):
+        self.assertIsNone(self._summary()["affinity_change"])
+
+    def test_uses_most_recent_prior_day_not_oldest(self):
+        today = date.today()
+        d2 = (today - timedelta(days=2)).strftime("%Y-%m-%d")
+        d1 = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        t = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": d2, "affinity": 20.0, "level": "reserved"},
+            {"date": d1, "affinity": 50.0, "level": "neutral"},
+            {"date": t, "affinity": 55.0, "level": "neutral"},
+        ])
+        # change is vs yesterday (50.0), not the day before (20.0)
+        self.assertAlmostEqual(self._summary()["affinity_change"], 5.0)
 
 
 class PeakHourSemanticsTests(unittest.TestCase):

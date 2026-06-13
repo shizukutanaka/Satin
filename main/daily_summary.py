@@ -91,7 +91,7 @@ def daily_summary(
           "peak_hour": int | None,
           "affinity": float | None,
           "affinity_level": str | None,
-          "affinity_change": float | None,   # vs start of day
+          "affinity_change": float | None,   # vs previous day's snapshot (None if none)
           "event_counts": {event_type: count, ...},
         }
     """
@@ -146,10 +146,15 @@ def daily_summary(
         last_entry = day_moods[-1]
         affinity = last_entry.get("affinity")
         affinity_lvl = last_entry.get("level")
-        if len(day_moods) >= 2:
-            affinity_change = (
-                day_moods[-1].get("affinity", 0) - day_moods[0].get("affinity", 0)
-            )
+        # 変化量は「前日（対象日より前の最新スナップショット）」との差で算出する。
+        # 履歴は 1 日 1 エントリ（同日は上書き）なので同日内差分は取れず、
+        # 旧実装の len(day_moods) >= 2 は決して成立せず affinity_change が常に
+        # None になっていた（あいさつの増減メッセージが発火しないバグ）。
+        prior_moods = [e for e in mood_entries if e.get("date", "") < date_key]
+        if prior_moods and affinity is not None:
+            prev_affinity = prior_moods[-1].get("affinity")
+            if prev_affinity is not None:
+                affinity_change = affinity - prev_affinity
 
     return {
         "date": date_key,
