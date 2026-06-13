@@ -64,6 +64,7 @@ class JaLocaleTests(unittest.TestCase):
         "mood_history", "mood_no_history", "date", "back_to_mood",
         "total_messages", "download_conversation",
         "search", "search_placeholder", "search_results",
+        "stats",
     ]
 
     def setUp(self):
@@ -108,6 +109,7 @@ class EnLocaleTests(unittest.TestCase):
         "mood_history", "mood_no_history", "date", "back_to_mood",
         "total_messages", "download_conversation",
         "search", "search_placeholder", "search_results",
+        "stats",
     ]
 
     def setUp(self):

@@ -93,6 +93,7 @@ TEMPLATE = '''
   <li><a href="/backups?lang={{lang}}">{{i18n.t('backups')}}</a></li>
   <li><a href="/sync?lang={{lang}}">{{i18n.t('cloud_sync')}}</a></li>
   <li><a href="/mood?lang={{lang}}">{{i18n.t('mood', 'Mood')}}</a></li>
+  <li><a href="/stats?lang={{lang}}">{{i18n.t('stats', 'Stats')}}</a></li>
 </ul>
 <hr>
 {% block content %}{% endblock %}
@@ -172,7 +173,7 @@ def backups(i18n):
     switcher = LANG_SWITCHER_HTML.format(en='selected' if lang=='en' else '', ja='selected' if lang=='ja' else '')
     files = []
     if os.path.isdir(backup_dir):
-        files = [f for f in os.listdir(backup_dir) if f.endswith('.png') or f.endswith('.gz')]
+        files = [f for f in os.listdir(backup_dir) if f.endswith('.png') or f.endswith('.gz') or f.endswith('.zip')]
     content = f'<h3>{i18n.t("backups")}</h3><ul>'
     for f in files:
         f_esc = _html.escape(f)
@@ -203,7 +204,7 @@ def sync(i18n):
             # Create a zip of config/ and the conversation log in the event_report/ dir
             os.makedirs(backup_dir, exist_ok=True)
             ts = _dt.datetime.now().strftime('%Y%m%d_%H%M%S')
-            zip_name = f'backup_{ts}.gz'
+            zip_name = f'backup_{ts}.zip'
             zip_path = os.path.join(backup_dir, zip_name)
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 # config/ directory
@@ -535,6 +536,124 @@ def mood_history(i18n):
                 )
             content += '</table>'
         content += f'<p><a href="/mood?lang={_html.escape(lang)}">&larr; {_html.escape(i18n.t("back_to_mood", "Back to Mood"))}</a></p>'
+
+    return render_template_string(
+        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
+        i18n=i18n, lang=lang, switcher=switcher,
+    )
+
+
+def _conversation_stats(log_path: str) -> dict:
+    """JSONL ログから会話統計を集計して辞書で返す（Flask 非依存）。
+
+    Returns:
+        {
+          "total_user": int,
+          "total_avatar": int,
+          "per_day": {date_str: int},   # user messages per day
+          "peak_hour": int | None,       # 0-23, most active hour by user messages
+          "per_hour": {0..23: int},
+        }
+    """
+    from collections import defaultdict
+    _USER_TYPES = {"user_comment", "user"}
+    _AVATAR_TYPES = {"avatar_reply", "avatar"}
+    total_user = 0
+    total_avatar = 0
+    per_day: dict = defaultdict(int)
+    per_hour: dict = defaultdict(int)
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, encoding='utf-8') as fh:
+                for line in fh:
+                    if not line.strip():
+                        continue
+                    try:
+                        ev = json.loads(line)
+                        et = ev.get('event_type', '')
+                        ts = ev.get('timestamp', 0)
+                        if et in _USER_TYPES:
+                            total_user += 1
+                            dt = datetime.fromtimestamp(ts)
+                            per_day[dt.strftime('%Y-%m-%d')] += 1
+                            per_hour[dt.hour] += 1
+                        elif et in _AVATAR_TYPES:
+                            total_avatar += 1
+                    except (json.JSONDecodeError, KeyError, ValueError, OSError, OverflowError):
+                        continue
+        except OSError:
+            pass
+    peak_hour = max(per_hour, key=per_hour.get) if per_hour else None
+    return {
+        "total_user": total_user,
+        "total_avatar": total_avatar,
+        "per_day": dict(sorted(per_day.items())),
+        "peak_hour": peak_hour,
+        "per_hour": {h: per_hour[h] for h in range(24)},
+    }
+
+
+@app.route('/stats')
+@with_lang
+def stats(i18n):
+    """会話統計ページ: メッセージ数の推移・ピーク時間帯を可視化する。"""
+    lang = get_lang()
+    is_en = lang.startswith('en')
+    switcher = LANG_SWITCHER_HTML.format(
+        en='selected' if is_en else '', ja='selected' if not is_en else ''
+    )
+    title = _html.escape(i18n.t('stats', 'Stats'))
+    content = f'<h3>{title}</h3>'
+
+    s = _conversation_stats(event_log_path)
+    total_user = s["total_user"]
+    total_avatar = s["total_avatar"]
+    per_day = s["per_day"]
+    per_hour = s["per_hour"]
+    peak_hour = s["peak_hour"]
+
+    if is_en:
+        content += f'<p>User messages: <b>{total_user}</b> &nbsp; Avatar replies: <b>{total_avatar}</b></p>'
+    else:
+        content += f'<p>ユーザーメッセージ: <b>{total_user}</b> &nbsp; アバター返答: <b>{total_avatar}</b></p>'
+
+    if per_day:
+        ph_label = 'Messages per day' if is_en else '日別メッセージ数'
+        content += f'<h4>{_html.escape(ph_label)}</h4>'
+        content += '<table border=0 cellpadding=3 cellspacing=2>'
+        max_day = max(per_day.values()) if per_day else 1
+        for day, cnt in list(per_day.items())[-30:]:
+            bar = max(1, int(cnt / max_day * 200))
+            content += (
+                f'<tr><td style="text-align:right;padding-right:8px;white-space:nowrap">'
+                f'{_html.escape(day)}</td>'
+                f'<td style="text-align:right;padding-right:6px">{cnt}</td>'
+                f'<td><div style="background:#5b9bd5;width:{bar}px;height:10px;display:inline-block"></div></td></tr>'
+            )
+        content += '</table>'
+
+    if peak_hour is not None:
+        if is_en:
+            content += f'<p>Peak activity: <b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>'
+        else:
+            content += f'<p>ピーク時間帯: <b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>'
+        hr_label = 'Messages per hour' if is_en else '時間別メッセージ数'
+        content += f'<h4>{_html.escape(hr_label)}</h4>'
+        content += '<table border=0 cellpadding=2 cellspacing=2>'
+        max_hr = max(per_hour.values()) if any(per_hour.values()) else 1
+        for h in range(24):
+            cnt = per_hour.get(h, 0)
+            bar = max(0, int(cnt / max_hr * 120)) if max_hr else 0
+            content += (
+                f'<tr><td style="text-align:right;padding-right:4px">{h:02d}h</td>'
+                f'<td style="text-align:right;padding-right:4px">{cnt}</td>'
+                f'<td><div style="background:#5b9bd5;width:{bar}px;height:8px;display:inline-block"></div></td></tr>'
+            )
+        content += '</table>'
+
+    if not per_day:
+        no_data = 'No conversation data yet.' if is_en else 'まだ会話データがありません。'
+        content += f'<p>{_html.escape(no_data)}</p>'
 
     return render_template_string(
         TEMPLATE + '{% block content %}' + content + '{% endblock %}',

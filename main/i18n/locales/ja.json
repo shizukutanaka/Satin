@@ -95,5 +95,6 @@
     "search_results": "検索結果",
     "backup_saved_as": "保存先",
     "existing_backups": "既存のバックアップ",
-    "sync_description": "設定ファイルと会話ログのローカルバックアップを作成します。"
+    "sync_description": "設定ファイルと会話ログのローカルバックアップを作成します。",
+    "stats": "統計"
 }
