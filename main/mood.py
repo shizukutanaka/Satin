@@ -316,6 +316,23 @@ def _default_mood_history_path() -> str:
     return os.path.join(os.path.dirname(here), "config", "mood_history.jsonl")
 
 
+def _default_mood_config_path() -> str:
+    """既定の好感度キーワード設定ファイル（config/mood_config.json）。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(os.path.dirname(here), "config", "mood_config.json")
+
+
+def _load_mood_config(path: Optional[str] = None) -> Optional[Dict]:
+    """mood_config.json を読み込む。ファイルが無いか壊れていれば None。"""
+    p = path or _default_mood_config_path()
+    try:
+        with open(p, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def load_mood_history(history_path: Optional[str] = None, n: int = 30) -> List[Dict]:
     """好感度履歴の直近 n 件を古い順で返す。ファイルが無ければ空リスト。"""
     path = history_path or _default_mood_history_path()
@@ -347,13 +364,20 @@ def get_mood_tracker(
     path: Optional[str] = None,
     mood_config: Optional[Dict] = None,
 ) -> MoodTracker:
-    """共有 MoodTracker を返す（初回に保存ファイルから読み込む）。"""
+    """共有 MoodTracker を返す（初回に保存ファイルから読み込む）。
+
+    mood_config が未指定の場合、config/mood_config.json を自動的に読み込む。
+    これにより config/mood_config.json でキーワードをカスタマイズできる。
+    """
     global _mood_singleton
     if _mood_singleton is None:
         with _mood_lock:
             if _mood_singleton is None:
+                effective_config = mood_config
+                if effective_config is None:
+                    effective_config = _load_mood_config()
                 _mood_singleton = MoodTracker.load(
-                    path or _default_mood_path(), mood_config=mood_config
+                    path or _default_mood_path(), mood_config=effective_config
                 )
     return _mood_singleton
 

@@ -1,0 +1,42 @@
+{
+  "_comment": "好感度トラッカーのキーワード設定。positive/negative はサブワードマッチ。",
+  "positive_delta": 4.0,
+  "negative_delta": 6.0,
+  "positive": {
+    "ja": [
+      "ありがとう", "ありがと", "感謝", "助かった", "助かる",
+      "好き", "大好き", "好きだよ", "愛してる", "愛してます",
+      "うれしい", "嬉しい", "たのしい", "楽しい", "たのしかった", "楽しかった",
+      "かわいい", "可愛い", "素敵", "すてき", "いいね", "よかった",
+      "すごい", "すごい!", "最高", "さいこう", "一番",
+      "おもしろい", "面白い", "笑える", "わらえる",
+      "がんばって", "頑張って", "応援", "おうえん",
+      "優しい", "やさしい", "いつも", "ずっと"
+    ],
+    "en": [
+      "thank", "thanks", "grateful", "appreciate",
+      "love", "like", "adore", "cute", "adorable",
+      "happy", "glad", "joyful", "excited", "wonderful",
+      "nice", "great", "awesome", "amazing", "fantastic",
+      "good job", "well done", "perfect", "beautiful",
+      "fun", "funny", "interesting", "enjoy",
+      "cheer", "support", "always", "forever"
+    ]
+  },
+  "negative": {
+    "ja": [
+      "嫌い", "きらい", "うざい", "うざ", "うるさい",
+      "むかつく", "イライラ", "いらいら", "腹立つ", "はらだつ",
+      "消えろ", "失せろ", "うっとうしい", "うっとおしい",
+      "最悪", "さいあく", "だめだ", "だめ", "ダメ",
+      "つまらない", "退屈", "たいくつ"
+    ],
+    "en": [
+      "hate", "dislike", "annoying", "irritating",
+      "angry", "mad", "furious", "frustrated",
+      "get lost", "go away", "shut up", "leave me",
+      "terrible", "awful", "horrible", "worst",
+      "boring", "dull", "useless", "stupid"
+    ]
+  }
+}

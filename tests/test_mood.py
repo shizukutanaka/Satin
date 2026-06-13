@@ -343,5 +343,100 @@ class MoodHistoryTests(unittest.TestCase):
         self.assertTrue(path.endswith(".jsonl"))
 
 
+class MoodConfigLoadTests(unittest.TestCase):
+    """Tests for _default_mood_config_path and _load_mood_config."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        import mood
+        mood.reset_mood_tracker()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+        import mood
+        mood.reset_mood_tracker()
+
+    def test_default_mood_config_path_in_config_dir(self):
+        from mood import _default_mood_config_path
+        path = _default_mood_config_path()
+        self.assertIn("config", path)
+        self.assertTrue(path.endswith("mood_config.json"))
+
+    def test_load_mood_config_missing_file_returns_none(self):
+        from mood import _load_mood_config
+        result = _load_mood_config(os.path.join(self._tmp, "nonexistent.json"))
+        self.assertIsNone(result)
+
+    def test_load_mood_config_invalid_json_returns_none(self):
+        from mood import _load_mood_config
+        bad = os.path.join(self._tmp, "bad.json")
+        with open(bad, "w") as f:
+            f.write("{ not valid json ")
+        self.assertIsNone(_load_mood_config(bad))
+
+    def test_load_mood_config_non_dict_returns_none(self):
+        from mood import _load_mood_config
+        arr_file = os.path.join(self._tmp, "arr.json")
+        with open(arr_file, "w") as f:
+            import json
+            json.dump([1, 2, 3], f)
+        self.assertIsNone(_load_mood_config(arr_file))
+
+    def test_load_mood_config_valid_file_returns_dict(self):
+        from mood import _load_mood_config
+        cfg = {"positive_delta": 5.0, "positive": {"en": ["love"]}}
+        p = os.path.join(self._tmp, "cfg.json")
+        with open(p, "w", encoding="utf-8") as f:
+            import json
+            json.dump(cfg, f)
+        result = _load_mood_config(p)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["positive_delta"], 5.0)
+
+    def test_get_mood_tracker_auto_loads_mood_config(self):
+        """get_mood_tracker() with no args should use mood_config.json keywords."""
+        import json
+        cfg = {
+            "positive": {"en": ["superunique_pos_word"]},
+            "negative": {"en": ["superunique_neg_word"]},
+            "positive_delta": 10.0,
+            "negative_delta": 10.0,
+        }
+        cfg_path = os.path.join(self._tmp, "mood_config.json")
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+
+        from unittest import mock
+        import mood as mood_mod
+        with mock.patch.object(mood_mod, "_default_mood_config_path", return_value=cfg_path), \
+             mock.patch.object(mood_mod, "_default_mood_path", return_value=os.path.join(self._tmp, "mood.json")):
+            tracker = mood_mod.get_mood_tracker()
+
+        before = tracker.affinity
+        tracker.register("superunique_pos_word is here")
+        self.assertGreater(tracker.affinity, before)
+
+    def test_get_mood_tracker_explicit_config_skips_auto_load(self):
+        """Explicitly passing mood_config bypasses auto-loading mood_config.json."""
+        import json
+        from unittest import mock
+        import mood as mood_mod
+
+        explicit_cfg = {
+            "positive": {"en": ["explicit_positive_word"]},
+            "negative": {"en": []},
+            "positive_delta": 15.0,
+            "negative_delta": 0.0,
+        }
+        with mock.patch.object(mood_mod, "_default_mood_path",
+                               return_value=os.path.join(self._tmp, "mood.json")):
+            tracker = mood_mod.get_mood_tracker(mood_config=explicit_cfg)
+
+        before = tracker.affinity
+        tracker.register("explicit_positive_word here")
+        self.assertGreater(tracker.affinity, before)
+
+
 if __name__ == "__main__":
     unittest.main()
