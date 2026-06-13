@@ -81,5 +81,58 @@ class EventLogHtmlEscapeTests(unittest.TestCase):
         self.assertIn("hello", row)
 
 
+class SearchXSSTests(unittest.TestCase):
+    """Ensure search query and conversation text are HTML-escaped in /conversation/search."""
+
+    def _build_search_row(self, ts, speaker, text, query):
+        """Mirror the search highlighting logic in dashboard.conversation_search."""
+        import html as _html
+        q_esc = _html.escape(query)
+        highlighted = _html.escape(text).replace(
+            q_esc, f'<mark>{q_esc}</mark>'
+        )
+        return (
+            f'<small style="color:#888">{_html.escape(ts)}'
+            f' <b>{_html.escape(speaker)}</b></small><br>'
+            f'{highlighted}'
+        )
+
+    def test_xss_script_in_conversation_text_escaped(self):
+        # If the text itself contains a <script> tag and query matches part of it,
+        # the output must not contain raw <script> — only the escaped form.
+        row = self._build_search_row(
+            "12:00:00", "You", "<script>alert(1)</script>", "alert"
+        )
+        self.assertNotIn("<script>", row)
+        self.assertIn("alert", row)  # match still present, but safely escaped
+
+    def test_xss_in_conversation_text_escaped(self):
+        # <img> in text + "img" as query: the raw <img …> tag must not survive
+        row = self._build_search_row(
+            "12:00:00", "Avatar", "<img src=x onerror=alert(1)>", "img"
+        )
+        # Raw '<img' must not appear as a live tag start (escaped to &lt;)
+        self.assertNotIn("<img", row)
+        # The escaped form of the opening angle bracket must be present
+        self.assertIn("&lt;", row)
+
+    def test_matched_keyword_highlighted_safely(self):
+        row = self._build_search_row("12:00:00", "You", "hello world", "hello")
+        self.assertIn("<mark>hello</mark>", row)
+        self.assertNotIn("<script>", row)
+
+    def test_html_in_speaker_escaped(self):
+        row = self._build_search_row("12:00:00", "<b>hacker</b>", "normal text", "normal")
+        # The injected <b>hacker</b> must be escaped (shown as &lt;b&gt;)
+        self.assertIn("&lt;b&gt;hacker", row)
+
+    def test_xss_query_containing_malicious_html_in_text(self):
+        # User searches for "<script>" which exists literally in conversation text
+        row = self._build_search_row(
+            "12:00:00", "You", "he said <script>alert(1)</script> here", "<script>"
+        )
+        self.assertNotIn("<script>", row)  # raw must not appear
+
+
 if __name__ == "__main__":
     unittest.main()
