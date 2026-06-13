@@ -20,6 +20,12 @@ except Exception:
     _mood_history_to_csv = None
 
 try:
+    from daily_summary import daily_summary as _daily_summary, summary_greeting as _summary_greeting
+except Exception:
+    _daily_summary = None
+    _summary_greeting = None
+
+try:
     from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
     _FLASK_AVAILABLE = True
 except ImportError:
@@ -96,6 +102,7 @@ TEMPLATE = '''
   <li><a href="/sync?lang={{lang}}">{{i18n.t('cloud_sync')}}</a></li>
   <li><a href="/mood?lang={{lang}}">{{i18n.t('mood', 'Mood')}}</a></li>
   <li><a href="/stats?lang={{lang}}">{{i18n.t('stats', 'Stats')}}</a></li>
+  <li><a href="/summary?lang={{lang}}">{{i18n.t('summary', 'Summary')}}</a></li>
 </ul>
 <hr>
 {% block content %}{% endblock %}
@@ -735,6 +742,77 @@ def stats(i18n):
     if not per_day:
         no_data = 'No conversation data yet.' if is_en else 'まだ会話データがありません。'
         content += f'<p>{_html.escape(no_data)}</p>'
+
+    return render_template_string(
+        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
+        i18n=i18n, lang=lang, switcher=switcher,
+    )
+
+
+@app.route('/summary')
+@with_lang
+def summary(i18n):
+    """今日のアクティビティサマリーとアバターの一言を表示する。"""
+    lang = get_lang()
+    is_en = lang.startswith('en')
+    switcher = LANG_SWITCHER_HTML.format(
+        en='selected' if is_en else '', ja='selected' if not is_en else ''
+    )
+    title = _html.escape(i18n.t('summary', 'Summary'))
+    content = f'<h3>{title}</h3>'
+
+    if _daily_summary is None:
+        msg = 'Summary module unavailable.' if is_en else 'サマリー機能が利用できません。'
+        content += f'<p>{_html.escape(msg)}</p>'
+    else:
+        s = _daily_summary(
+            lang=lang,
+            event_log_path=event_log_path,
+            mood_history_path=_mood_history_path() if _mood_history_path else None,
+        )
+        # アバターの一言
+        greeting = ''
+        if _summary_greeting is not None:
+            greeting = _summary_greeting(
+                lang=lang,
+                event_log_path=event_log_path,
+                mood_history_path=_mood_history_path() if _mood_history_path else None,
+            )
+        if greeting:
+            content += (
+                f'<blockquote style="background:#f0f6ff;border-left:4px solid #5b9bd5;'
+                f'padding:8px 12px;margin:8px 0;font-style:italic">'
+                f'{_html.escape(greeting)}</blockquote>'
+            )
+
+        date_lbl = 'Date' if is_en else '日付'
+        user_lbl = 'Your messages' if is_en else 'あなたのメッセージ'
+        avatar_lbl = 'Avatar replies' if is_en else 'アバターの返答'
+        total_lbl = 'Total interactions' if is_en else '合計やりとり'
+        peak_lbl = 'Peak hour' if is_en else 'ピーク時間帯'
+        affinity_lbl = 'Affinity' if is_en else '好感度'
+
+        peak = s['peak_hour']
+        peak_str = f'{peak:02d}:00–{peak:02d}:59' if peak is not None else '—'
+        affinity_str = (
+            f'{s["affinity"]:.1f} ({_html.escape(str(s["affinity_level"]))})'
+            if s['affinity'] is not None else '—'
+        )
+        rows = [
+            (date_lbl, _html.escape(s['date'])),
+            (user_lbl, str(s['user_messages'])),
+            (avatar_lbl, str(s['avatar_replies'])),
+            (total_lbl, str(s['total_interactions'])),
+            (peak_lbl, peak_str),
+            (affinity_lbl, affinity_str),
+        ]
+        content += '<table border=0 cellpadding=5 cellspacing=2>'
+        for label, value in rows:
+            content += (
+                f'<tr><td style="text-align:right;color:#666">{_html.escape(label)}:</td>'
+                f'<td><b>{value}</b></td></tr>'
+            )
+        content += '</table>'
 
     return render_template_string(
         TEMPLATE + '{% block content %}' + content + '{% endblock %}',
