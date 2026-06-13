@@ -92,5 +92,69 @@ class BatchBackupZipTests(unittest.TestCase):
         self.assertNotIn("batch_process", src)
 
 
+class ValidateConfigsTests(unittest.TestCase):
+    """Tests for batch_config_utils.validate_configs()."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        import batch_config_utils as bcu
+        self._bcu = bcu
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write(self, filename, data):
+        path = os.path.join(self._tmp, filename)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        return path
+
+    def test_valid_configs_return_empty_error_list(self):
+        self._write("cfg_001.json", {"name": "a", "value": 1})
+        self._write("cfg_002.json", {"name": "b", "value": 2})
+        errors = self._bcu.validate_configs(
+            self._tmp, "cfg_*.json", ["name", "value"],
+            desc="test", error_summary="err", ok_message="ok",
+        )
+        self.assertEqual(errors, [])
+
+    def test_missing_required_key_is_reported(self):
+        self._write("cfg_001.json", {"name": "a"})  # missing "value"
+        errors = self._bcu.validate_configs(
+            self._tmp, "cfg_*.json", ["name", "value"],
+            desc="test", error_summary="err", ok_message="ok",
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertIn("value", errors[0])
+
+    def test_invalid_json_is_reported(self):
+        bad = os.path.join(self._tmp, "cfg_bad.json")
+        with open(bad, "w") as f:
+            f.write("{ not json }")
+        errors = self._bcu.validate_configs(
+            self._tmp, "cfg_*.json", ["name"],
+            desc="test", error_summary="err", ok_message="ok",
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertIn("cfg_bad.json", errors[0])
+
+    def test_no_matching_files_returns_empty_list(self):
+        errors = self._bcu.validate_configs(
+            self._tmp, "nonexistent_*.json", ["name"],
+            desc="test", error_summary="err", ok_message="ok",
+        )
+        self.assertEqual(errors, [])
+
+    def test_partial_errors_only_lists_bad_files(self):
+        self._write("cfg_001.json", {"name": "a", "value": 1})
+        self._write("cfg_002.json", {"name": "b"})  # missing "value"
+        errors = self._bcu.validate_configs(
+            self._tmp, "cfg_*.json", ["name", "value"],
+            desc="test", error_summary="err", ok_message="ok",
+        )
+        self.assertEqual(len(errors), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
