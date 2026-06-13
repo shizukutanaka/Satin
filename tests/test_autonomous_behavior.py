@@ -211,10 +211,16 @@ class PersonaIntegrationTests(unittest.TestCase):
         self._patcher.start()
         self._mood_patcher = mock.patch.object(autonomous_behavior, "_get_mood_tracker", None)
         self._mood_patcher.start()
+        # Suppress yesterday_greeting so morning-hour tests don't append summary text
+        self._summary_patcher = mock.patch.object(
+            autonomous_behavior, "_yesterday_greeting", lambda **kw: ""
+        )
+        self._summary_patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
         self._mood_patcher.stop()
+        self._summary_patcher.stop()
 
     def test_start_sets_greeting_from_persona(self):
         d = _StartStopDummy()
@@ -310,8 +316,10 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
                                lambda *a, **k: fake_persona):
             with mock.patch.object(autonomous_behavior, "_get_mood_tracker",
                                    lambda: _FakeTracker()):
-                d = _StartStopDummy()
-                d.start_autonomous()
+                with mock.patch.object(autonomous_behavior, "_yesterday_greeting",
+                                       lambda **kw: ""):
+                    d = _StartStopDummy()
+                    d.start_autonomous()
 
         self.assertEqual(captured_levels, ["close"])
         self.assertEqual(d.talk_text, "GREETING_close")

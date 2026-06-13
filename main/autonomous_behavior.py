@@ -37,6 +37,11 @@ except Exception:  # pragma: no cover - defensive
     _get_mood_tracker = None
     _mood_history_path = None
 
+try:
+    from daily_summary import yesterday_greeting as _yesterday_greeting
+except Exception:  # pragma: no cover - defensive
+    _yesterday_greeting = None
+
 
 class AutonomousBehaviorMixin:
     REST_TEXTS = ['ふう…ちょっと休憩。', 'すこし止まります。']
@@ -80,6 +85,18 @@ class AutonomousBehaviorMixin:
         persona = self.persona
         if persona is not None:
             greeting = persona.greeting(level=level)
+            # 朝（6〜10時）は昨日のアクティビティサマリーをあいさつに添える
+            if _yesterday_greeting is not None:
+                import datetime as _dt
+                hour = _dt.datetime.now().hour
+                if 6 <= hour < 10:
+                    try:
+                        lang = getattr(persona, 'lang', 'ja')
+                        yday = _yesterday_greeting(lang=lang)
+                        if yday:
+                            greeting = (greeting + " " + yday).strip() if greeting else yday
+                    except Exception:
+                        pass
             if greeting:
                 self.talk_text = greeting
                 self._on_talk_start(greeting)
