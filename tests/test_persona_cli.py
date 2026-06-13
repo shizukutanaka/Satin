@@ -143,6 +143,15 @@ class RunChatTests(unittest.TestCase):
         n, out = self._run(["hello"], greet=False)
         self.assertEqual(n, 1)
 
+    def test_stats_command_shows_session_count(self):
+        n, out = self._run(["hello", "/stats"], greet=False)
+        self.assertEqual(n, 1)
+        self.assertTrue(any("1" in line for line in out))
+
+    def test_stats_does_not_count_as_exchange(self):
+        n, out = self._run(["/stats"], greet=False)
+        self.assertEqual(n, 0)
+
 
 class RunChatHistoryTests(unittest.TestCase):
     def setUp(self):

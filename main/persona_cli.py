@@ -63,7 +63,7 @@ def respond_to(
 def _help_text() -> str:
     return (
         "コマンド: /help 一覧 | /history 履歴 | /mood 好感度 | "
-        "/reset-mood リセット | /name 名前 | /quit 終了"
+        "/reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
     )
 
 
@@ -151,6 +151,9 @@ def run_chat(
         if text.lower() in _MOOD_RESET_COMMANDS:
             _reset_mood(mood, lang, output_fn)
             continue
+        if text.lower() == "/stats":
+            _print_stats(conv_log, exchanges, lang, output_fn)
+            continue
 
         # 好感度を更新（指定時のみ）
         if mood is not None:
@@ -225,6 +228,26 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
             output_fn(f"好感度をニュートラル（{int(AFFINITY_START)}/100）にリセットしました。")
     except Exception:  # pragma: no cover - defensive
         output_fn("(好感度のリセットに失敗しました)")
+
+
+def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:
+    """現在セッションおよび全体の会話統計を表示する。"""
+    is_en = lang.startswith("en")
+    if is_en:
+        output_fn(f"Session exchanges: {session_exchanges}")
+    else:
+        output_fn(f"今回のセッション: {session_exchanges}件")
+    if conv_log is None:
+        return
+    try:
+        all_lines = conv_log.recent_texts(10000)
+        total = len(all_lines) // 2  # each exchange = 2 lines (user + avatar)
+        if is_en:
+            output_fn(f"Total exchanges (all time): {total}")
+        else:
+            output_fn(f"累計会話数: {total}件")
+    except Exception:  # pragma: no cover - defensive
+        pass
 
 
 def _print_history(conv_log, output_fn: Callable[[str], None]) -> None:
