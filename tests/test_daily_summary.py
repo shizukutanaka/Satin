@@ -216,6 +216,54 @@ class DailySummaryDateFilterTests(unittest.TestCase):
         self.assertEqual(result["user_messages"], 2)
 
 
+class LegacyAliasConsistencyTests(unittest.TestCase):
+    """daily_summary must count legacy 'user'/'avatar' event aliases the same
+    way the dashboard does, so /stats and /summary never disagree on one log."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        today = date.today()
+        noon = datetime(today.year, today.month, today.day, 12, 0, 0).timestamp()
+        events = [
+            {"event_type": "user_comment", "timestamp": noon},
+            {"event_type": "user", "timestamp": noon},          # legacy alias
+            {"event_type": "avatar_reply", "timestamp": noon},
+            {"event_type": "avatar", "timestamp": noon},        # legacy alias
+        ]
+        _write_events(self._ev_path, events)
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_legacy_user_alias_counted(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["user_messages"], 2)
+
+    def test_legacy_avatar_alias_counted(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["avatar_replies"], 2)
+
+    def test_agrees_with_dashboard_conversation_stats(self):
+        import dashboard
+        result = daily_summary(**self._kwargs())
+        cs = dashboard._conversation_stats(self._ev_path)
+        self.assertEqual(result["user_messages"], cs["total_user"])
+        self.assertEqual(result["avatar_replies"], cs["total_avatar"])
+
+    def test_shared_constants_are_imported_from_conversation_log(self):
+        import daily_summary as ds
+        import conversation_log as cl
+        self.assertIs(ds.USER_EVENT_TYPES, cl.USER_EVENT_TYPES)
+        self.assertIs(ds.AVATAR_EVENT_TYPES, cl.AVATAR_EVENT_TYPES)
+
+
 class SummaryGreetingTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()

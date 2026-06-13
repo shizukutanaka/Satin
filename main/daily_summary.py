@@ -22,6 +22,14 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# ユーザー/アバター発話の分類は conversation_log を唯一の真実の源とする
+# （dashboard と同じ別名集合を共有し、集計の食い違いを防ぐ）。
+try:
+    from conversation_log import USER_EVENT_TYPES, AVATAR_EVENT_TYPES
+except Exception:  # pragma: no cover - defensive fallback
+    USER_EVENT_TYPES = frozenset({"user_comment", "user"})
+    AVATAR_EVENT_TYPES = frozenset({"avatar_reply", "avatar"})
+
 # ---------------------------------------------------------------------------
 # デフォルトパス（他モジュールと同じ規則）
 # ---------------------------------------------------------------------------
@@ -102,8 +110,8 @@ def daily_summary(
     ]
 
     event_type_counts: Counter = Counter(ev.get("event_type", "") for ev in day_events)
-    user_msgs = event_type_counts.get("user_comment", 0)
-    avatar_replies = event_type_counts.get("avatar_reply", 0)
+    user_msgs = sum(event_type_counts.get(t, 0) for t in USER_EVENT_TYPES)
+    avatar_replies = sum(event_type_counts.get(t, 0) for t in AVATAR_EVENT_TYPES)
     total = user_msgs + avatar_replies
 
     # ピーク時間帯（メッセージ数が最大の時）

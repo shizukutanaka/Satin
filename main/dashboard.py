@@ -25,6 +25,13 @@ except Exception:
     _daily_summary = None
     _summary_greeting = None
 
+# 会話イベント分類は conversation_log を唯一の真実の源とする（集計の食い違い防止）。
+try:
+    from conversation_log import USER_EVENT_TYPES as _USER_TYPES, AVATAR_EVENT_TYPES as _AVATAR_TYPES
+except Exception:
+    _USER_TYPES = {"user_comment", "user"}
+    _AVATAR_TYPES = {"avatar_reply", "avatar"}
+
 try:
     from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
     _FLASK_AVAILABLE = True
@@ -126,7 +133,7 @@ def index(i18n):
                         continue
                     try:
                         ev = json.loads(line)
-                        if ev.get('event_type') in ('user_comment', 'user'):
+                        if ev.get('event_type') in _USER_TYPES:
                             total += 1
                     except (json.JSONDecodeError, KeyError):
                         continue
@@ -269,8 +276,6 @@ def conversation(i18n):
         en='selected' if lang.startswith('en') else '',
         ja='selected' if not lang.startswith('en') else '',
     )
-    _USER_TYPES = {"user_comment", "user"}
-    _AVATAR_TYPES = {"avatar_reply", "avatar"}
     exchanges = []
     if os.path.exists(event_log_path):
         with open(event_log_path, encoding='utf-8') as f:
@@ -331,8 +336,6 @@ def conversation(i18n):
 def conversation_download(i18n):
     """会話履歴をプレーンテキストとしてダウンロードする。"""
     import io
-    _USER_TYPES = {"user_comment", "user"}
-    _AVATAR_TYPES = {"avatar_reply", "avatar"}
     lines_out = []
     if os.path.exists(event_log_path):
         with open(event_log_path, encoding='utf-8') as f:
@@ -524,8 +527,6 @@ def conversation_search(i18n):
 </form>'''
 
     if q:
-        _USER_TYPES = {"user_comment", "user"}
-        _AVATAR_TYPES = {"avatar_reply", "avatar"}
         q_lower = q.lower()
         matches = []
         if os.path.exists(event_log_path):
@@ -644,8 +645,6 @@ def _conversation_stats(log_path: str) -> dict:
         }
     """
     from collections import defaultdict
-    _USER_TYPES = {"user_comment", "user"}
-    _AVATAR_TYPES = {"avatar_reply", "avatar"}
     total_user = 0
     total_avatar = 0
     per_day: dict = defaultdict(int)

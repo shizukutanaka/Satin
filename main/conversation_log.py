@@ -31,6 +31,13 @@ DEFAULT_LOGFILE = "avatar_event_log.jsonl"
 EVENT_USER_COMMENT = "user_comment"
 EVENT_AVATAR_REPLY = "avatar_reply"
 
+# 集計・表示時に「ユーザー発話」「アバター発話」とみなすイベント種別の正準集合。
+# 正規値に加え、過去ログ/外部ログ互換のためのレガシー別名 ("user"/"avatar") を含む。
+# dashboard と daily_summary が同じ分類を共有し、同一ログで集計が食い違わないようにする
+# 単一の真実の源（single source of truth）。
+USER_EVENT_TYPES = frozenset({EVENT_USER_COMMENT, "user"})
+AVATAR_EVENT_TYPES = frozenset({EVENT_AVATAR_REPLY, "avatar"})
+
 
 class ConversationLog:
     """ユーザーとアバターの会話を JSONL イベントログへ記録・読み出しするクラス。"""
