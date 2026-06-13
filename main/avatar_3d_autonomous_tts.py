@@ -44,6 +44,11 @@ def make_reminder_speak(viewer, tts_queue):
     viewer / tts_queue 非依存の純ロジックとして切り出し、Qt 無しでテスト可能。
     """
     def _speak(text):
+        # 自律モード停止とタイマー発火が競合した場合への防御。停止後に発火した
+        # リマインダーは無効なので何もしない。さもないと comment_text が
+        # 書き込まれたまま（自律ループが止まっているため）消えずに残る。
+        if viewer is not None and not getattr(viewer, 'is_autonomous', True):
+            return
         if viewer is not None:
             viewer.comment_text = text
             viewer.mode = 'comment'

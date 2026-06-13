@@ -281,6 +281,25 @@ class MakeReminderSpeakTests(unittest.TestCase):
         self.assertEqual(v.comment_text, "休憩しましょう")
         self.assertEqual(v.mode, "comment")
 
+    def test_skips_when_autonomous_stopped(self):
+        # Race guard: a reminder firing AFTER autonomous mode stopped must be a
+        # no-op, else comment_text would be set with no loop left to clear it.
+        v = self._FakeViewer()
+        v.is_autonomous = False
+        q = queue.Queue()
+        speak = _mod.make_reminder_speak(v, q)
+        speak("too late")
+        self.assertEqual(v.comment_text, "")      # display untouched
+        self.assertEqual(v.mode, "run")           # mode untouched
+        self.assertTrue(q.empty())                # no TTS queued either
+
+    def test_fires_when_autonomous_active(self):
+        v = self._FakeViewer()
+        v.is_autonomous = True
+        speak = _mod.make_reminder_speak(v, None)
+        speak("break time")
+        self.assertEqual(v.comment_text, "break time")
+
 
 if __name__ == "__main__":
     unittest.main()
