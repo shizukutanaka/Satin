@@ -33,6 +33,26 @@ try:
 except Exception:  # pragma: no cover - defensive
     maybe_start_break_reminder = None
 
+
+def make_reminder_speak(viewer, tts_queue):
+    """休憩リマインダー用の speak コールバックを生成する。
+
+    アバターが画面上で「見えて」喋るよう comment 表示状態をセットし、TTS にも
+    投入する。これにより pyttsx3 が無くてもリマインダーは talk_label に表示され、
+    ユーザーに必ず届く（音声のみで無音・不可視になる問題を解消）。
+
+    viewer / tts_queue 非依存の純ロジックとして切り出し、Qt 無しでテスト可能。
+    """
+    def _speak(text):
+        if viewer is not None:
+            viewer.comment_text = text
+            viewer.mode = 'comment'
+            viewer.ticks = 0
+        if tts_queue is not None:
+            tts_queue.put(text)
+    return _speak
+
+
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
     EXTRA_TEXT_FIELDS = ('comment_text',)
@@ -185,7 +205,7 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         lang = getattr(self.viewer.persona, 'lang', 'ja') if self.viewer.persona else 'ja'
         try:
             self.break_reminder = maybe_start_break_reminder(
-                speak_func=self.tts_queue.put, lang=lang
+                speak_func=make_reminder_speak(self.viewer, self.tts_queue), lang=lang
             )
         except Exception:
             self.break_reminder = None

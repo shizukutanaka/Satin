@@ -230,5 +230,57 @@ class SpeakCommentMoodTests(unittest.TestCase):
                 self.assertEqual(v.comment_text, "REPLY_HELLO")
 
 
+class MakeReminderSpeakTests(unittest.TestCase):
+    """make_reminder_speak builds a speak_func that makes the avatar VISIBLY
+    say the break reminder (sets comment display) and also queues TTS, so the
+    reminder reaches the user even when pyttsx3/TTS is unavailable."""
+
+    class _FakeViewer:
+        def __init__(self):
+            self.comment_text = ""
+            self.mode = "run"
+            self.ticks = 99
+
+    def test_sets_comment_text_for_visible_display(self):
+        v = self._FakeViewer()
+        speak = _mod.make_reminder_speak(v, None)
+        speak("Time for a break!")
+        self.assertEqual(v.comment_text, "Time for a break!")
+
+    def test_sets_comment_mode_and_resets_ticks(self):
+        v = self._FakeViewer()
+        speak = _mod.make_reminder_speak(v, None)
+        speak("break")
+        self.assertEqual(v.mode, "comment")
+        self.assertEqual(v.ticks, 0)
+
+    def test_queues_tts_when_queue_present(self):
+        v = self._FakeViewer()
+        q = queue.Queue()
+        speak = _mod.make_reminder_speak(v, q)
+        speak("drink water")
+        self.assertEqual(q.get_nowait(), "drink water")
+
+    def test_no_queue_does_not_crash(self):
+        v = self._FakeViewer()
+        speak = _mod.make_reminder_speak(v, None)
+        speak("ok")  # must not raise
+        self.assertEqual(v.comment_text, "ok")
+
+    def test_no_viewer_does_not_crash(self):
+        q = queue.Queue()
+        speak = _mod.make_reminder_speak(None, q)
+        speak("hello")  # viewer None must not raise
+        self.assertEqual(q.get_nowait(), "hello")
+
+    def test_visible_even_without_tts(self):
+        # The whole point: with no TTS queue, the reminder is STILL visible.
+        v = self._FakeViewer()
+        speak = _mod.make_reminder_speak(v, None)
+        speak("休憩しましょう")
+        self.assertEqual(v.comment_text, "休憩しましょう")
+        self.assertEqual(v.mode, "comment")
+
+
 if __name__ == "__main__":
     unittest.main()
