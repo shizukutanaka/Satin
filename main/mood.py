@@ -389,6 +389,73 @@ def mood_history_to_csv(history_path: Optional[str] = None, n: int = 0) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# マイルストーン（レベルアップ / レベルダウン）検出
+# --------------------------------------------------------------------------- #
+
+_MILESTONE_MESSAGES: Dict[str, Dict[str, List[str]]] = {
+    "level_up": {
+        "ja": [
+            "なんだかもっと仲良くなれた気がします！",
+            "わあ、嬉しいです！仲良しになりましたね。",
+            "また一歩近づけた感じがして、すごく嬉しいです！",
+        ],
+        "en": [
+            "I feel like we're getting closer!",
+            "Yay, we've become better friends!",
+            "I'm so happy — our bond just grew stronger!",
+        ],
+    },
+    "level_down": {
+        "ja": [
+            "ちょっと寂しいな…またたくさんお話ししましょう。",
+            "どこか遠くなっちゃった気がします…。",
+        ],
+        "en": [
+            "I feel a little distant… let's chat more soon.",
+            "We seemed to drift apart a bit…",
+        ],
+    },
+}
+
+
+def check_level_milestone(
+    before: float,
+    after: float,
+    lang: str = "ja",
+) -> Optional[Dict]:
+    """好感度が境界を越えた場合にマイルストーン辞書を返す。越えていなければ None。
+
+    Returns:
+        {
+          "direction": "up" | "down",
+          "from_level": str,
+          "to_level": str,
+          "message": str,   # アバターが読み上げられる文字列
+        }
+        または None（レベル変化なし）。
+    """
+    before_level = affinity_level(before)
+    after_level = affinity_level(after)
+    if before_level == after_level:
+        return None
+
+    direction = "up" if after > before else "down"
+    key = "level_up" if direction == "up" else "level_down"
+    lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+    options = _MILESTONE_MESSAGES[key][lang_key]
+
+    import random
+    message = random.choice(options)
+
+    return {
+        "direction": direction,
+        "from_level": before_level,
+        "to_level": after_level,
+        "message": message,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # プロセス内シングルトン
 # --------------------------------------------------------------------------- #
 _mood_singleton: Optional[MoodTracker] = None

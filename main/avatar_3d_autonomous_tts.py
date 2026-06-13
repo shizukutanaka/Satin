@@ -18,11 +18,15 @@ except Exception:  # pragma: no cover - defensive
     get_conversation_log = None
 
 try:
-    from mood import get_mood_tracker, _default_mood_path, _default_mood_history_path  # noqa: E402
+    from mood import (  # noqa: E402
+        get_mood_tracker, _default_mood_path, _default_mood_history_path,
+        check_level_milestone,
+    )
 except Exception:  # pragma: no cover - defensive
     get_mood_tracker = None
     _default_mood_path = None
     _default_mood_history_path = None
+    check_level_milestone = None
 
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
@@ -72,11 +76,20 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 generated = ""
             if generated:
                 reply = generated
-        # 好感度を更新し、即時保存 + 日次スナップショットを記録する
+        # 好感度を更新し、即時保存 + 日次スナップショットを記録する。
+        # レベルが変化（昇格/降格）したらマイルストーン台詞を応答に添える。
         if get_mood_tracker is not None:
             try:
                 tracker = get_mood_tracker()
+                before_affinity = tracker.affinity
                 tracker.register(comment)
+                if check_level_milestone is not None:
+                    lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
+                    milestone = check_level_milestone(
+                        before_affinity, tracker.affinity, lang=lang
+                    )
+                    if milestone and milestone.get("message"):
+                        reply = (reply + " " + milestone["message"]).strip()
                 if _default_mood_path is not None:
                     tracker.save(_default_mood_path())
                 if _default_mood_history_path is not None:

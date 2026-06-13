@@ -22,6 +22,7 @@ from mood import (  # noqa: E402
     MoodTracker,
     affinity_label,
     affinity_level,
+    check_level_milestone,
     get_mood_tracker,
     reset_mood_tracker,
 )
@@ -436,6 +437,49 @@ class MoodConfigLoadTests(unittest.TestCase):
         before = tracker.affinity
         tracker.register("explicit_positive_word here")
         self.assertGreater(tracker.affinity, before)
+
+
+class LevelMilestoneTests(unittest.TestCase):
+    def test_no_change_within_level_returns_none(self):
+        # 61 and 62 are both "friendly" (60-80)
+        self.assertIsNone(check_level_milestone(61.0, 62.0))
+
+    def test_level_up_crossing_boundary(self):
+        result = check_level_milestone(59.0, 61.0)  # neutral → friendly
+        self.assertIsNotNone(result)
+        self.assertEqual(result["direction"], "up")
+        self.assertEqual(result["from_level"], "neutral")
+        self.assertEqual(result["to_level"], "friendly")
+
+    def test_level_down_crossing_boundary(self):
+        result = check_level_milestone(61.0, 59.0)  # friendly → neutral
+        self.assertIsNotNone(result)
+        self.assertEqual(result["direction"], "down")
+        self.assertEqual(result["from_level"], "friendly")
+        self.assertEqual(result["to_level"], "neutral")
+
+    def test_message_is_nonempty_string(self):
+        result = check_level_milestone(19.0, 21.0)  # distant → reserved
+        self.assertIsInstance(result["message"], str)
+        self.assertGreater(len(result["message"]), 0)
+
+    def test_english_message(self):
+        result = check_level_milestone(59.0, 61.0, lang="en")
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result["message"], str)
+
+    def test_equal_values_returns_none(self):
+        self.assertIsNone(check_level_milestone(50.0, 50.0))
+
+    def test_multi_level_jump_up(self):
+        result = check_level_milestone(10.0, 85.0)  # distant → close
+        self.assertEqual(result["direction"], "up")
+        self.assertEqual(result["to_level"], "close")
+
+    def test_has_all_expected_keys(self):
+        result = check_level_milestone(39.0, 41.0)  # reserved → neutral
+        for key in ("direction", "from_level", "to_level", "message"):
+            self.assertIn(key, result)
 
 
 if __name__ == "__main__":
