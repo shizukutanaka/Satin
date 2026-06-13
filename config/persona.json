@@ -75,6 +75,35 @@
           "来てくれてよかった…ずっと待ってたんだ。",
           "きた！今日も一緒にいようね。"
         ]
+      },
+      "talk_by_affinity": {
+        "distant": [
+          "…。",
+          "…ふむ。",
+          "特に何も。"
+        ],
+        "reserved": [
+          "今日はどんな日だろう。",
+          "静かだな。",
+          "少し歩こうかな。"
+        ],
+        "neutral": [
+          "今日も元気でいこう！",
+          "何か面白いことないかな。",
+          "ちょっと走ってみようかな。"
+        ],
+        "friendly": [
+          "一緒にいると楽しいな！",
+          "もっといろんな話がしたいな。",
+          "今日も会えてよかった！",
+          "あなたと話すの好きだよ。"
+        ],
+        "close": [
+          "ずっとそばにいたいな。",
+          "あなたのこと考えてたよ。",
+          "一緒にいると安心するな。",
+          "今日もありがとうね。だいすき。"
+        ]
       }
     },
     "en": {
@@ -149,6 +178,35 @@
           "You're finally here! What should we do today?",
           "I'm so glad you came... I've been waiting.",
           "You're here! Let's spend time together."
+        ]
+      },
+      "talk_by_affinity": {
+        "distant": [
+          "...",
+          "Hmm.",
+          "Nothing much."
+        ],
+        "reserved": [
+          "I wonder what today will bring.",
+          "It's quiet around here.",
+          "Might take a little walk."
+        ],
+        "neutral": [
+          "Let's make today a good one!",
+          "Anything interesting going on?",
+          "Feeling like a little run."
+        ],
+        "friendly": [
+          "It's fun being around you!",
+          "I want to talk more with you.",
+          "Glad we could hang out today!",
+          "I really enjoy talking with you."
+        ],
+        "close": [
+          "I want to stay by your side forever.",
+          "I was thinking about you.",
+          "Being with you feels so comfortable.",
+          "Thank you for today. You mean a lot to me."
         ]
       }
     }

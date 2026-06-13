@@ -239,6 +239,28 @@ class PersonaIntegrationTests(unittest.TestCase):
         d._advance_autonomous_state()  # first tick of rest
         self.assertEqual(d.talk_text, 'PERSONA_REST')
 
+    def test_pick_talk_text_passes_mood_level_to_persona(self):
+        """_pick_talk_text() forwards mood level to persona.talk(level=)."""
+        captured = {}
+
+        class _LevelCapture(_FakePersona):
+            def talk(self, *a, **kw):
+                captured['level'] = kw.get('level')
+                return 'TALK'
+
+        class _FakeTracker:
+            level = "close"
+
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _LevelCapture()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: _FakeTracker()):
+            d = _Dummy()
+            text = d._pick_talk_text()
+
+        self.assertEqual(captured.get('level'), 'close')
+        self.assertEqual(text, 'TALK')
+
     def test_empty_persona_line_falls_back_to_talks(self):
         class _Empty(_FakePersona):
             def talk(self, *a, **kw):

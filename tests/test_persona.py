@@ -354,6 +354,53 @@ class RespondWithLevelTests(unittest.TestCase):
         self.assertNotEqual(close_reply, generic_reply)
 
 
+class TalkByAffinityTests(unittest.TestCase):
+    """persona.talk(level=) uses talk_by_affinity when available."""
+
+    def _make_persona(self):
+        data = {
+            "name": "T", "default_lang": "en",
+            "dialogue": {"en": {
+                "talk": ["GENERIC"],
+                "talk_by_affinity": {
+                    "close": ["VERY_CLOSE"],
+                    "friendly": ["FRIENDLY"],
+                },
+            }},
+        }
+        return Persona.from_dict(data, lang="en")
+
+    def test_close_level_uses_affinity_talk(self):
+        p = self._make_persona()
+        self.assertEqual(p.talk(level="close"), "VERY_CLOSE")
+
+    def test_friendly_level_uses_affinity_talk(self):
+        p = self._make_persona()
+        self.assertEqual(p.talk(level="friendly"), "FRIENDLY")
+
+    def test_no_level_uses_generic_talk(self):
+        p = self._make_persona()
+        self.assertEqual(p.talk(), "GENERIC")
+
+    def test_missing_level_falls_back_to_generic(self):
+        p = self._make_persona()
+        # "distant" not in talk_by_affinity → falls back to generic
+        self.assertEqual(p.talk(level="distant"), "GENERIC")
+
+    def test_bundled_persona_has_talk_by_affinity(self):
+        """config/persona.json has talk_by_affinity for all 5 levels."""
+        import os, json
+        cfg_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "persona.json",
+        )
+        p = Persona.load(config_path=cfg_path, lang="ja")
+        close_talk = p.talk(level="close")
+        generic_talk = Persona.load(config_path=cfg_path, lang="ja").talk()
+        self.assertTrue(close_talk)
+        self.assertNotEqual(close_talk, generic_talk)
+
+
 class SingletonTests(unittest.TestCase):
     def tearDown(self):
         reset_persona()

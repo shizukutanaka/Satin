@@ -117,10 +117,20 @@ class AutonomousBehaviorMixin:
         return random.choice(rest_texts)
 
     def _pick_talk_text(self) -> str:
-        """雑談台詞を返す。ペルソナ優先、無ければ self.talks にフォールバック。"""
+        """雑談台詞を返す。ペルソナ優先、無ければ self.talks にフォールバック。
+
+        mood トラッカーが利用可能なら好感度レベルを persona.talk() に渡し、
+        関係性に応じた台詞を選択する。
+        """
+        level = None
+        if _get_mood_tracker is not None:
+            try:
+                level = _get_mood_tracker().level
+            except Exception:
+                pass
         persona = self.persona
         if persona is not None:
-            text = persona.talk()
+            text = persona.talk(level=level)
             if text:
                 return text
         talks = getattr(self, 'talks', None) or ['']

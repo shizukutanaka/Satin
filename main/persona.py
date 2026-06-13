@@ -216,9 +216,18 @@ class Persona:
         self._last[category_key] = choice
         return choice
 
-    def talk(self, lang: Optional[str] = None) -> str:
-        """雑談台詞を 1 つ返す。"""
+    def talk(self, lang: Optional[str] = None, level: Optional[str] = None) -> str:
+        """雑談台詞を 1 つ返す。
+
+        level が指定され ``talk_by_affinity[level]`` が定義されていれば
+        そのレベル専用の台詞を優先する（好感度が高いほど親しみやすい発話）。
+        """
         block = self._resolve_lang_block(lang)
+        if level:
+            by_affinity = block.get("talk_by_affinity") or {}
+            level_opts = list(by_affinity.get(level, []))
+            if level_opts:
+                return self._pick(f"talk_affinity:{level}:{lang or self.lang}", level_opts)
         return self._pick(f"talk:{lang or self.lang}", list(block.get("talk", [])))
 
     def rest(self, lang: Optional[str] = None) -> str:
