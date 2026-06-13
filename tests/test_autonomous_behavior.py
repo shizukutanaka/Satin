@@ -59,9 +59,12 @@ class StateMachineTests(unittest.TestCase):
     def setUp(self):
         self._patcher = mock.patch.object(autonomous_behavior, "get_persona", None)
         self._patcher.start()
+        self._mood_patcher = mock.patch.object(autonomous_behavior, "_get_mood_tracker", None)
+        self._mood_patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
+        self._mood_patcher.stop()
 
     def test_run_transitions_to_rest(self):
         d = _Dummy()
@@ -147,9 +150,12 @@ class StartStopTests(unittest.TestCase):
     def setUp(self):
         self._patcher = mock.patch.object(autonomous_behavior, "get_persona", None)
         self._patcher.start()
+        self._mood_patcher = mock.patch.object(autonomous_behavior, "_get_mood_tracker", None)
+        self._mood_patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
+        self._mood_patcher.stop()
 
     def test_start_enters_run_mode(self):
         d = _StartStopDummy()
@@ -203,9 +209,12 @@ class PersonaIntegrationTests(unittest.TestCase):
             autonomous_behavior, "get_persona", lambda *a, **k: _FakePersona()
         )
         self._patcher.start()
+        self._mood_patcher = mock.patch.object(autonomous_behavior, "_get_mood_tracker", None)
+        self._mood_patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
+        self._mood_patcher.stop()
 
     def test_start_sets_greeting_from_persona(self):
         d = _StartStopDummy()
@@ -239,6 +248,83 @@ class PersonaIntegrationTests(unittest.TestCase):
             self.assertTrue(_step_until_mode(d, 'talk'))
             d._advance_autonomous_state()
             self.assertIn(d.talk_text, d.talks)
+
+
+class MoodGreetingIntegrationTests(unittest.TestCase):
+    """start_autonomous passes mood level to persona.greeting() and calls auto_decay()."""
+
+    def _fake_persona_level_capture(self):
+        """Persona that records the level kwarg passed to greeting()."""
+        captured = []
+
+        class _LevelCapture:
+            name = "Test"
+
+            def greeting(self, lang=None, now=None, level=None):
+                captured.append(level)
+                return f"GREETING_{level}"
+
+            def talk(self, *a, **kw):
+                return "TALK"
+
+            def rest(self, *a, **kw):
+                return "REST"
+
+        return _LevelCapture(), captured
+
+    def test_start_passes_mood_level_to_greeting(self):
+        """When mood tracker is present, its level is forwarded to greeting()."""
+        fake_persona, captured_levels = self._fake_persona_level_capture()
+
+        class _FakeTracker:
+            level = "close"
+            interactions = 5
+            _last_interaction_time = 0.0
+
+            def auto_decay(self):
+                pass
+
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: fake_persona):
+            with mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                                   lambda: _FakeTracker()):
+                d = _StartStopDummy()
+                d.start_autonomous()
+
+        self.assertEqual(captured_levels, ["close"])
+        self.assertEqual(d.talk_text, "GREETING_close")
+
+    def test_start_calls_auto_decay(self):
+        """auto_decay() is called on the tracker when start_autonomous() runs."""
+        decay_calls = []
+
+        class _FakeTracker:
+            level = "neutral"
+            interactions = 3
+            _last_interaction_time = 0.0
+
+            def auto_decay(self):
+                decay_calls.append(True)
+
+        with mock.patch.object(autonomous_behavior, "get_persona", None):
+            with mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                                   lambda: _FakeTracker()):
+                d = _StartStopDummy()
+                d.start_autonomous()
+
+        self.assertEqual(decay_calls, [True])
+
+    def test_mood_tracker_failure_does_not_break_start(self):
+        """If the mood tracker raises, start_autonomous still completes safely."""
+        def _boom():
+            raise RuntimeError("db locked")
+
+        with mock.patch.object(autonomous_behavior, "get_persona", None):
+            with mock.patch.object(autonomous_behavior, "_get_mood_tracker", _boom):
+                d = _StartStopDummy()
+                d.start_autonomous()  # must not raise
+
+        self.assertTrue(d.is_autonomous)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,11 @@ try:
 except Exception:  # pragma: no cover - persona は常に import 可能なはずだが防御的に
     get_persona = None
 
+try:
+    from mood import get_mood_tracker as _get_mood_tracker
+except Exception:  # pragma: no cover - defensive
+    _get_mood_tracker = None
+
 
 class AutonomousBehaviorMixin:
     REST_TEXTS = ['ふう…ちょっと休憩。', 'すこし止まります。']
@@ -56,9 +61,18 @@ class AutonomousBehaviorMixin:
         self.talk_text = ''
         for field in self.EXTRA_TEXT_FIELDS:
             setattr(self, field, '')
+        # 前回セッションからの経過時間で好感度を自然低下させ、レベルを取得する
+        level = None
+        if _get_mood_tracker is not None:
+            try:
+                tracker = _get_mood_tracker()
+                tracker.auto_decay()
+                level = tracker.level
+            except Exception:
+                pass
         persona = self.persona
         if persona is not None:
-            greeting = persona.greeting()
+            greeting = persona.greeting(level=level)
             if greeting:
                 self.talk_text = greeting
                 self._on_talk_start(greeting)

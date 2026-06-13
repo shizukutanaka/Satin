@@ -5,6 +5,12 @@ from datetime import datetime
 from functools import wraps
 
 try:
+    from mood import get_mood_tracker as _get_mood_tracker, affinity_label
+except Exception:
+    _get_mood_tracker = None
+    affinity_label = None
+
+try:
     from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
     _FLASK_AVAILABLE = True
 except ImportError:
@@ -77,6 +83,7 @@ TEMPLATE = '''
   <li><a href="/logs?lang={{lang}}">{{i18n.t('event_log')}}</a></li>
   <li><a href="/backups?lang={{lang}}">{{i18n.t('backups')}}</a></li>
   <li><a href="/sync?lang={{lang}}">{{i18n.t('cloud_sync')}}</a></li>
+  <li><a href="/mood?lang={{lang}}">{{i18n.t('mood', 'Mood')}}</a></li>
 </ul>
 <hr>
 {% block content %}{% endblock %}
@@ -152,6 +159,54 @@ def sync(i18n):
     <form method="post"><button type="submit">{i18n.t('manual_cloud_sync')}</button></form>
     <p style="color:green">{msg}</p>'''
     return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
+
+@app.route('/mood')
+@with_lang
+def mood(i18n):
+    lang = get_lang()
+    is_en = lang.startswith('en')
+    switcher = LANG_SWITCHER_HTML.format(
+        en='selected' if is_en else '', ja='selected' if not is_en else ''
+    )
+    if _get_mood_tracker is None:
+        content = f'<h3>{i18n.t("mood", "Mood")}</h3><p>{i18n.t("mood_unavailable", "Mood system unavailable.")}</p>'
+    else:
+        try:
+            tracker = _get_mood_tracker()
+            score = int(round(tracker.affinity))
+            level = tracker.level
+            label = affinity_label(tracker.affinity, lang) if affinity_label else level
+            interactions = tracker.interactions
+            last_ts = tracker._last_interaction_time
+            if last_ts > 0:
+                last_dt = datetime.fromtimestamp(last_ts).strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                last_dt = i18n.t("mood_no_interactions_yet", "No interactions yet")
+            # progress bar fill colour: red→yellow→green by score
+            colour = f'hsl({int(score * 1.2)}, 70%, 45%)'
+            content = f'''
+<h3>{_html.escape(i18n.t("mood", "Mood"))}</h3>
+<table border=0 cellpadding=6>
+<tr><td><b>{_html.escape(i18n.t("affinity_score", "Affinity"))}</b></td>
+    <td>{score}/100
+      <div style="background:#ddd;width:200px;height:12px;display:inline-block;vertical-align:middle">
+        <div style="background:{colour};width:{score * 2}px;height:12px"></div>
+      </div>
+    </td></tr>
+<tr><td><b>{_html.escape(i18n.t("affinity_level", "Level"))}</b></td>
+    <td>{_html.escape(label)} ({_html.escape(level)})</td></tr>
+<tr><td><b>{_html.escape(i18n.t("interactions", "Interactions"))}</b></td>
+    <td>{interactions}</td></tr>
+<tr><td><b>{_html.escape(i18n.t("last_interaction", "Last interaction"))}</b></td>
+    <td>{_html.escape(last_dt)}</td></tr>
+</table>'''
+        except Exception as exc:
+            content = f'<h3>{i18n.t("mood", "Mood")}</h3><p>{_html.escape(str(exc))}</p>'
+    return render_template_string(
+        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
+        i18n=i18n, lang=lang, switcher=switcher,
+    )
+
 
 if __name__ == '__main__':
     # debug=True は Werkzeug デバッガ経由の任意コード実行を許すため、
