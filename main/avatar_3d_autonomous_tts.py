@@ -18,9 +18,10 @@ except Exception:  # pragma: no cover - defensive
     get_conversation_log = None
 
 try:
-    from mood import get_mood_tracker  # noqa: E402
+    from mood import get_mood_tracker, _default_mood_path  # noqa: E402
 except Exception:  # pragma: no cover - defensive
     get_mood_tracker = None
+    _default_mood_path = None
 
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
@@ -70,10 +71,13 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 generated = ""
             if generated:
                 reply = generated
-        # 好感度を更新（失敗しても UI/TTS を壊さない）
+        # 好感度を更新し、変化があれば即時保存する（失敗しても UI/TTS を壊さない）
         if get_mood_tracker is not None:
             try:
-                get_mood_tracker().register(comment)
+                tracker = get_mood_tracker()
+                tracker.register(comment)
+                if _default_mood_path is not None:
+                    tracker.save(_default_mood_path())
             except Exception:
                 pass
         # 会話履歴を記録（失敗しても UI/TTS を壊さない）

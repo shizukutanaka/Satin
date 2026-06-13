@@ -191,6 +191,44 @@ class SpeakCommentMoodTests(unittest.TestCase):
             v.speak_comment("hello")  # must not raise
             self.assertEqual(v.comment_text, "REPLY_HELLO")
 
+    def test_mood_saved_after_register(self):
+        """speak_comment persists affinity to disk after each interaction."""
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        mood_path = os.path.join(tmp, "mood.json")
+        tracker = _mood_mod.MoodTracker(affinity=50, interactions=1,
+                                        last_interaction_time=1.0)
+
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker):
+            with mock.patch.object(_mod, "_default_mood_path", lambda: mood_path):
+                v = self._viewer_with_persona()
+                v.speak_comment("thank you")
+
+        self.assertTrue(os.path.exists(mood_path), "mood.json should be written after interact")
+        import json, shutil
+        with open(mood_path, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertGreater(data["affinity"], 50)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_mood_save_failure_does_not_crash(self):
+        """If save() fails (e.g. disk full), TTS must still complete."""
+        class _SaveBoomTracker:
+            level = "neutral"
+            interactions = 1
+
+            def register(self, text):
+                pass
+
+            def save(self, path):
+                raise OSError("disk full")
+
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: _SaveBoomTracker()):
+            with mock.patch.object(_mod, "_default_mood_path", lambda: "/tmp/mood.json"):
+                v = self._viewer_with_persona()
+                v.speak_comment("hello")  # must not raise
+                self.assertEqual(v.comment_text, "REPLY_HELLO")
+
 
 if __name__ == "__main__":
     unittest.main()
