@@ -12,7 +12,7 @@ FONT_MAP = {
     'th': 'Tahoma', 'vi': 'Arial', 'es': 'Arial', 'fr': 'Arial', 'de': 'Arial', 'pt': 'Arial',
     'id': 'Arial', 'bn': 'Noto Sans Bengali', 'ur': 'Noto Nastaliq Urdu', # ...追加可
 }
-LOCALES_DIR = os.path.join(os.path.dirname(__file__), 'locales')
+LOCALES_DIR = os.path.join(os.path.dirname(__file__), 'i18n', 'locales')
 
 class I18N:
     _translation_cache = {}

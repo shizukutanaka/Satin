@@ -51,5 +51,78 @@ class I18nModuleTests(unittest.TestCase):
                 os.environ["SATIN_LANG"] = original
 
 
+class JaLocaleTests(unittest.TestCase):
+    """ja.json must have non-empty translations for all dashboard keys."""
+
+    _DASHBOARD_KEYS = [
+        "title", "event_log", "conversation", "backups", "cloud_sync",
+        "mood", "time", "type", "details", "no_file",
+        "executed_cloud_sync", "manual_cloud_sync", "you", "avatar",
+        "no_conversation", "affinity_score", "affinity_level",
+        "interactions", "last_interaction", "mood_unavailable",
+        "mood_no_interactions_yet", "reset_mood",
+    ]
+
+    def setUp(self):
+        module = _load_i18n_module()
+        # clear cache so each test starts fresh
+        module.I18N._translation_cache.clear()
+        self.i18n = module.I18N(lang="ja")
+
+    def test_ja_json_is_not_empty(self):
+        self.assertGreater(len(self.i18n.translations), 0)
+
+    def test_all_dashboard_keys_present(self):
+        missing = [k for k in self._DASHBOARD_KEYS if k not in self.i18n.translations]
+        self.assertEqual(missing, [], f"Missing ja keys: {missing}")
+
+    def test_all_values_are_japanese_nonempty(self):
+        for key in self._DASHBOARD_KEYS:
+            val = self.i18n.t(key)
+            self.assertNotEqual(val, key, f"Key '{key}' returned raw key (likely missing)")
+            self.assertTrue(val.strip(), f"Key '{key}' has blank value")
+
+    def test_title_contains_satin(self):
+        self.assertIn("Satin", self.i18n.t("title"))
+
+    def test_you_is_japanese(self):
+        self.assertEqual(self.i18n.t("you"), "あなた")
+
+    def test_avatar_key(self):
+        self.assertEqual(self.i18n.t("avatar"), "アバター")
+
+
+class EnLocaleTests(unittest.TestCase):
+    """en.json must also have all dashboard keys."""
+
+    _DASHBOARD_KEYS = [
+        "title", "event_log", "conversation", "backups", "cloud_sync",
+        "mood", "time", "type", "details", "no_file",
+        "executed_cloud_sync", "manual_cloud_sync", "you", "avatar",
+        "no_conversation", "affinity_score", "affinity_level",
+        "interactions", "last_interaction", "mood_unavailable",
+        "mood_no_interactions_yet", "reset_mood",
+    ]
+
+    def setUp(self):
+        module = _load_i18n_module()
+        module.I18N._translation_cache.clear()
+        self.i18n = module.I18N(lang="en")
+
+    def test_all_dashboard_keys_present(self):
+        missing = [k for k in self._DASHBOARD_KEYS if k not in self.i18n.translations]
+        self.assertEqual(missing, [], f"Missing en keys: {missing}")
+
+    def test_you_is_english(self):
+        self.assertEqual(self.i18n.t("you"), "You")
+
+    def test_fallback_to_en_when_lang_missing(self):
+        module = _load_i18n_module()
+        module.I18N._translation_cache.clear()
+        i = module.I18N(lang="zz")  # non-existent lang
+        # should fall back to en.json
+        self.assertEqual(i.t("you", "fallback"), "You")
+
+
 if __name__ == "__main__":
     unittest.main()

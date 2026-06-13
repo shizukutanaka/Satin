@@ -60,5 +60,28 @@
         "min_length": "Must be at least {min} characters",
         "max_length": "Must be at most {max} characters",
         "password_mismatch": "Passwords do not match"
-    }
+    },
+
+    "title": "Satin Dashboard",
+    "event_log": "Event Log",
+    "conversation": "Chat History",
+    "backups": "Backups",
+    "cloud_sync": "Cloud Sync",
+    "mood": "Mood",
+    "time": "Time",
+    "type": "Type",
+    "details": "Details",
+    "no_file": "File not found",
+    "executed_cloud_sync": "Cloud sync executed.",
+    "manual_cloud_sync": "Sync Now",
+    "you": "You",
+    "avatar": "Avatar",
+    "no_conversation": "No conversation history yet.",
+    "affinity_score": "Affinity",
+    "affinity_level": "Level",
+    "interactions": "Interactions",
+    "last_interaction": "Last interaction",
+    "mood_unavailable": "Mood system unavailable.",
+    "mood_no_interactions_yet": "No interactions yet",
+    "reset_mood": "Reset to neutral"
 }

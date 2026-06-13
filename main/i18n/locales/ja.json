@@ -1,0 +1,87 @@
+{
+    "language_name": "日本語",
+    "language_code": "ja",
+    "language_direction": "ltr",
+
+    "common": {
+        "yes": "はい",
+        "no": "いいえ",
+        "ok": "OK",
+        "cancel": "キャンセル",
+        "save": "保存",
+        "delete": "削除",
+        "edit": "編集",
+        "back": "戻る",
+        "next": "次へ",
+        "previous": "前へ",
+        "loading": "読み込み中…",
+        "error": "エラー",
+        "success": "成功",
+        "warning": "警告",
+        "info": "情報"
+    },
+
+    "menu": {
+        "file": "ファイル",
+        "edit": "編集",
+        "view": "表示",
+        "tools": "ツール",
+        "help": "ヘルプ",
+        "settings": "設定",
+        "exit": "終了"
+    },
+
+    "settings": {
+        "title": "設定",
+        "general": "一般",
+        "appearance": "外観",
+        "language": "言語",
+        "theme": "テーマ",
+        "dark_mode": "ダークモード",
+        "light_mode": "ライトモード",
+        "system_mode": "システム設定に従う",
+        "save_changes": "変更を保存",
+        "changes_saved": "変更を保存しました"
+    },
+
+    "errors": {
+        "unknown_error": "不明なエラーが発生しました",
+        "connection_error": "接続エラー",
+        "file_not_found": "ファイルが見つかりません",
+        "permission_denied": "アクセスが拒否されました",
+        "invalid_input": "入力が無効です",
+        "timeout": "リクエストがタイムアウトしました"
+    },
+
+    "validation": {
+        "required": "このフィールドは必須です",
+        "invalid_email": "有効なメールアドレスを入力してください",
+        "invalid_url": "有効なURLを入力してください",
+        "min_length": "{min}文字以上で入力してください",
+        "max_length": "{max}文字以内で入力してください",
+        "password_mismatch": "パスワードが一致しません"
+    },
+
+    "title": "Satin ダッシュボード",
+    "event_log": "イベントログ",
+    "conversation": "会話履歴",
+    "backups": "バックアップ",
+    "cloud_sync": "クラウド同期",
+    "mood": "好感度",
+    "time": "時刻",
+    "type": "種別",
+    "details": "詳細",
+    "no_file": "ファイルが見つかりません",
+    "executed_cloud_sync": "クラウド同期を実行しました。",
+    "manual_cloud_sync": "今すぐ同期",
+    "you": "あなた",
+    "avatar": "アバター",
+    "no_conversation": "まだ会話履歴がありません。",
+    "affinity_score": "好感度スコア",
+    "affinity_level": "関係レベル",
+    "interactions": "対話回数",
+    "last_interaction": "最後の対話",
+    "mood_unavailable": "好感度システムは利用できません。",
+    "mood_no_interactions_yet": "まだ対話がありません",
+    "reset_mood": "ニュートラルにリセット"
+}
