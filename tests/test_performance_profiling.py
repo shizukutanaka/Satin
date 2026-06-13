@@ -3,13 +3,21 @@ Stdlib-only regression tests for the Tier-2 fixes in main/performance_profiling.
 
 Run: python -m unittest tests.test_performance_profiling -v
 """
+import json
 import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main.performance_profiling import PerformanceMonitor  # noqa: E402
+from main.performance_profiling import (  # noqa: E402
+    PerformanceMonitor,
+    PerformanceProfiler,
+    MemoryProfiler,
+    profile_call,
+)
 
 
 class PerformanceMonitorStatsTests(unittest.TestCase):
@@ -47,6 +55,142 @@ class PerformanceMonitorStatsTests(unittest.TestCase):
         stats = mon.get_statistics("op")
         for key in ("median_ms", "p95_ms", "p99_ms", "min_ms", "max_ms", "mean_ms"):
             self.assertEqual(stats[key], 42.0)
+
+
+class PerformanceProfilerTests(unittest.TestCase):
+    def test_profile_sync_returns_result(self):
+        profiler = PerformanceProfiler()
+        value, pr = profiler.profile_sync(lambda: 42)
+        self.assertEqual(value, 42)
+
+    def test_profile_sync_stores_result(self):
+        profiler = PerformanceProfiler()
+        profiler.profile_sync(lambda: None)
+        self.assertGreater(len(profiler.results), 0)
+
+    def test_profile_result_has_positive_time(self):
+        profiler = PerformanceProfiler()
+        _, pr = profiler.profile_sync(sum, range(1000))
+        self.assertGreaterEqual(pr.total_time_ms, 0)
+
+    def test_profile_result_function_name(self):
+        def my_func():
+            return "hello"
+
+        profiler = PerformanceProfiler()
+        _, pr = profiler.profile_sync(my_func)
+        self.assertEqual(pr.function_name, "my_func")
+
+    def test_get_slowest_functions_ordering(self):
+        profiler = PerformanceProfiler()
+        profiler.profile_sync(lambda: None)
+        profiler.profile_sync(sum, range(10000))
+        slowest = profiler.get_slowest_functions()
+        self.assertGreater(len(slowest), 0)
+
+    def test_get_memory_heavy_functions(self):
+        profiler = PerformanceProfiler()
+        profiler.profile_sync(lambda: [0] * 1000)
+        heavy = profiler.get_memory_heavy_functions()
+        self.assertGreater(len(heavy), 0)
+
+    def test_export_report_creates_valid_json(self):
+        profiler = PerformanceProfiler()
+        profiler.profile_sync(lambda: 1 + 1)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "report.json"
+            profiler.export_report(path)
+            self.assertTrue(path.exists())
+            data = json.loads(path.read_text())
+            self.assertIn("results", data)
+            self.assertIn("timestamp", data)
+
+
+class PerformanceProfilerAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_profile_async_returns_result(self):
+        profiler = PerformanceProfiler()
+
+        async def async_double(n):
+            return n * 2
+
+        value, pr = await profiler.profile_async(async_double, 5)
+        self.assertEqual(value, 10)
+
+    async def test_profile_async_stores_result(self):
+        profiler = PerformanceProfiler()
+
+        async def noop():
+            return None
+
+        await profiler.profile_async(noop)
+        self.assertIn("noop", profiler.results)
+
+
+class MemoryProfilerTests(unittest.TestCase):
+    def test_take_snapshot_returns_memory_snapshot(self):
+        mp = MemoryProfiler()
+        snap = mp.take_snapshot()
+        self.assertIsNotNone(snap)
+        self.assertGreaterEqual(snap.current_mb, 0)
+
+    def test_snapshot_stored_in_list(self):
+        mp = MemoryProfiler()
+        mp.take_snapshot()
+        self.assertEqual(len(mp.snapshots), 1)
+
+    def test_set_baseline_stored(self):
+        mp = MemoryProfiler()
+        mp.set_baseline()
+        self.assertIsNotNone(mp._baseline)
+
+    def test_get_memory_delta_after_baseline(self):
+        mp = MemoryProfiler()
+        mp.set_baseline()
+        delta = mp.get_memory_delta()
+        self.assertIsInstance(delta, float)
+
+    def test_detect_leak_false_below_threshold(self):
+        mp = MemoryProfiler()
+        mp.set_baseline()
+        leak = mp.detect_leak(threshold_mb=1_000_000)
+        self.assertFalse(leak)
+
+    def test_export_report_creates_json(self):
+        mp = MemoryProfiler()
+        mp.take_snapshot()
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "memory.json"
+            mp.export_report(path)
+            self.assertTrue(path.exists())
+            data = json.loads(path.read_text())
+            self.assertIn("snapshots", data)
+
+
+class ProfileCallDecoratorTests(unittest.TestCase):
+    def test_sync_function_returns_correct_result(self):
+        @profile_call
+        def add(a, b):
+            return a + b
+
+        self.assertEqual(add(2, 3), 5)
+
+    def test_sync_function_with_memory_flag(self):
+        @profile_call(memory=True)
+        def make_list():
+            return [0] * 100
+
+        result = make_list()
+        self.assertEqual(len(result), 100)
+
+
+class ProfileCallAsyncDecoratorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_async_function_returns_correct_result(self):
+        @profile_call
+        async def async_add(a, b):
+            return a + b
+
+        result = await async_add(3, 4)
+        self.assertEqual(result, 7)
 
 
 if __name__ == "__main__":
