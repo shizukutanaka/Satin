@@ -102,6 +102,37 @@ class ConversationLog:
             lines.append(f"{prefix}: {text}")
         return lines
 
+    def to_csv(self, n: int = 0, user_label: str = "You", avatar_label: str = "Avatar") -> str:
+        """会話履歴を CSV 形式の文字列で返す。
+
+        Args:
+            n: 直近 n 件（0 = 全件）
+            user_label:   CSV の speaker 列でユーザーを表すラベル
+            avatar_label: CSV の speaker 列でアバターを表すラベル
+
+        Returns:
+            header + rows の CSV 文字列（UTF-8、CRLF 改行）。
+        """
+        import csv
+        import io
+        from datetime import datetime as _dt
+
+        entries = self.recent(n if n > 0 else 1_000_000)
+        buf = io.StringIO()
+        writer = csv.writer(buf, lineterminator="\r\n")
+        writer.writerow(["timestamp", "datetime", "speaker", "text"])
+        for ev in entries:
+            ts = ev.get("timestamp", 0)
+            try:
+                dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+            except (OSError, OverflowError, ValueError):
+                dt_str = ""
+            et = ev.get("event_type", "")
+            speaker = user_label if et == EVENT_USER_COMMENT else avatar_label
+            text = (ev.get("details") or {}).get("text", "")
+            writer.writerow([ts, dt_str, speaker, text])
+        return buf.getvalue()
+
 
 # --------------------------------------------------------------------------- #
 # プロセス内シングルトン（全ビューアで同じログファイルを共有）

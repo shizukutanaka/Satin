@@ -116,6 +116,71 @@ class RecentTests(_TmpLogBase):
         self.assertEqual(self.log.recent_texts(), ["You: hello", "Avatar: Hi!"])
 
 
+class ToCsvTests(_TmpLogBase):
+    """ConversationLog.to_csv() produces valid CSV output."""
+
+    def _populate(self):
+        self.log.log_exchange("hello", "hi there")
+        self.log.log_exchange("bye", "see you")
+
+    def test_empty_log_has_header_only(self):
+        csv = self.log.to_csv()
+        lines = [l for l in csv.splitlines() if l.strip()]
+        self.assertEqual(len(lines), 1)
+        self.assertIn("timestamp", lines[0])
+        self.assertIn("speaker", lines[0])
+
+    def test_csv_has_correct_row_count(self):
+        self._populate()
+        import csv, io
+        reader = csv.DictReader(io.StringIO(self.log.to_csv()))
+        rows = list(reader)
+        # 2 exchanges = 4 rows (2 user + 2 avatar)
+        self.assertEqual(len(rows), 4)
+
+    def test_csv_speaker_labels(self):
+        self._populate()
+        import csv, io
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv())))
+        speakers = [r["speaker"] for r in rows]
+        self.assertIn("You", speakers)
+        self.assertIn("Avatar", speakers)
+
+    def test_csv_custom_labels(self):
+        self.log.log_exchange("hi", "hey")
+        import csv, io
+        csv_text = self.log.to_csv(user_label="User", avatar_label="Bot")
+        rows = list(csv.DictReader(io.StringIO(csv_text)))
+        speakers = {r["speaker"] for r in rows}
+        self.assertIn("User", speakers)
+        self.assertIn("Bot", speakers)
+
+    def test_csv_text_column_correct(self):
+        self.log.log_exchange("hello world", "hi")
+        import csv, io
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv())))
+        texts = [r["text"] for r in rows]
+        self.assertIn("hello world", texts)
+        self.assertIn("hi", texts)
+
+    def test_csv_n_limit(self):
+        for i in range(5):
+            self.log.log_exchange(f"msg{i}", f"rep{i}")
+        import csv, io
+        # n=2 returns last 2 events only
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv(n=2))))
+        self.assertEqual(len(rows), 2)
+
+    def test_csv_contains_datetime_column(self):
+        self.log.log_exchange("test", "ok")
+        import csv, io
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv())))
+        self.assertIn("datetime", rows[0])
+        # datetime should be non-empty and parseable
+        dt_str = rows[0]["datetime"]
+        self.assertRegex(dt_str, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+
+
 class SingletonTests(unittest.TestCase):
     def tearDown(self):
         reset_conversation_log()

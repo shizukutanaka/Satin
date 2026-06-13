@@ -301,7 +301,16 @@ def conversation(i18n):
                 f'{_html.escape(str(ex["text"]))}</td></tr>'
             )
         content += '</table>'
-    content += f'<p><a href="/conversation/download?lang={_html.escape(lang)}">{_html.escape(i18n.t("download_conversation", "Download as text"))}</a></p>'
+    csv_label = 'CSV' if lang.startswith('en') else 'CSV形式'
+    content += (
+        f'<p>'
+        f'<a href="/conversation/download?lang={_html.escape(lang)}">'
+        f'{_html.escape(i18n.t("download_conversation", "Download as text"))}</a>'
+        f' &nbsp;|&nbsp; '
+        f'<a href="/conversation/download/csv?lang={_html.escape(lang)}">'
+        f'{_html.escape(csv_label)}</a>'
+        f'</p>'
+    )
     return render_template_string(
         TEMPLATE + '{% block content %}' + content + '{% endblock %}',
         i18n=i18n, lang=lang, switcher=switcher,
@@ -341,6 +350,62 @@ def conversation_download(i18n):
         as_attachment=True,
         download_name='conversation.txt',
         mimetype='text/plain; charset=utf-8',
+    )
+
+
+@app.route('/conversation/download/csv')
+@with_lang
+def conversation_download_csv(i18n):
+    """会話履歴を CSV としてダウンロードする（スプレッドシート用）。"""
+    import io
+    try:
+        from conversation_log import ConversationLog
+        log = ConversationLog(event_log_path)
+        csv_content = log.to_csv(
+            user_label=i18n.t('you', 'You'),
+            avatar_label=i18n.t('avatar', 'Avatar'),
+        )
+    except Exception:
+        csv_content = "timestamp,datetime,speaker,text\r\n"
+    buf = io.BytesIO(csv_content.encode('utf-8-sig'))  # BOM for Excel compatibility
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name='conversation.csv',
+        mimetype='text/csv; charset=utf-8',
+    )
+
+
+@app.route('/mood/history/csv')
+@with_lang
+def mood_history_csv(i18n):
+    """好感度の日次履歴を CSV としてダウンロードする。"""
+    import io
+    import csv
+    rows = []
+    if _load_mood_history is not None and _mood_history_path is not None:
+        try:
+            rows = _load_mood_history(_mood_history_path(), n=365)
+        except Exception:
+            rows = []
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator='\r\n')
+    writer.writerow(['date', 'affinity', 'level', 'interactions'])
+    for e in rows:
+        writer.writerow([
+            e.get('date', ''),
+            e.get('affinity', ''),
+            e.get('level', ''),
+            e.get('interactions', ''),
+        ])
+    csv_bytes = io.BytesIO(buf.getvalue().encode('utf-8-sig'))
+    csv_bytes.seek(0)
+    return send_file(
+        csv_bytes,
+        as_attachment=True,
+        download_name='mood_history.csv',
+        mimetype='text/csv; charset=utf-8',
     )
 
 
@@ -535,7 +600,14 @@ def mood_history(i18n):
                     f'</tr>'
                 )
             content += '</table>'
-        content += f'<p><a href="/mood?lang={_html.escape(lang)}">&larr; {_html.escape(i18n.t("back_to_mood", "Back to Mood"))}</a></p>'
+        csv_lbl = 'Download CSV' if is_en else 'CSVダウンロード'
+        content += (
+            f'<p>'
+            f'<a href="/mood?lang={_html.escape(lang)}">&larr; {_html.escape(i18n.t("back_to_mood", "Back to Mood"))}</a>'
+            f' &nbsp;|&nbsp; '
+            f'<a href="/mood/history/csv?lang={_html.escape(lang)}">{_html.escape(csv_lbl)}</a>'
+            f'</p>'
+        )
 
     return render_template_string(
         TEMPLATE + '{% block content %}' + content + '{% endblock %}',
