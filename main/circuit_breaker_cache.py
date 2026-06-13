@@ -16,6 +16,16 @@ import json
 logger = logging.getLogger(__name__)
 
 
+class CircuitBreakerOpenError(Exception):
+    """サーキットブレーカーが OPEN（遮断中）のため呼び出しを拒否したことを示す。
+
+    生の Exception では呼び出し側が「ブレーカー遮断（=後でリトライ）」と
+    「下流の本当の障害」を区別できず、メッセージ文字列を見るしかなかった。
+    専用型にすることで `except CircuitBreakerOpenError` で個別ハンドリングできる。
+    Exception のサブクラスなので既存の `except Exception` は引き続き捕捉する。
+    """
+
+
 # ========================================================================
 # 1. Circuit Breaker 状態管理
 # ========================================================================
@@ -140,7 +150,7 @@ class CircuitBreaker:
             if fallback:
                 return await self._call_function(fallback)
             else:
-                raise Exception(f"Circuit Breaker '{self.name}' is OPEN")
+                raise CircuitBreakerOpenError(f"Circuit Breaker '{self.name}' is OPEN")
 
         # 関数を実行
         start_time = time.time()

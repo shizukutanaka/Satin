@@ -14,7 +14,7 @@ sys.path.insert(0, _MAIN)
 from circuit_breaker_cache import (  # noqa: E402
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerMetrics,
     CircuitState, BulkheadPolicy, DistributedCache, DistributedCacheConfig,
-    CacheInvalidationStrategy, ResilientService,
+    CacheInvalidationStrategy, ResilientService, CircuitBreakerOpenError,
 )
 
 
@@ -103,8 +103,12 @@ class CircuitBreakerTests(unittest.IsolatedAsyncioTestCase):
         except RuntimeError:
             pass
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(CircuitBreakerOpenError):
             await cb.call(fail)
+
+    async def test_open_circuit_error_is_exception_subclass(self):
+        # Backward compat: callers using `except Exception` still catch it.
+        self.assertTrue(issubclass(CircuitBreakerOpenError, Exception))
 
     async def test_get_metrics_returns_dict(self):
         cb = CircuitBreaker("test")

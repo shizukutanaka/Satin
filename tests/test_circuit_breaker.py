@@ -10,7 +10,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main.circuit_breaker_cache import CircuitBreaker, CircuitBreakerConfig, CircuitState  # noqa: E402
+from main.circuit_breaker_cache import (  # noqa: E402
+    CircuitBreaker, CircuitBreakerConfig, CircuitState, CircuitBreakerOpenError,
+)
 
 
 async def _fail():
@@ -101,7 +103,7 @@ class FallbackTests(unittest.TestCase):
 
     def test_open_circuit_raises_without_fallback(self):
         cb = self._tripped()
-        with self.assertRaises(Exception) as ctx:
+        with self.assertRaises(CircuitBreakerOpenError) as ctx:
             asyncio.run(cb.call(_ok))
         self.assertIn("OPEN", str(ctx.exception))
 
