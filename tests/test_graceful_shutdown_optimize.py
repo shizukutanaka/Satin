@@ -24,6 +24,7 @@ class GracefulShutdownTests(unittest.TestCase):
         loop = asyncio.new_event_loop()
         try:
             task = loop.create_task(_fake())
+            loop.run_until_complete(task)  # consume the coroutine (no unawaited warning)
             # unregister_task on an unknown task must not raise
             mgr.unregister_task(task)
             # also works if registered first

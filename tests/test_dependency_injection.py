@@ -124,6 +124,9 @@ class FactoryTests(unittest.TestCase):
 
 class CircularDependencyTests(unittest.TestCase):
     def test_circular_dependency_raises(self):
+        # A needs B, B needs A — via constructor injection (the path the
+        # per-call cycle-detection stack actually guards). Annotations are
+        # attached after both classes exist so each refers to the real type.
         class A:
             def __init__(self, b):
                 self.b = b
@@ -132,16 +135,41 @@ class CircularDependencyTests(unittest.TestCase):
             def __init__(self, a):
                 self.a = a
 
+        A.__init__.__annotations__['b'] = B
+        B.__init__.__annotations__['a'] = A
+
         container = ServiceContainer()
         container.register(A)
         container.register(B)
 
-        # Register a factory that creates a circular resolve
-        container.register_factory(A, lambda c: _run(c.resolve(B)))
-        container.register_factory(B, lambda c: _run(c.resolve(A)))
-
-        with self.assertRaises((CircularDependencyError, Exception)):
+        # Must raise CircularDependencyError specifically (not just any
+        # Exception). The previous version used factories with nested
+        # asyncio.run, which raised an unrelated RuntimeError and left a
+        # dangling unawaited coroutine — so it never tested cycle detection.
+        with self.assertRaises(CircularDependencyError):
             _run(container.resolve(A))
+
+    def test_circular_dependency_chain_in_message(self):
+        class X:
+            def __init__(self, y):
+                self.y = y
+
+        class Y:
+            def __init__(self, x):
+                self.x = x
+
+        X.__init__.__annotations__['y'] = Y
+        Y.__init__.__annotations__['x'] = X
+
+        container = ServiceContainer()
+        container.register(X)
+        container.register(Y)
+
+        with self.assertRaises(CircularDependencyError) as ctx:
+            _run(container.resolve(X))
+        # The error names the cycle so it is diagnosable.
+        self.assertIn("X", str(ctx.exception))
+        self.assertIn("Y", str(ctx.exception))
 
 
 class GlobalContainerTests(unittest.TestCase):
