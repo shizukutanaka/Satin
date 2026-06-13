@@ -81,5 +81,74 @@ class CircuitBreakerTests(unittest.TestCase):
         asyncio.run(scenario())
 
 
+class FallbackTests(unittest.TestCase):
+    def _tripped(self):
+        cfg = CircuitBreakerConfig()
+        cfg.failure_threshold = 2
+        cfg.timeout_seconds = 999.0  # won't expire in test
+        cb = CircuitBreaker("fb", cfg)
+        for _ in range(2):
+            try:
+                asyncio.run(cb.call(_fail))
+            except Exception:
+                pass
+        return cb
+
+    def test_open_circuit_uses_fallback(self):
+        cb = self._tripped()
+        result = asyncio.run(cb.call(_ok, fallback=lambda: "fallback"))
+        self.assertEqual(result, "fallback")
+
+    def test_open_circuit_raises_without_fallback(self):
+        cb = self._tripped()
+        with self.assertRaises(Exception) as ctx:
+            asyncio.run(cb.call(_ok))
+        self.assertIn("OPEN", str(ctx.exception))
+
+    def test_rejected_increments_metrics(self):
+        cb = self._tripped()
+        before = cb.metrics.rejected_calls
+        try:
+            asyncio.run(cb.call(_ok))
+        except Exception:
+            pass
+        self.assertGreater(cb.metrics.rejected_calls, before)
+
+
+class MetricsTests(unittest.TestCase):
+    def test_successful_call_updates_metrics(self):
+        cb = CircuitBreaker("m", CircuitBreakerConfig())
+        asyncio.run(cb.call(_ok))
+        m = cb.get_metrics()
+        self.assertEqual(m["total_calls"], 1)
+        self.assertEqual(m["successful_calls"], 1)
+        self.assertEqual(m["failed_calls"], 0)
+
+    def test_failed_call_updates_metrics(self):
+        cb = CircuitBreaker("m2", CircuitBreakerConfig())
+        try:
+            asyncio.run(cb.call(_fail))
+        except Exception:
+            pass
+        m = cb.get_metrics()
+        self.assertEqual(m["total_calls"], 1)
+        self.assertEqual(m["failed_calls"], 1)
+
+    def test_metrics_dict_keys(self):
+        cb = CircuitBreaker("m3", CircuitBreakerConfig())
+        m = cb.get_metrics()
+        for key in ("total_calls", "successful_calls", "failed_calls", "rejected_calls"):
+            self.assertIn(key, m)
+
+    def test_initial_state_is_closed(self):
+        cb = CircuitBreaker("init", CircuitBreakerConfig())
+        self.assertEqual(cb.get_state(), CircuitState.CLOSED.value)
+
+    def test_sync_callable_is_supported(self):
+        cb = CircuitBreaker("sync", CircuitBreakerConfig())
+        result = asyncio.run(cb.call(lambda: "sync_result"))
+        self.assertEqual(result, "sync_result")
+
+
 if __name__ == "__main__":
     unittest.main()
