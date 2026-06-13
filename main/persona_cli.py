@@ -208,6 +208,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.no_mood and get_mood_tracker is not None:
         try:
             mood = get_mood_tracker()
+            # 前回セッションからの経過時間に応じて好感度を自然低下させる
+            mood.auto_decay()
         except Exception:  # pragma: no cover - defensive
             mood = None
 

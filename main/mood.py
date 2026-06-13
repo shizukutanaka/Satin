@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import threading
+import time
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,9 @@ AFFINITY_START = 50.0
 
 # 1 メッセージあたりの最大変化量（連投での急変を防ぐ）
 _MAX_DELTA_PER_MESSAGE = 10.0
+
+# 非活動時の好感度低下レート（ポイント/時間）。長期離席で関係が冷える。
+_DEFAULT_DECAY_RATE = 2.0
 
 # 既定の感情語（config に mood が無くても動く）
 _DEFAULT_POSITIVE: Dict[str, List[str]] = {
@@ -99,6 +103,7 @@ class MoodTracker:
         positive_delta: float = _DEFAULT_POSITIVE_DELTA,
         negative_delta: float = _DEFAULT_NEGATIVE_DELTA,
         interactions: int = 0,
+        last_interaction_time: float = 0.0,
     ):
         self.affinity = _clamp(float(affinity))
         self.interactions = int(interactions)
@@ -106,6 +111,7 @@ class MoodTracker:
         self._negative = negative if negative else _DEFAULT_NEGATIVE
         self.positive_delta = float(positive_delta)
         self.negative_delta = float(negative_delta)
+        self._last_interaction_time = float(last_interaction_time)
 
     # ---- 状態参照 -------------------------------------------------------- #
     @property
@@ -144,11 +150,44 @@ class MoodTracker:
         before = self.affinity
         self.affinity = _clamp(self.affinity + delta)
         self.interactions += 1
+        self._last_interaction_time = time.time()
         return self.affinity - before
+
+    def decay(
+        self,
+        elapsed_seconds: float,
+        rate_per_hour: float = _DEFAULT_DECAY_RATE,
+    ) -> float:
+        """非活動時間に応じて好感度を低下させる。変化量（負またはゼロ）を返す。
+
+        一度も会話したことが無い場合（interactions == 0）は低下させない。
+        elapsed_seconds が 0 以下の場合も変化なし。
+        """
+        if elapsed_seconds <= 0 or self.interactions == 0:
+            return 0.0
+        hours = elapsed_seconds / 3600.0
+        delta = -hours * rate_per_hour
+        before = self.affinity
+        self.affinity = _clamp(self.affinity + delta)
+        return self.affinity - before
+
+    def auto_decay(self, rate_per_hour: float = _DEFAULT_DECAY_RATE) -> float:
+        """最後の会話からの経過時間を基に decay() を適用する。変化量を返す。
+
+        last_interaction_time が記録されていない場合（0.0）は変化なし。
+        """
+        if self._last_interaction_time <= 0 or self.interactions == 0:
+            return 0.0
+        elapsed = time.time() - self._last_interaction_time
+        return self.decay(elapsed, rate_per_hour)
 
     # ---- 永続化 ---------------------------------------------------------- #
     def to_dict(self) -> Dict:
-        return {"affinity": self.affinity, "interactions": self.interactions}
+        return {
+            "affinity": self.affinity,
+            "interactions": self.interactions,
+            "last_interaction_time": self._last_interaction_time,
+        }
 
     def save(self, path: str) -> bool:
         """好感度を JSON へ保存する。失敗しても例外は送出しない。"""
@@ -172,6 +211,7 @@ class MoodTracker:
         return cls(
             affinity=data.get("affinity", AFFINITY_START),
             interactions=data.get("interactions", 0),
+            last_interaction_time=data.get("last_interaction_time", 0.0),
             **kwargs,
         )
 

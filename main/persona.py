@@ -264,13 +264,21 @@ class Persona:
             return self.talk(lang)
         return self._pick(f"greeting:{slot}:{lang or self.lang}", options)
 
-    def respond(self, text: str, lang: Optional[str] = None) -> str:
+    def respond(
+        self,
+        text: str,
+        lang: Optional[str] = None,
+        level: Optional[str] = None,
+    ) -> str:
         """ユーザー入力 text に対する応答を 1 つ返す（ルールベース）。
 
         キーワード（大文字小文字を無視した部分一致）が最初に一致したルールの
-        replies から選ぶ。日本語には語境界が無いため部分一致を採用する。どの
-        ルールにも一致しなければ fallback プールから返す。空入力や fallback も
-        無い場合は空文字を返す（呼び出し側がオウム返し等のフォールバックを判断）。
+        replies から選ぶ。日本語には語境界が無いため部分一致を採用する。
+
+        level（好感度レベル）が指定され、responses ブロックに
+        ``respond_by_affinity[level]`` が定義されていれば、そのレベル専用の
+        ルールを通常ルールより先に評価する。これにより関係性の深さで応答が
+        変化する。一致しなければ通常ルール→fallback と順にフォールバックする。
         """
         if not text or not str(text).strip():
             return ""
@@ -279,6 +287,22 @@ class Persona:
         block = self._resolve_responses_block(lang)
         rules = block.get("rules") or []
         fallback = list(block.get("fallback") or [])
+
+        # 好感度レベル専用ルールを先に評価
+        if level:
+            by_affinity = block.get("respond_by_affinity") or {}
+            level_rules = by_affinity.get(level) or []
+            for idx, rule in enumerate(level_rules):
+                if not isinstance(rule, dict):
+                    continue
+                for kw in rule.get("keywords") or []:
+                    if kw and str(kw).strip().lower() in norm:
+                        replies = list(rule.get("replies") or [])
+                        if replies:
+                            return self._pick(
+                                f"respond_affinity:{level}:{lang or self.lang}:rule:{idx}",
+                                replies,
+                            )
 
         for idx, rule in enumerate(rules):
             if not isinstance(rule, dict):

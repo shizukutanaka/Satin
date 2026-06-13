@@ -152,6 +152,68 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(data["affinity"], 33)
 
 
+class DecayTests(unittest.TestCase):
+    def test_decay_reduces_affinity(self):
+        m = MoodTracker(affinity=80, interactions=5)
+        delta = m.decay(3600)  # 1 hour
+        self.assertLess(delta, 0)
+        self.assertLess(m.affinity, 80)
+
+    def test_decay_zero_seconds_no_change(self):
+        m = MoodTracker(affinity=80, interactions=5)
+        delta = m.decay(0)
+        self.assertEqual(delta, 0.0)
+        self.assertEqual(m.affinity, 80)
+
+    def test_decay_no_interactions_no_change(self):
+        m = MoodTracker(affinity=80, interactions=0)
+        delta = m.decay(7200)
+        self.assertEqual(delta, 0.0)
+        self.assertEqual(m.affinity, 80)
+
+    def test_decay_does_not_go_below_zero(self):
+        m = MoodTracker(affinity=1, interactions=10)
+        m.decay(1_000_000)
+        self.assertGreaterEqual(m.affinity, AFFINITY_MIN)
+
+    def test_decay_custom_rate(self):
+        m = MoodTracker(affinity=60, interactions=3)
+        m.decay(3600, rate_per_hour=4.0)  # -4 after 1h
+        self.assertAlmostEqual(m.affinity, 56.0, places=5)
+
+    def test_auto_decay_no_timestamp_no_change(self):
+        m = MoodTracker(affinity=70, interactions=5, last_interaction_time=0.0)
+        delta = m.auto_decay()
+        self.assertEqual(delta, 0.0)
+        self.assertEqual(m.affinity, 70)
+
+    def test_auto_decay_recent_interaction_small_change(self):
+        import time
+        m = MoodTracker(affinity=70, interactions=5,
+                        last_interaction_time=time.time() - 3600)
+        delta = m.auto_decay()
+        self.assertLess(delta, 0)
+        self.assertLess(m.affinity, 70)
+
+    def test_register_updates_last_interaction_time(self):
+        import time
+        before = time.time()
+        m = MoodTracker()
+        m.register("hello")
+        self.assertGreaterEqual(m._last_interaction_time, before)
+
+    def test_last_interaction_time_persists_in_to_dict(self):
+        import time
+        m = MoodTracker(interactions=1, last_interaction_time=12345.0)
+        d = m.to_dict()
+        self.assertAlmostEqual(d["last_interaction_time"], 12345.0)
+
+    def test_last_interaction_time_roundtrips_through_from_dict(self):
+        m = MoodTracker(interactions=2, last_interaction_time=99999.0)
+        loaded = MoodTracker.from_dict(m.to_dict())
+        self.assertAlmostEqual(loaded._last_interaction_time, 99999.0)
+
+
 class ConfigOverrideTests(unittest.TestCase):
     def test_custom_keywords_and_deltas(self):
         cfg = {

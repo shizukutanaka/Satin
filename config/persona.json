@@ -128,7 +128,25 @@
         "うんうん、聞いてるよ。",
         "へえ、もっと教えて！",
         "そっか、いいね。"
-      ]
+      ],
+      "respond_by_affinity": {
+        "close": [
+          {
+            "keywords": ["こんにちは", "おはよう", "やあ"],
+            "replies": ["やっと来てくれた！会いたかったよ！", "おかえり！ずっと待ってたんだよ？"]
+          },
+          {
+            "keywords": ["ありがとう", "感謝"],
+            "replies": ["えへへ、こちらこそ！いつもありがとうね。", "喜んでもらえてよかった！"]
+          }
+        ],
+        "distant": [
+          {
+            "keywords": ["こんにちは", "おはよう", "やあ"],
+            "replies": ["…どうも。", "あ、そうですか。"]
+          }
+        ]
+      }
     },
     "en": {
       "rules": [
@@ -166,7 +184,25 @@
         "Mhm, I'm listening.",
         "Oh, tell me more!",
         "Nice, sounds good."
-      ]
+      ],
+      "respond_by_affinity": {
+        "close": [
+          {
+            "keywords": ["hello", "hey", "hi there"],
+            "replies": ["You're finally here! I missed you!", "Welcome back! I was waiting for you."]
+          },
+          {
+            "keywords": ["thank you", "thanks"],
+            "replies": ["Of course! I'm always here for you.", "Anything for you!"]
+          }
+        ],
+        "distant": [
+          {
+            "keywords": ["hello", "hey", "hi there"],
+            "replies": ["...Oh. Hello.", "Ah. Yes."]
+          }
+        ]
+      }
     }
   }
 }

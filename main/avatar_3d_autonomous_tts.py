@@ -55,10 +55,17 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         # ペルソナが応答を返せばそれを表示・読み上げ、無ければ入力をそのまま
         # 読み上げる（後方互換のオウム返し）。respond の失敗で TTS は壊さない。
         reply = comment
+        # 好感度レベルを取得して関係性に応じた応答を選ばせる
+        level = None
+        if get_mood_tracker is not None:
+            try:
+                level = get_mood_tracker().level
+            except Exception:
+                pass
         persona = self.persona
         if persona is not None:
             try:
-                generated = persona.respond(comment)
+                generated = persona.respond(comment, level=level)
             except Exception:
                 generated = ""
             if generated:

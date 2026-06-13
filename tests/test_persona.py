@@ -292,6 +292,68 @@ class RespondTests(unittest.TestCase):
         self.assertEqual(p.respond("no keywords here"), "")
 
 
+class RespondWithLevelTests(unittest.TestCase):
+    """respond(text, level=...) uses respond_by_affinity rules first."""
+
+    def _persona(self):
+        data = {
+            "default_lang": "en",
+            "responses": {
+                "en": {
+                    "rules": [
+                        {"keywords": ["hello"], "replies": ["GENERIC_HELLO"]},
+                    ],
+                    "fallback": ["GENERIC_FB"],
+                    "respond_by_affinity": {
+                        "close": [
+                            {"keywords": ["hello"], "replies": ["CLOSE_HELLO"]},
+                        ],
+                        "distant": [
+                            {"keywords": ["hello"], "replies": ["DISTANT_HELLO"]},
+                        ],
+                    },
+                },
+            },
+        }
+        return Persona.from_dict(data, lang="en")
+
+    def test_close_level_uses_affinity_rule(self):
+        p = self._persona()
+        self.assertEqual(p.respond("hello", level="close"), "CLOSE_HELLO")
+
+    def test_distant_level_uses_affinity_rule(self):
+        p = self._persona()
+        self.assertEqual(p.respond("hello", level="distant"), "DISTANT_HELLO")
+
+    def test_no_level_uses_generic_rule(self):
+        p = self._persona()
+        self.assertEqual(p.respond("hello"), "GENERIC_HELLO")
+
+    def test_unknown_level_falls_back_to_generic(self):
+        p = self._persona()
+        self.assertEqual(p.respond("hello", level="reserved"), "GENERIC_HELLO")
+
+    def test_level_no_keyword_match_falls_through_to_generic(self):
+        p = self._persona()
+        # level="close" has no "bye" keyword → falls through to generic
+        result = p.respond("bye", level="close")
+        self.assertEqual(result, "GENERIC_FB")
+
+    def test_bundled_config_respond_by_affinity(self):
+        """Shipped config/persona.json has respond_by_affinity for close/distant."""
+        repo_cfg = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "persona.json",
+        )
+        p = Persona.load(config_path=repo_cfg, lang="ja")
+        close_reply = p.respond("こんにちは", level="close")
+        generic_reply_persona = Persona.load(config_path=repo_cfg, lang="ja")
+        generic_reply = generic_reply_persona.respond("こんにちは")
+        self.assertTrue(close_reply)
+        # close reply should differ from the generic one
+        self.assertNotEqual(close_reply, generic_reply)
+
+
 class SingletonTests(unittest.TestCase):
     def tearDown(self):
         reset_persona()
