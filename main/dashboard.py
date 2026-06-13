@@ -64,6 +64,33 @@ event_log_path = 'avatar_event_log.jsonl'
 backup_dir = 'event_report'
 
 
+def _build_sync_backup(zip_path, config_dir, log_path):
+    """設定一式（config/ 配下を再帰的に）と会話ログを zip にまとめる。
+
+    旧実装は config/ 直下のファイルのみを対象にしており、config/plugins/*.json
+    （i18n / logging / cache / performance / break_reminder の設定）が丸ごと
+    バックアップから漏れていた。os.walk で再帰し全サブディレクトリを含める。
+
+    Flask 非依存の純ロジックとして切り出し、テスト可能にする。
+    Returns: zip に書き込んだ arcname のリスト。
+    """
+    import zipfile
+    written = []
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        if config_dir and os.path.isdir(config_dir):
+            for root, _dirs, files in os.walk(config_dir):
+                for fname in files:
+                    fpath = os.path.join(root, fname)
+                    arc = os.path.join('config', os.path.relpath(fpath, config_dir))
+                    zf.write(fpath, arc)
+                    written.append(arc)
+        if log_path and os.path.exists(log_path):
+            arc = os.path.basename(log_path)
+            zf.write(log_path, arc)
+            written.append(arc)
+    return written
+
+
 def _safe_backup_path(fname):
     """backup_dir 内に収まる実パスのみを返す。ディレクトリトラバーサル
     (例: ../../etc/passwd) を防ぐため、解決後のパスが backup_dir 配下に
@@ -215,25 +242,16 @@ def sync(i18n):
     backup_path_display = ''
     if request.method == 'POST':
         try:
-            import zipfile
             import datetime as _dt
-            # Create a zip of config/ and the conversation log in the event_report/ dir
+            # Create a zip of config/ (recursively, incl. plugins/) and the
+            # conversation log in the event_report/ dir.
             os.makedirs(backup_dir, exist_ok=True)
             ts = _dt.datetime.now().strftime('%Y%m%d_%H%M%S')
             zip_name = f'backup_{ts}.zip'
             zip_path = os.path.join(backup_dir, zip_name)
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                # config/ directory
-                _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                config_dir = os.path.join(_root, 'config')
-                if os.path.isdir(config_dir):
-                    for fname in os.listdir(config_dir):
-                        fpath = os.path.join(config_dir, fname)
-                        if os.path.isfile(fpath):
-                            zf.write(fpath, os.path.join('config', fname))
-                # conversation log
-                if os.path.exists(event_log_path):
-                    zf.write(event_log_path, os.path.basename(event_log_path))
+            _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            config_dir = os.path.join(_root, 'config')
+            _build_sync_backup(zip_path, config_dir, event_log_path)
             backup_path_display = zip_name
             msg = i18n.t('executed_cloud_sync')
         except Exception as exc:

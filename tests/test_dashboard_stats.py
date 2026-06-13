@@ -188,5 +188,59 @@ class BackupListZipTests(unittest.TestCase):
         self.assertIsNotNone(p)
 
 
+class SyncBackupContentsTests(unittest.TestCase):
+    """_build_sync_backup must capture config/ RECURSIVELY (incl. plugins/)
+    plus the conversation log. Regression: the old route only archived
+    top-level config/ files, silently dropping config/plugins/*.json."""
+
+    def setUp(self):
+        import zipfile
+        self._tmp = tempfile.mkdtemp()
+        self._cfg = os.path.join(self._tmp, "config")
+        os.makedirs(os.path.join(self._cfg, "plugins"))
+        # top-level config file
+        with open(os.path.join(self._cfg, "persona.json"), "w") as f:
+            f.write("{}")
+        # nested plugin config (the previously-dropped case)
+        with open(os.path.join(self._cfg, "plugins", "break_reminder.json"), "w") as f:
+            f.write('{"enabled": true}')
+        # conversation log living outside config/
+        self._log = os.path.join(self._tmp, "avatar_event_log.jsonl")
+        with open(self._log, "w") as f:
+            f.write('{"event_type":"user_comment","timestamp":0}\n')
+        self._zip = os.path.join(self._tmp, "backup.zip")
+        self._zipfile = zipfile
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _names(self):
+        dashboard._build_sync_backup(self._zip, self._cfg, self._log)
+        with self._zipfile.ZipFile(self._zip) as zf:
+            return set(zf.namelist())
+
+    def test_includes_top_level_config(self):
+        self.assertIn("config/persona.json", self._names())
+
+    def test_includes_nested_plugin_config(self):
+        # The whole point of the fix.
+        self.assertIn("config/plugins/break_reminder.json", self._names())
+
+    def test_includes_conversation_log(self):
+        self.assertIn("avatar_event_log.jsonl", self._names())
+
+    def test_returns_written_arcnames(self):
+        written = dashboard._build_sync_backup(self._zip, self._cfg, self._log)
+        self.assertIn("config/plugins/break_reminder.json", written)
+
+    def test_missing_log_is_skipped_gracefully(self):
+        written = dashboard._build_sync_backup(
+            self._zip, self._cfg, os.path.join(self._tmp, "nope.jsonl")
+        )
+        self.assertNotIn("nope.jsonl", written)
+        self.assertIn("config/persona.json", written)
+
+
 if __name__ == "__main__":
     unittest.main()
