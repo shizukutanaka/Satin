@@ -61,6 +61,8 @@ class JaLocaleTests(unittest.TestCase):
         "no_conversation", "affinity_score", "affinity_level",
         "interactions", "last_interaction", "mood_unavailable",
         "mood_no_interactions_yet", "reset_mood",
+        "mood_history", "mood_no_history", "date", "back_to_mood",
+        "total_messages", "download_conversation",
     ]
 
     def setUp(self):
@@ -102,6 +104,8 @@ class EnLocaleTests(unittest.TestCase):
         "no_conversation", "affinity_score", "affinity_level",
         "interactions", "last_interaction", "mood_unavailable",
         "mood_no_interactions_yet", "reset_mood",
+        "mood_history", "mood_no_history", "date", "back_to_mood",
+        "total_messages", "download_conversation",
     ]
 
     def setUp(self):
