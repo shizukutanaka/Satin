@@ -7,11 +7,14 @@ Satin ランチャー
 3. GUI が利用可能なら Avatar Loader を起動、そうでなければ CLI 管理ツールを起動
 
 コマンドライン引数:
-  --chat        ヘッドレスでアバターと会話する CLI を起動
-  --dashboard   Flask ダッシュボードを起動
-  --manage      CLI 管理バッチツールを起動
-  --validate    設定バリデーションのみ実行して終了
-  --help / -h   ヘルプを表示して終了
+  --chat            ヘッドレスでアバターと会話する CLI を起動
+  --lang LANG       会話言語 (例: ja, en) — --chat と併用
+  --no-greet        --chat 時: 開始あいさつを省略
+  --no-mood         --chat 時: 好感度トラッキングを無効化
+  --dashboard       Flask ダッシュボードを起動
+  --manage          CLI 管理バッチツールを起動
+  --validate        設定バリデーションのみ実行して終了
+  --help / -h       ヘルプを表示して終了
 """
 from __future__ import annotations
 
@@ -112,10 +115,21 @@ def _launch_dashboard(host: str = "127.0.0.1", port: int = 5000) -> None:
         sys.exit(1)
 
 
-def _launch_chat() -> None:
-    """ヘッドレスのペルソナ対話 CLI を起動する（GUI 不要）。"""
-    from persona_cli import run_chat
-    run_chat()
+def _launch_chat(lang: str | None = None, no_greet: bool = False, no_mood: bool = False) -> None:
+    """ヘッドレスのペルソナ対話 CLI を起動する（GUI 不要）。
+
+    persona_cli.main() を経由することで、auto_decay・mood 保存・言語選択など
+    フル機能が有効になる。
+    """
+    from persona_cli import main as _chat_main
+    argv = []
+    if lang:
+        argv += ["--lang", lang]
+    if no_greet:
+        argv.append("--no-greet")
+    if no_mood:
+        argv.append("--no-mood")
+    raise SystemExit(_chat_main(argv))
 
 
 def _launch_manage() -> None:
@@ -143,6 +157,9 @@ def main() -> None:
     parser.add_argument("--validate",  action="store_true", help="設定バリデーションのみ実行して終了")
     parser.add_argument("--host",      default="127.0.0.1", help="ダッシュボードのホスト (default: 127.0.0.1)")
     parser.add_argument("--port",      type=int, default=5000, help="ダッシュボードのポート (default: 5000)")
+    parser.add_argument("--lang",      default=None, help="会話言語 (例: ja, en) — --chat と併用")
+    parser.add_argument("--no-greet",  action="store_true", help="--chat 時: 開始あいさつを省略")
+    parser.add_argument("--no-mood",   action="store_true", help="--chat 時: 好感度トラッキングを無効化")
     parser.add_argument("--no-dep-check", action="store_true", help="依存チェックをスキップ")
     args = parser.parse_args()
 
@@ -154,7 +171,7 @@ def main() -> None:
     if args.validate:
         _launch_validate()
     elif args.chat:
-        _launch_chat()
+        _launch_chat(lang=args.lang, no_greet=args.no_greet, no_mood=args.no_mood)
     elif args.manage:
         _launch_manage()
     elif args.dashboard:
