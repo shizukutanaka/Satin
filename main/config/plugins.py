@@ -100,6 +100,23 @@ class PluginConfig:
             data['status'] = PluginStatus(data['status'].lower())
         return cls(**data)
 
+
+def _parse_version(version_str: str):
+    """Parse a dotted version string into a comparable tuple of ints."""
+    parts = []
+    for part in str(version_str).strip().split("."):
+        try:
+            parts.append(int(part))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts) if parts else (0,)
+
+
+def _version_satisfies(installed: str, required: str) -> bool:
+    """Return True if installed version >= required version (semver tuple comparison)."""
+    return _parse_version(installed) >= _parse_version(required)
+
+
 class PluginManager:
     """Manages loading and configuration of plugins"""
     
@@ -435,9 +452,25 @@ class PluginManager:
                     return False
                 else:
                     logger.warning(f"Missing optional dependency: {dep.name}")
-            
-            # TODO: Add version checking
-            
+                continue
+
+            # Version checking: dep.version is the minimum required version.
+            if dep.version:
+                plugin_info = self._discovered_plugins.get(dep.name)
+                installed_version = (
+                    plugin_info["metadata"].version if plugin_info else "0.0.0"
+                )
+                if not _version_satisfies(installed_version, dep.version):
+                    msg = (
+                        f"Dependency {dep.name} version {installed_version} "
+                        f"does not satisfy required >= {dep.version}"
+                    )
+                    if dep.optional:
+                        logger.warning(msg)
+                    else:
+                        logger.error(msg)
+                        return False
+
         return True
     
     def get_loaded_plugins(self) -> Dict[str, Any]:
