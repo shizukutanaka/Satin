@@ -20,9 +20,13 @@ sys.path.insert(0, _MAIN)
 
 from async_optimization import (  # noqa: E402
     AsyncTaskPool,
+    AsyncTaskResult,
+    AsyncContextManager,
+    BatchAsyncProcessor,
     ConcurrentExecutor,
     AsyncConnectionPool,
     AsyncRateLimiterAdvanced,
+    gather_with_timeout,
 )
 
 
@@ -150,6 +154,173 @@ class AsyncRateLimiterAdvancedTests(unittest.IsolatedAsyncioTestCase):
         await limiter.acquire()
         limiter.release(0)
         limiter.release(0)
+
+
+class AsyncTaskResultTests(unittest.TestCase):
+    def _make(self, **kw):
+        from datetime import datetime
+        defaults = dict(task_id="t1", coroutine_name="coro", result=None,
+                        exception=None, duration_ms=0.0, start_time=None, end_time=None)
+        defaults.update(kw)
+        return AsyncTaskResult(**defaults)
+
+    def test_success_when_no_exception(self):
+        r = self._make(result=42)
+        self.assertTrue(r.success)
+
+    def test_not_success_when_exception(self):
+        r = self._make(exception=ValueError("x"))
+        self.assertFalse(r.success)
+
+    def test_is_done_when_end_time_set(self):
+        from datetime import datetime
+        r = self._make(end_time=datetime.now())
+        self.assertTrue(r.is_done)
+
+    def test_not_done_when_no_end_time(self):
+        r = self._make()
+        self.assertFalse(r.is_done)
+
+    def test_result_stored(self):
+        r = self._make(result="hello")
+        self.assertEqual(r.result, "hello")
+
+
+class AsyncContextManagerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_aenter_sets_initialized(self):
+        mgr = AsyncContextManager("test_resource")
+        async with mgr:
+            self.assertTrue(mgr._initialized)
+
+    async def test_aexit_clears_initialized(self):
+        mgr = AsyncContextManager("test_resource")
+        async with mgr:
+            pass
+        self.assertFalse(mgr._initialized)
+
+    async def test_name_stored(self):
+        mgr = AsyncContextManager("my_res")
+        self.assertEqual(mgr.name, "my_res")
+
+    async def test_async_init_hook_called(self):
+        calls = []
+
+        class MyMgr(AsyncContextManager):
+            async def async_init(self):
+                calls.append("init")
+
+        async with MyMgr("x"):
+            pass
+        self.assertIn("init", calls)
+
+    async def test_async_cleanup_called_on_exit(self):
+        calls = []
+
+        class MyMgr(AsyncContextManager):
+            async def async_cleanup(self, errored: bool = False):
+                calls.append(("cleanup", errored))
+
+        async with MyMgr("x"):
+            pass
+        self.assertEqual(calls, [("cleanup", False)])
+
+    async def test_async_cleanup_called_with_errored_on_exception(self):
+        calls = []
+
+        class MyMgr(AsyncContextManager):
+            async def async_cleanup(self, errored: bool = False):
+                calls.append(("cleanup", errored))
+
+        try:
+            async with MyMgr("x"):
+                raise RuntimeError("boom")
+        except RuntimeError:
+            pass
+        self.assertEqual(calls, [("cleanup", True)])
+
+
+class BatchAsyncProcessorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_add_returns_none_while_under_limit(self):
+        proc = BatchAsyncProcessor(batch_size=5)
+        result = await proc.add("item1")
+        self.assertIsNone(result)
+
+    async def test_add_returns_batch_when_full(self):
+        proc = BatchAsyncProcessor(batch_size=3)
+        await proc.add("a")
+        await proc.add("b")
+        result = await proc.add("c")
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 3)
+
+    async def test_batch_cleared_after_processing(self):
+        proc = BatchAsyncProcessor(batch_size=2)
+        await proc.add("x")
+        await proc.add("y")
+        self.assertEqual(len(proc.batch), 0)
+
+    async def test_flush_returns_remaining_items(self):
+        proc = BatchAsyncProcessor(batch_size=10)
+        await proc.add("a")
+        await proc.add("b")
+        result = await proc.flush()
+        self.assertEqual(result, ["a", "b"])
+
+    async def test_flush_empty_returns_none(self):
+        proc = BatchAsyncProcessor(batch_size=5)
+        result = await proc.flush()
+        self.assertIsNone(result)
+
+    async def test_set_processor_called_on_batch(self):
+        called_with = []
+
+        async def my_processor(batch):
+            called_with.extend(batch)
+            return batch
+
+        proc = BatchAsyncProcessor(batch_size=2)
+        proc.set_processor(my_processor)
+        await proc.add("p")
+        await proc.add("q")
+        self.assertEqual(sorted(called_with), ["p", "q"])
+
+    async def test_processor_exception_returns_original_batch(self):
+        async def bad_processor(batch):
+            raise ValueError("fail")
+
+        proc = BatchAsyncProcessor(batch_size=2)
+        proc.set_processor(bad_processor)
+        await proc.add("x")
+        result = await proc.add("y")
+        self.assertEqual(sorted(result), ["x", "y"])
+
+
+class GatherWithTimeoutTests(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_all_results(self):
+        async def add(a, b):
+            return a + b
+
+        results = await gather_with_timeout(add(1, 2), add(3, 4), timeout_seconds=5)
+        self.assertEqual(sorted(results), [3, 7])
+
+    async def test_timeout_raises(self):
+        async def slow():
+            await asyncio.sleep(100)
+
+        with self.assertRaises(asyncio.TimeoutError):
+            await gather_with_timeout(slow(), timeout_seconds=0.05)
+
+    async def test_empty_coros_returns_empty(self):
+        results = await gather_with_timeout(timeout_seconds=5)
+        self.assertEqual(results, [])
+
+    async def test_return_exceptions_captures_errors(self):
+        async def fail():
+            raise ValueError("oops")
+
+        results = await gather_with_timeout(fail(), timeout_seconds=5, return_exceptions=True)
+        self.assertEqual(len(results), 1)
+        self.assertIsInstance(results[0], ValueError)
 
 
 if __name__ == "__main__":
