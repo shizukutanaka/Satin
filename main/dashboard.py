@@ -81,6 +81,7 @@ TEMPLATE = '''
 <div style="float:right">''' + LANG_SWITCHER_HTML + '''</div>
 <ul>
   <li><a href="/logs?lang={{lang}}">{{i18n.t('event_log')}}</a></li>
+  <li><a href="/conversation?lang={{lang}}">{{i18n.t('conversation', 'Chat')}}</a></li>
   <li><a href="/backups?lang={{lang}}">{{i18n.t('backups')}}</a></li>
   <li><a href="/sync?lang={{lang}}">{{i18n.t('cloud_sync')}}</a></li>
   <li><a href="/mood?lang={{lang}}">{{i18n.t('mood', 'Mood')}}</a></li>
@@ -160,6 +161,62 @@ def sync(i18n):
     <p style="color:green">{msg}</p>'''
     return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
 
+@app.route('/conversation')
+@with_lang
+def conversation(i18n):
+    """会話履歴のみを表示する（user_comment / avatar_reply イベントをフィルタ）。"""
+    lang = get_lang()
+    switcher = LANG_SWITCHER_HTML.format(
+        en='selected' if lang.startswith('en') else '',
+        ja='selected' if not lang.startswith('en') else '',
+    )
+    _USER_TYPES = {"user_comment", "user"}
+    _AVATAR_TYPES = {"avatar_reply", "avatar"}
+    exchanges = []
+    if os.path.exists(event_log_path):
+        with open(event_log_path, encoding='utf-8') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    ev = json.loads(line)
+                    et = ev.get('event_type', '')
+                    if et not in _USER_TYPES and et not in _AVATAR_TYPES:
+                        continue
+                    ts = datetime.fromtimestamp(ev['timestamp']).strftime('%H:%M:%S')
+                    speaker = (
+                        i18n.t('you', 'You') if et in _USER_TYPES
+                        else i18n.t('avatar', 'Avatar')
+                    )
+                    details = ev.get('details') or {}
+                    text = details.get('text', '') if isinstance(details, dict) else str(details)
+                    exchanges.append({'ts': ts, 'speaker': speaker, 'text': text})
+                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                    continue
+    title = i18n.t('conversation', 'Chat History')
+    content = f'<h3>{_html.escape(title)}</h3>'
+    if not exchanges:
+        content += f'<p>{_html.escape(i18n.t("no_conversation", "No conversation history yet."))}</p>'
+    else:
+        content += '<table border=0 cellpadding=6 cellspacing=2 style="width:100%">'
+        for ex in exchanges[-100:]:
+            is_user = ex['speaker'] == i18n.t('you', 'You')
+            align = 'left' if is_user else 'right'
+            bg = '#e8f4fd' if is_user else '#f0fde8'
+            content += (
+                f'<tr><td align="{align}" style="background:{bg};padding:6px 10px;'
+                f'border-radius:8px;max-width:70%">'
+                f'<small style="color:#888">{_html.escape(ex["ts"])}'
+                f' <b>{_html.escape(ex["speaker"])}</b></small><br>'
+                f'{_html.escape(str(ex["text"]))}</td></tr>'
+            )
+        content += '</table>'
+    return render_template_string(
+        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
+        i18n=i18n, lang=lang, switcher=switcher,
+    )
+
+
 @app.route('/mood')
 @with_lang
 def mood(i18n):
@@ -184,6 +241,7 @@ def mood(i18n):
                 last_dt = i18n.t("mood_no_interactions_yet", "No interactions yet")
             # progress bar fill colour: red→yellow→green by score
             colour = f'hsl({int(score * 1.2)}, 70%, 45%)'
+            reset_label = _html.escape(i18n.t("reset_mood", "Reset to neutral"))
             content = f'''
 <h3>{_html.escape(i18n.t("mood", "Mood"))}</h3>
 <table border=0 cellpadding=6>
@@ -199,13 +257,40 @@ def mood(i18n):
     <td>{interactions}</td></tr>
 <tr><td><b>{_html.escape(i18n.t("last_interaction", "Last interaction"))}</b></td>
     <td>{_html.escape(last_dt)}</td></tr>
-</table>'''
+</table>
+<br>
+<form method="post" action="/mood/reset?lang={_html.escape(lang)}">
+  <button type="submit" onclick="return confirm('{reset_label}?')">
+    {reset_label}
+  </button>
+</form>'''
         except Exception as exc:
             content = f'<h3>{i18n.t("mood", "Mood")}</h3><p>{_html.escape(str(exc))}</p>'
     return render_template_string(
         TEMPLATE + '{% block content %}' + content + '{% endblock %}',
         i18n=i18n, lang=lang, switcher=switcher,
     )
+
+
+@app.route('/mood/reset', methods=['POST'])
+@with_lang
+def mood_reset(i18n):
+    """好感度を neutral（50/100）にリセットして /mood にリダイレクトする。"""
+    lang = get_lang()
+    if _get_mood_tracker is not None:
+        try:
+            from mood import AFFINITY_START
+            tracker = _get_mood_tracker()
+            tracker.affinity = AFFINITY_START
+            tracker.interactions = 0
+            tracker._last_interaction_time = 0.0
+            if _default_mood_path is not None:
+                tracker.save(_default_mood_path())
+        except Exception:
+            pass
+    if redirect is not None and url_for is not None:
+        return redirect(url_for('mood', lang=lang))
+    return i18n.t('mood', 'Mood'), 200
 
 
 if __name__ == '__main__':
