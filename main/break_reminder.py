@@ -277,11 +277,8 @@ class BreakReminder:
         self._history.append(entry)
 
 
-def load_break_reminder(lang: str = "ja", **kwargs) -> BreakReminder:
-    """設定ファイル（config/plugins/break_reminder.json）からロードして返す。
-
-    ファイルが存在しない・破損している場合はデフォルト設定で生成する。
-    """
+def _load_config_file() -> Optional[dict]:
+    """config/plugins/break_reminder.json を読み込む。無い/壊れていれば None。"""
     import json
     import os
 
@@ -289,11 +286,43 @@ def load_break_reminder(lang: str = "ja", **kwargs) -> BreakReminder:
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "config", "plugins", "break_reminder.json",
     )
-    config: Optional[dict] = None
     try:
         with open(config_path, encoding="utf-8") as f:
-            config = json.load(f)
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
     except Exception:
-        pass
+        return None
 
-    return BreakReminder.from_config(config, lang=lang, **kwargs)
+
+def load_break_reminder(lang: str = "ja", **kwargs) -> BreakReminder:
+    """設定ファイル（config/plugins/break_reminder.json）からロードして返す。
+
+    ファイルが存在しない・破損している場合はデフォルト設定で生成する。
+    """
+    return BreakReminder.from_config(_load_config_file(), lang=lang, **kwargs)
+
+
+def maybe_start_break_reminder(
+    speak_func: Optional[Callable[[str], None]] = None,
+    notify_func: Optional[Callable[[str, str], None]] = None,
+    lang: str = "ja",
+    config: Optional[dict] = None,
+) -> Optional[BreakReminder]:
+    """設定が許せばブレークリマインダーを生成・開始して返す。無効なら None。
+
+    config に "enabled": false があれば（または明示 config なしでファイルの
+    enabled が false なら）開始しない。これにより設定ファイルの enabled フラグが
+    実際に機能する。アプリ起動側（自律モード開始時など）から呼ぶ。
+
+    speak_func: アバターに発話させるコールバック（例: tts_queue.put）。
+    """
+    if config is None:
+        config = _load_config_file() or {}
+    if not config.get("enabled", True):
+        logger.info("BreakReminder is disabled by config; not starting.")
+        return None
+    reminder = BreakReminder.from_config(
+        config, lang=lang, speak_func=speak_func, notify_func=notify_func
+    )
+    reminder.start()
+    return reminder

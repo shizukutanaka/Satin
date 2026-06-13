@@ -28,6 +28,11 @@ except Exception:  # pragma: no cover - defensive
     _default_mood_history_path = None
     check_level_milestone = None
 
+try:
+    from break_reminder import maybe_start_break_reminder  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    maybe_start_break_reminder = None
+
 class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     reset_direction_on_run = True
     EXTRA_TEXT_FIELDS = ('comment_text',)
@@ -142,6 +147,8 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         self.tts_queue = queue.Queue()
         self.tts_thread = TTSThread(self.tts_queue)
         self.tts_thread.start()
+        # ポモドーロ式ブレークリマインダー（自律モード ON 中のみ稼働）
+        self.break_reminder = None
         self.viewer = AutonomousAvatarViewer(self)
         self.viewer.set_tts_queue(self.tts_queue)
         self.setCentralWidget(self.viewer)
@@ -164,10 +171,32 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         if not self.viewer.is_autonomous:
             self.viewer.start_autonomous()
             self.autonomous_btn.setText('自律モードOFF')
+            self._start_break_reminder()
         else:
             self.viewer.stop_autonomous()
             self.autonomous_btn.setText('自律モードON')
             self.talk_label.setText('')
+            self._stop_break_reminder()
+
+    def _start_break_reminder(self):
+        """自律モード ON 時、設定が許せば休憩リマインダーを開始する。"""
+        if maybe_start_break_reminder is None or self.break_reminder is not None:
+            return
+        lang = getattr(self.viewer.persona, 'lang', 'ja') if self.viewer.persona else 'ja'
+        try:
+            self.break_reminder = maybe_start_break_reminder(
+                speak_func=self.tts_queue.put, lang=lang
+            )
+        except Exception:
+            self.break_reminder = None
+
+    def _stop_break_reminder(self):
+        if self.break_reminder is not None:
+            try:
+                self.break_reminder.stop()
+            except Exception:
+                pass
+            self.break_reminder = None
 
     def update_talk_text(self):
         if self.viewer.comment_text:
@@ -185,6 +214,7 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
 
     def closeEvent(self, event):
         self.tts_thread.running = False
+        self._stop_break_reminder()
         # ウィンドウを閉じるときに好感度を保存する（会話中に保存済みでも上書きで最新を維持）
         if get_mood_tracker is not None and _default_mood_path is not None:
             try:

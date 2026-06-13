@@ -17,6 +17,7 @@ sys.path.insert(0, _MAIN)
 
 from break_reminder import (  # noqa: E402
     BreakReminder, BreakReminderSession, load_break_reminder,
+    maybe_start_break_reminder, _load_config_file,
     _DEFAULT_WORK_MINUTES, _DEFAULT_SHORT_BREAK, _DEFAULT_LONG_BREAK,
     _DEFAULT_CYCLES_BEFORE_LONG,
 )
@@ -220,6 +221,55 @@ class LoadBreakReminderTests(unittest.TestCase):
         # config/plugins/break_reminder.json has work_minutes=25
         br = load_break_reminder()
         self.assertEqual(br.session.work_minutes, 25)
+
+
+class MaybeStartBreakReminderTests(unittest.TestCase):
+    def test_disabled_config_returns_none(self):
+        result = maybe_start_break_reminder(config={"enabled": False})
+        self.assertIsNone(result)
+
+    def test_enabled_config_returns_running_reminder(self):
+        br = maybe_start_break_reminder(config={"enabled": True, "work_minutes": 25})
+        self.assertIsNotNone(br)
+        self.assertTrue(br.running)
+        br.stop()  # cancel the real timer immediately
+
+    def test_enabled_defaults_true_when_key_absent(self):
+        br = maybe_start_break_reminder(config={"work_minutes": 25})
+        self.assertIsNotNone(br)
+        br.stop()
+
+    def test_speak_func_is_wired(self):
+        calls = []
+        br = maybe_start_break_reminder(
+            config={"enabled": True}, speak_func=lambda t: calls.append(t)
+        )
+        self.assertIsNotNone(br._speak_func)
+        br.stop()
+
+    def test_lang_is_passed_through(self):
+        br = maybe_start_break_reminder(config={"enabled": True}, lang="en")
+        self.assertEqual(br.lang, "en")
+        br.stop()
+
+    def test_config_timings_applied(self):
+        br = maybe_start_break_reminder(
+            config={"enabled": True, "work_minutes": 50, "short_break_minutes": 10}
+        )
+        self.assertEqual(br.session.work_minutes, 50)
+        self.assertEqual(br.session.short_break_minutes, 10)
+        br.stop()
+
+
+class LoadConfigFileTests(unittest.TestCase):
+    def test_returns_dict_or_none(self):
+        # The shipped config/plugins/break_reminder.json exists → dict
+        result = _load_config_file()
+        self.assertIsInstance(result, dict)
+
+    def test_shipped_config_has_enabled(self):
+        result = _load_config_file()
+        self.assertIn("enabled", result)
 
 
 if __name__ == "__main__":
