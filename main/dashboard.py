@@ -194,11 +194,60 @@ def sync(i18n):
     lang = get_lang()
     switcher = LANG_SWITCHER_HTML.format(en='selected' if lang=='en' else '', ja='selected' if lang=='ja' else '')
     msg = ''
+    msg_color = 'green'
+    backup_path_display = ''
     if request.method == 'POST':
-        msg = i18n.t('executed_cloud_sync')
-    content = f'''<h3>{i18n.t("cloud_sync")}</h3>
-    <form method="post"><button type="submit">{i18n.t('manual_cloud_sync')}</button></form>
-    <p style="color:green">{msg}</p>'''
+        try:
+            import zipfile
+            import datetime as _dt
+            # Create a zip of config/ and the conversation log in the event_report/ dir
+            os.makedirs(backup_dir, exist_ok=True)
+            ts = _dt.datetime.now().strftime('%Y%m%d_%H%M%S')
+            zip_name = f'backup_{ts}.gz'
+            zip_path = os.path.join(backup_dir, zip_name)
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                # config/ directory
+                _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                config_dir = os.path.join(_root, 'config')
+                if os.path.isdir(config_dir):
+                    for fname in os.listdir(config_dir):
+                        fpath = os.path.join(config_dir, fname)
+                        if os.path.isfile(fpath):
+                            zf.write(fpath, os.path.join('config', fname))
+                # conversation log
+                if os.path.exists(event_log_path):
+                    zf.write(event_log_path, os.path.basename(event_log_path))
+            backup_path_display = zip_name
+            msg = i18n.t('executed_cloud_sync')
+        except Exception as exc:
+            msg = _html.escape(str(exc))
+            msg_color = 'red'
+
+    # List existing backups
+    existing = []
+    if os.path.isdir(backup_dir):
+        existing = sorted(
+            f for f in os.listdir(backup_dir)
+            if f.endswith('.gz') or f.endswith('.zip')
+        )
+
+    backup_info = ''
+    if backup_path_display:
+        backup_info = f'<p>{_html.escape(i18n.t("backup_saved_as", "Saved as"))}: <b>{_html.escape(backup_path_display)}</b></p>'
+    existing_html = ''
+    if existing:
+        existing_html = f'<h4>{_html.escape(i18n.t("existing_backups", "Existing backups"))}</h4><ul>'
+        for fn in existing[-10:]:
+            fn_esc = _html.escape(fn)
+            existing_html += f'<li><a href="/download/{fn_esc}?lang={lang}">{fn_esc}</a></li>'
+        existing_html += '</ul>'
+
+    content = f'''<h3>{_html.escape(i18n.t("cloud_sync"))}</h3>
+<p>{_html.escape(i18n.t("sync_description", "Create a local backup of config files and conversation log."))}</p>
+<form method="post"><button type="submit">{_html.escape(i18n.t("manual_cloud_sync"))}</button></form>
+{backup_info}
+<p style="color:{msg_color}">{_html.escape(msg)}</p>
+{existing_html}'''
     return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
 
 @app.route('/conversation')

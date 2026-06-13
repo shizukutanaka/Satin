@@ -92,5 +92,8 @@
     "download_conversation": "Download as text",
     "search": "Search",
     "search_placeholder": "Enter keyword…",
-    "search_results": "Results"
+    "search_results": "Results",
+    "backup_saved_as": "Saved as",
+    "existing_backups": "Existing backups",
+    "sync_description": "Create a local backup of config files and conversation log."
 }
