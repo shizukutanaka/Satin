@@ -264,6 +264,58 @@ class LegacyAliasConsistencyTests(unittest.TestCase):
         self.assertIs(ds.AVATAR_EVENT_TYPES, cl.AVATAR_EVENT_TYPES)
 
 
+class PeakHourSemanticsTests(unittest.TestCase):
+    """peak_hour must reflect USER activity (matching dashboard /stats), not
+    total event volume. Otherwise /summary and /stats print different peaks."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        today = date.today()
+
+        def at(hour):
+            return datetime(today.year, today.month, today.day, hour, 0, 0).timestamp()
+
+        # Hour 9: 3 USER messages.
+        # Hour 14: 1 user + 5 avatar replies (6 total events).
+        # All-events peak would be 14; USER-activity peak is 9.
+        events = (
+            [{"event_type": "user_comment", "timestamp": at(9)}] * 3
+            + [{"event_type": "user_comment", "timestamp": at(14)}]
+            + [{"event_type": "avatar_reply", "timestamp": at(14)}] * 5
+        )
+        _write_events(self._ev_path, events)
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_peak_hour_reflects_user_activity_not_total_events(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["peak_hour"], 9)
+
+    def test_peak_hour_agrees_with_dashboard(self):
+        import dashboard
+        result = daily_summary(**self._kwargs())
+        cs = dashboard._conversation_stats(self._ev_path)
+        self.assertEqual(result["peak_hour"], cs["peak_hour"])
+
+    def test_non_conversation_events_do_not_skew_peak(self):
+        # A burst of non-conversation events must not become the peak hour.
+        today = date.today()
+        ts = datetime(today.year, today.month, today.day, 3, 0, 0).timestamp()
+        with open(self._ev_path, "a", encoding="utf-8") as f:
+            for _ in range(20):
+                f.write(json.dumps({"event_type": "system_tick", "timestamp": ts}) + "\n")
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["peak_hour"], 9)  # still user-driven, not hour 3
+
+
 class SummaryGreetingTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()

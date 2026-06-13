@@ -114,9 +114,13 @@ def daily_summary(
     avatar_replies = sum(event_type_counts.get(t, 0) for t in AVATAR_EVENT_TYPES)
     total = user_msgs + avatar_replies
 
-    # ピーク時間帯（メッセージ数が最大の時）
+    # ピーク時間帯（ユーザー発話が最も多い時）。
+    # 「あなたが一番活発だった時間帯」なので user イベントのみを数える。
+    # dashboard の /stats と同じ定義にして両画面の表示が食い違わないようにする。
     hour_counts: defaultdict = defaultdict(int)
     for ev in day_events:
+        if ev.get("event_type") not in USER_EVENT_TYPES:
+            continue
         ts = ev.get("timestamp")
         if ts:
             try:
