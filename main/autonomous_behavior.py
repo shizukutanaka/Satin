@@ -29,9 +29,13 @@ except Exception:  # pragma: no cover - persona は常に import 可能なはず
     get_persona = None
 
 try:
-    from mood import get_mood_tracker as _get_mood_tracker
+    from mood import (
+        get_mood_tracker as _get_mood_tracker,
+        _default_mood_history_path as _mood_history_path,
+    )
 except Exception:  # pragma: no cover - defensive
     _get_mood_tracker = None
+    _mood_history_path = None
 
 
 class AutonomousBehaviorMixin:
@@ -68,6 +72,9 @@ class AutonomousBehaviorMixin:
                 tracker = _get_mood_tracker()
                 tracker.auto_decay()
                 level = tracker.level
+                # 起動時スナップショット（当日初回のみ履歴に記録される）
+                if _mood_history_path is not None:
+                    tracker.snapshot_to_history(_mood_history_path())
             except Exception:
                 pass
         persona = self.persona
