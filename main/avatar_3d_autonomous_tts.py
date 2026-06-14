@@ -2,6 +2,9 @@ import sys
 import random
 import threading
 import queue
+import logging
+
+logger = logging.getLogger(__name__)
 
 from optional_deps import (  # noqa: E402
     np, cv2, QApplication, QMainWindow, QOpenGLWidget,
@@ -96,13 +99,14 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if get_mood_tracker is not None:
             try:
                 level = get_mood_tracker().level
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("好感度レベルの取得に失敗（応答は継続）: %s", e)
         persona = self.persona
         if persona is not None:
             try:
                 generated = persona.respond(comment, level=level)
-            except Exception:
+            except Exception as e:
+                logger.debug("ペルソナ応答生成に失敗（オウム返しにフォールバック）: %s", e)
                 generated = ""
             if generated:
                 reply = generated
@@ -124,14 +128,16 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                     tracker.save(_default_mood_path())
                 if _default_mood_history_path is not None:
                     tracker.snapshot_to_history(_default_mood_history_path())
-            except Exception:
-                pass
+            except Exception as e:
+                # 関係性の状態更新/保存が失敗＝ユーザー体験の劣化。沈黙せず記録する
+                # （TTS/UI は壊さないが、原因を追えるようにする）。
+                logger.warning("好感度の更新・保存に失敗しました: %s", e)
         # 会話履歴を記録（失敗しても UI/TTS を壊さない）
         if get_conversation_log is not None:
             try:
                 get_conversation_log().log_exchange(comment, reply)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("会話履歴の記録に失敗しました: %s", e)
         self.comment_text = reply
         self.mode = 'comment'
         self.ticks = 0

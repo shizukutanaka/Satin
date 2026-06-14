@@ -230,6 +230,48 @@ class SpeakCommentMoodTests(unittest.TestCase):
                 self.assertEqual(v.comment_text, "REPLY_HELLO")
 
 
+class SilentFailureObservabilityTests(unittest.TestCase):
+    """Failures in the mood/history side-effects of speak_comment must be
+    RESILIENT (no crash) AND OBSERVABLE (logged), not silently swallowed."""
+
+    def _viewer(self):
+        v = object.__new__(_mod.AutonomousAvatarViewer)
+        v.comment_text = ""
+        v.mode = "idle"
+        v.ticks = 0
+        v.tts_queue = None
+        v.talk_text = ""
+        return v
+
+    def test_mood_failure_is_logged_not_silent(self):
+        class _BoomTracker:
+            level = "neutral"
+            affinity = 50.0
+            interactions = 1
+
+            def register(self, text):
+                raise RuntimeError("mood backend down")
+
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: _BoomTracker()):
+            with mock.patch.object(_mod, "_default_mood_path", lambda: "/tmp/m.json"):
+                v = self._viewer()
+                with self.assertLogs(_mod.logger, level="WARNING") as cm:
+                    v.speak_comment("hello")  # resilient: must not raise
+                self.assertTrue(any("好感度" in m for m in cm.output))
+
+    def test_conversation_log_failure_is_logged_not_silent(self):
+        class _BoomLog:
+            def log_exchange(self, comment, reply):
+                raise OSError("disk full")
+
+        with mock.patch.object(_mod, "get_mood_tracker", None):
+            with mock.patch.object(_mod, "get_conversation_log", lambda: _BoomLog()):
+                v = self._viewer()
+                with self.assertLogs(_mod.logger, level="WARNING") as cm:
+                    v.speak_comment("hello")  # resilient
+                self.assertTrue(any("会話履歴" in m for m in cm.output))
+
+
 class MakeReminderSpeakTests(unittest.TestCase):
     """make_reminder_speak builds a speak_func that makes the avatar VISIBLY
     say the break reminder (sets comment display) and also queues TTS, so the
