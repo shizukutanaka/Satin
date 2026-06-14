@@ -295,6 +295,20 @@ class MoodHistoryTests(unittest.TestCase):
         t.snapshot_to_history(self._history_path)
         self.assertTrue(os.path.exists(self._history_path))
 
+    def test_snapshot_file_is_owner_only(self):
+        import stat
+        t = self._make_tracker()
+        t.snapshot_to_history(self._history_path)
+        mode = stat.S_IMODE(os.stat(self._history_path).st_mode)
+        self.assertEqual(mode & 0o077, 0, "mood history must not be group/other readable")
+
+    def test_save_file_is_owner_only(self):
+        import stat
+        path = os.path.join(self._tmp, "mood.json")
+        self._make_tracker().save(path)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        self.assertEqual(mode & 0o077, 0, "mood.json must not be group/other readable")
+
     def test_snapshot_writes_correct_fields(self):
         t = self._make_tracker(affinity=75.0, interactions=3)
         t.snapshot_to_history(self._history_path)

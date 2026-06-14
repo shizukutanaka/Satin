@@ -33,6 +33,16 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+try:
+    from fsutil import restrict_to_owner as _restrict_to_owner
+except Exception:  # pragma: no cover - defensive fallback
+    def _restrict_to_owner(path):  # type: ignore
+        try:
+            os.chmod(path, 0o600)
+            return True
+        except OSError:
+            return False
+
 AFFINITY_MIN = 0.0
 AFFINITY_MAX = 100.0
 AFFINITY_START = 50.0
@@ -206,6 +216,7 @@ class MoodTracker:
             tmp = f"{path}.tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.to_dict(), f, ensure_ascii=False)
+            _restrict_to_owner(tmp)  # 私的データ: 公開前に所有者のみへ制限
             os.replace(tmp, path)
             return True
         except Exception as e:  # pragma: no cover - defensive
@@ -255,6 +266,7 @@ class MoodTracker:
             tmp = f"{history_path}.tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 f.write("\n".join(lines) + "\n")
+            _restrict_to_owner(tmp)  # 私的データ: 公開前に所有者のみへ制限
             os.replace(tmp, history_path)
             return True
         except Exception as e:  # pragma: no cover - defensive

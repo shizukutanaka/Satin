@@ -192,5 +192,26 @@ class LogRotationTests(unittest.TestCase):
             self.assertIn("still logged", f.read())
 
 
+class LogPrivacyTests(unittest.TestCase):
+    """The conversation log holds private user content; it must not be created
+    world-readable."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._logfile = os.path.join(self._tmp, "conv.jsonl")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_log_is_owner_only(self):
+        import stat
+        AvatarEventLogger(self._logfile).log_event(
+            "user_comment", text="my private secret"
+        )
+        mode = stat.S_IMODE(os.stat(self._logfile).st_mode)
+        self.assertEqual(mode & 0o077, 0, "conversation log must not be group/other readable")
+
+
 if __name__ == "__main__":
     unittest.main()

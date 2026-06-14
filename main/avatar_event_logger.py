@@ -13,6 +13,8 @@ class AvatarEventLogger:
         self.max_size = max_size
         self.max_backups = max_backups
         self.lock = threading.Lock()
+        # 会話ログは私的データ。初回書き込み後に所有者のみ読み書き可へ制限する。
+        self._perms_restricted = False
 
     def log_event(self, event_type, **kwargs):
         event = {
@@ -23,6 +25,13 @@ class AvatarEventLogger:
         with self.lock:
             with open(self.logfile, "a", encoding="utf-8") as f:
                 f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            if not self._perms_restricted:
+                try:
+                    from fsutil import restrict_to_owner
+                    restrict_to_owner(self.logfile)
+                except Exception:
+                    pass
+                self._perms_restricted = True
             # 上限超過時に gzip ローテート。ローテーション失敗はログ記録自体を
             # 壊さないよう握りつぶす（記録の堅牢性を最優先）。
             if self.max_size:
