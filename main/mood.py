@@ -175,11 +175,19 @@ class MoodTracker:
         """最後の会話からの経過時間を基に decay() を適用する。変化量を返す。
 
         last_interaction_time が記録されていない場合（0.0）は変化なし。
+
+        減衰適用後はチェックポイント (_last_interaction_time) を現在時刻へ進める。
+        これをしないと、間に register() が無いまま auto_decay() が再度呼ばれた際
+        （例: 自律モードの ON/OFF を繰り返す）、同じ経過時間を二重に減衰してしまい
+        好感度が不当に急落する。
         """
         if self._last_interaction_time <= 0 or self.interactions == 0:
             return 0.0
-        elapsed = time.time() - self._last_interaction_time
-        return self.decay(elapsed, rate_per_hour)
+        now = time.time()
+        elapsed = now - self._last_interaction_time
+        delta = self.decay(elapsed, rate_per_hour)
+        self._last_interaction_time = now
+        return delta
 
     # ---- 永続化 ---------------------------------------------------------- #
     def to_dict(self) -> Dict:

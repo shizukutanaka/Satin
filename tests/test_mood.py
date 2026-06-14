@@ -196,6 +196,27 @@ class DecayTests(unittest.TestCase):
         self.assertLess(delta, 0)
         self.assertLess(m.affinity, 70)
 
+    def test_auto_decay_advances_checkpoint(self):
+        import time
+        m = MoodTracker(affinity=70, interactions=5,
+                        last_interaction_time=time.time() - 3600)
+        m.auto_decay()
+        # Checkpoint must move to ~now so the elapsed window isn't recounted.
+        self.assertGreater(m._last_interaction_time, time.time() - 5)
+
+    def test_auto_decay_twice_does_not_double_decay(self):
+        # Regression: toggling autonomous on/off called auto_decay repeatedly,
+        # each time decaying the SAME elapsed period from a stale timestamp.
+        import time
+        m = MoodTracker(affinity=80, interactions=5,
+                        last_interaction_time=time.time() - 7200)  # 2h idle
+        first = m.auto_decay()
+        after_first = m.affinity
+        second = m.auto_decay()  # immediately again, no register() in between
+        self.assertLess(first, 0)                    # first call decays
+        self.assertAlmostEqual(second, 0.0, places=2)  # second is ~no-op
+        self.assertAlmostEqual(m.affinity, after_first, places=2)
+
     def test_register_updates_last_interaction_time(self):
         import time
         before = time.time()
