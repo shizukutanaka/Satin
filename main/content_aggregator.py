@@ -220,7 +220,9 @@ class ContentAggregator:
         # 3. 鮮度スコア (0-10)
         freshness_score = 0.0
         if boost_recent and content.published_date:
-            age_days = (datetime.now() - content.published_date).days
+            # 未来日付（予約投稿・時計ずれ）は age が負になり、freshness が上限 10 を
+            # 超えて将来コンテンツを不当に優遇してしまう。0 でクランプして「今」扱い。
+            age_days = max(0, (datetime.now() - content.published_date).days)
             # 1年以内: 10点、1年-2年: 5点、2年以上: 0点
             if age_days <= 365:
                 freshness_score = 10 * (1 - age_days / 365)

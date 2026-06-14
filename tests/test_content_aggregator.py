@@ -111,6 +111,27 @@ class RelevanceScoreTests(unittest.TestCase):
         score_old = self._agg.calculate_relevance_score(old, "test")
         self.assertGreater(score_recent, score_old)
 
+    def test_future_date_does_not_outrank_today(self):
+        # Regression: a future published_date made age_days negative, pushing
+        # freshness above its 0-10 cap and unfairly boosting future content.
+        future = _make_content(
+            title="test", published_date=datetime.now() + timedelta(days=400)
+        )
+        today = _make_content(
+            title="test", published_date=datetime.now()
+        )
+        score_future = self._agg.calculate_relevance_score(future, "test")
+        score_today = self._agg.calculate_relevance_score(today, "test")
+        self.assertLessEqual(score_future, score_today)
+
+    def test_future_date_score_stays_bounded(self):
+        future = _make_content(
+            title="machine learning",
+            published_date=datetime.now() + timedelta(days=5000),
+        )
+        score = self._agg.calculate_relevance_score(future, "machine learning")
+        self.assertLessEqual(score, 100.0)
+
     def test_boost_recent_false_ignores_date(self):
         recent = _make_content(
             title="test", published_date=datetime.now() - timedelta(days=1)
