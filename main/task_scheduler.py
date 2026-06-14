@@ -68,6 +68,11 @@ class TaskScheduler:
         self.ready_queue = queue.PriorityQueue()
         self.scheduled_tasks: List[Tuple[float, ScheduledTask]] = []
         self.tasks: Dict[str, ScheduledTask] = {}
+        # Task ids for which periodic rescheduling has been cancelled. A periodic
+        # task reschedules itself in a finally block; without this set, cancelling
+        # it while it is mid-execution (status RUNNING, not PENDING) had no effect
+        # and the task ran forever.
+        self._cancelled: set = set()
         self.workers: List[threading.Thread] = []
         self.running = False
         self.lock = threading.RLock()
@@ -77,6 +82,11 @@ class TaskScheduler:
         # TypeError: '<' not supported between NoneType and ScheduledTask.
         # itertools.count().__next__ is atomic under the GIL.
         self._seq = itertools.count()
+        # Wakes the scheduler loop when a new (possibly earlier) task is added,
+        # so a task scheduled during the loop's idle wait isn't delayed by up to
+        # a full second. Without it, the first task after an idle period — and
+        # the first tick of a short-interval periodic task — ran ~1s late.
+        self._wakeup = threading.Event()
         self._num_workers = num_workers
         self.worker_semaphore = threading.Semaphore(num_workers)
         self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
@@ -105,7 +115,8 @@ class TaskScheduler:
             return
             
         self.running = False
-        
+        self._wakeup.set()  # interrupt the scheduler loop's wait so it exits promptly
+
         # Wake up all threads (sentinel: lowest tuple, unique seq, None payload)
         with self.lock:
             for _ in range(len(self.workers)):
@@ -155,7 +166,10 @@ class TaskScheduler:
                 heapq.heappush(self.scheduled_tasks, (scheduled_time, task))
 
             self.tasks[task_id] = task
-        
+
+        # Interrupt the scheduler's idle wait so the new task is picked up
+        # promptly rather than after the current sleep elapses.
+        self._wakeup.set()
         return task_id
     
     def schedule_periodic(
@@ -173,13 +187,20 @@ class TaskScheduler:
             kwargs = {}
             
         task_id = task_id or str(uuid.uuid4())
-        
+        # Allow re-scheduling a previously-cancelled periodic id.
+        with self.lock:
+            self._cancelled.discard(task_id)
+
         def periodic_wrapper():
             try:
                 func(*args, **kwargs)
             finally:
-                # Reschedule the task
-                if self.running:
+                # Reschedule unless the scheduler stopped or this periodic task
+                # was cancelled (checked here so cancellation works even if it
+                # arrived while func was executing).
+                with self.lock:
+                    should_reschedule = self.running and task_id not in self._cancelled
+                if should_reschedule:
                     self.schedule(
                         periodic_wrapper,
                         delay=interval,
@@ -199,6 +220,8 @@ class TaskScheduler:
     def cancel_task(self, task_id: str) -> bool:
         """Cancel a scheduled task"""
         with self.lock:
+            # Halt any periodic rescheduling regardless of current status.
+            self._cancelled.add(task_id)
             if task_id in self.tasks:
                 task = self.tasks[task_id]
                 if task.status == TaskStatus.PENDING:
@@ -243,9 +266,13 @@ class TaskScheduler:
                     if task.status == TaskStatus.PENDING:
                         self.ready_queue.put((task.priority, next(self._seq), task))
             
-            # Sleep until the next scheduled task or 1 second
-            next_run = max(0, (self.scheduled_tasks[0][0] - now) if self.scheduled_tasks else 1)
-            time.sleep(min(1.0, next_run))
+            # Wait until the next scheduled task (capped at 1s), but wake early
+            # if schedule()/stop() signals a new task or shutdown.
+            with self.lock:
+                next_run = (self.scheduled_tasks[0][0] - now) if self.scheduled_tasks else 1.0
+            next_run = max(0.0, min(1.0, next_run))
+            if self._wakeup.wait(timeout=next_run):
+                self._wakeup.clear()
     
     def _worker_loop(self) -> None:
         """Worker thread loop"""

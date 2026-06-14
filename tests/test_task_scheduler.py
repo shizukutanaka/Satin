@@ -65,6 +65,66 @@ class SchedulerEndToEndTests(unittest.TestCase):
         self.assertTrue(sched.cancel_task(tid))
         self.assertEqual(sched.get_task_status(tid), TaskStatus.CANCELLED)
 
+    def test_delayed_task_runs_promptly(self):
+        # Regression: a task scheduled during the loop's idle wait used to run
+        # up to ~1s late because schedule() didn't wake the scheduler.
+        sched = TaskScheduler(num_workers=1)
+        sched.start()
+        try:
+            done = threading.Event()
+            sched.schedule(lambda: done.set(), delay=0.1)
+            # Should fire well under the old ~1s idle-sleep ceiling.
+            self.assertTrue(done.wait(timeout=0.5))
+        finally:
+            sched.stop(wait=True)
+
+
+class PeriodicCancellationTests(unittest.TestCase):
+    """A periodic task reschedules itself; cancel_task must actually stop it,
+    including when cancelled while the task body is executing (status RUNNING)."""
+
+    def test_cancel_stops_periodic_rescheduling(self):
+        sched = TaskScheduler(num_workers=1)
+        sched.start()
+        try:
+            count = {"n": 0}
+
+            def tick():
+                count["n"] += 1
+
+            tid = sched.schedule_periodic(tick, interval=0.05)
+            time.sleep(0.32)            # let it fire several times
+            sched.cancel_task(tid)
+            runs_at_cancel = count["n"]
+            self.assertGreater(runs_at_cancel, 1)  # it was actually running
+            time.sleep(0.3)             # well past several more intervals
+            # No further runs after cancellation (allow at most one in-flight).
+            self.assertLessEqual(count["n"] - runs_at_cancel, 1)
+        finally:
+            sched.stop(wait=True)
+
+    def test_cancel_while_executing_stops_reschedule(self):
+        sched = TaskScheduler(num_workers=2)
+        sched.start()
+        try:
+            count = {"n": 0}
+            started = threading.Event()
+
+            def slow():
+                count["n"] += 1
+                started.set()
+                time.sleep(0.25)        # still running when we cancel
+
+            tid = sched.schedule_periodic(slow, interval=0.05)
+            self.assertTrue(started.wait(timeout=2))
+            sched.cancel_task(tid)      # cancel mid-execution (status RUNNING)
+            runs = count["n"]
+            time.sleep(0.5)
+            # The in-flight run finishes but must NOT reschedule another.
+            self.assertEqual(count["n"], runs)
+        finally:
+            sched.stop(wait=True)
+
 
 class StopSentinelCollisionTests(unittest.TestCase):
     """A LOW-priority task has queue-priority 0, identical to the (0, None)
