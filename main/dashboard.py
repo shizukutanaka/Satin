@@ -139,9 +139,26 @@ TEMPLATE = '''
   <li><a href="/summary?lang={{lang}}">{{i18n.t('summary', 'Summary')}}</a></li>
 </ul>
 <hr>
-{% block content %}{% endblock %}
+{% block content %}{{ content|safe }}{% endblock %}
 </body></html>
 '''
+
+
+def _render_page(content, i18n, lang, switcher):
+    """Render a page with `content` passed as a CONTEXT VARIABLE, never
+    concatenated into the template source.
+
+    Security: the previous pattern did
+        render_template_string(TEMPLATE + '{% block content %}' + content + ...)
+    which fed user-controlled conversation text into the Jinja parser. _html.escape
+    stops <>&"' but NOT {{ }} / {% %}, so a comment like {{7*7}} became Server-Side
+    Template Injection (→ RCE). Passing content as a variable means Jinja renders it
+    as a string and does not re-parse {{ }} inside it; user text is already
+    _html.escape'd so |safe only re-emits the intended (escaped) HTML.
+    """
+    return render_template_string(
+        TEMPLATE, content=content, i18n=i18n, lang=lang, switcher=switcher
+    )
 
 @app.route('/')
 @with_lang
@@ -180,7 +197,7 @@ def index(i18n):
     if stats_lines:
         stats_html = '<ul>' + ''.join(f'<li>{s}</li>' for s in stats_lines) + '</ul>'
     content = stats_html
-    return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
+    return _render_page(content, i18n, lang, switcher)
 
 @app.route('/logs')
 @with_lang
@@ -207,7 +224,7 @@ def logs(i18n):
             f"<td>{_html.escape(str(e['details']))}</td></tr>"
         )
     content += '</table>'
-    return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
+    return _render_page(content, i18n, lang, switcher)
 
 @app.route('/backups')
 @with_lang
@@ -222,7 +239,7 @@ def backups(i18n):
         f_esc = _html.escape(f)
         content += f'<li><a href="/download/{f_esc}?lang={lang}">{f_esc}</a></li>'
     content += '</ul>'
-    return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
+    return _render_page(content, i18n, lang, switcher)
 
 @app.route('/download/<fname>')
 @with_lang
@@ -283,7 +300,7 @@ def sync(i18n):
 {backup_info}
 <p style="color:{msg_color}">{_html.escape(msg)}</p>
 {existing_html}'''
-    return render_template_string(TEMPLATE + '{% block content %}' + content + '{% endblock %}', i18n=i18n, lang=lang, switcher=switcher)
+    return _render_page(content, i18n, lang, switcher)
 
 @app.route('/conversation')
 @with_lang
@@ -343,10 +360,7 @@ def conversation(i18n):
         f'{_html.escape(csv_label)}</a>'
         f'</p>'
     )
-    return render_template_string(
-        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
-        i18n=i18n, lang=lang, switcher=switcher,
-    )
+    return _render_page(content, i18n, lang, switcher)
 
 
 @app.route('/conversation/download')
@@ -497,10 +511,7 @@ def mood(i18n):
 </form>'''
         except Exception as exc:
             content = f'<h3>{i18n.t("mood", "Mood")}</h3><p>{_html.escape(str(exc))}</p>'
-    return render_template_string(
-        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
-        i18n=i18n, lang=lang, switcher=switcher,
-    )
+    return _render_page(content, i18n, lang, switcher)
 
 
 @app.route('/mood/reset', methods=['POST'])
@@ -581,10 +592,7 @@ def conversation_search(i18n):
                 )
             content += '</table>'
 
-    return render_template_string(
-        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
-        i18n=i18n, lang=lang, switcher=switcher,
-    )
+    return _render_page(content, i18n, lang, switcher)
 
 
 @app.route('/mood/history')
@@ -638,10 +646,7 @@ def mood_history(i18n):
             f'</p>'
         )
 
-    return render_template_string(
-        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
-        i18n=i18n, lang=lang, switcher=switcher,
-    )
+    return _render_page(content, i18n, lang, switcher)
 
 
 def _conversation_stats(log_path: str) -> dict:
@@ -754,10 +759,7 @@ def stats(i18n):
         no_data = 'No conversation data yet.' if is_en else 'まだ会話データがありません。'
         content += f'<p>{_html.escape(no_data)}</p>'
 
-    return render_template_string(
-        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
-        i18n=i18n, lang=lang, switcher=switcher,
-    )
+    return _render_page(content, i18n, lang, switcher)
 
 
 @app.route('/summary')
@@ -825,10 +827,7 @@ def summary(i18n):
             )
         content += '</table>'
 
-    return render_template_string(
-        TEMPLATE + '{% block content %}' + content + '{% endblock %}',
-        i18n=i18n, lang=lang, switcher=switcher,
-    )
+    return _render_page(content, i18n, lang, switcher)
 
 
 if __name__ == '__main__':

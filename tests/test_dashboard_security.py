@@ -134,5 +134,59 @@ class SearchXSSTests(unittest.TestCase):
         self.assertNotIn("<script>", row)  # raw must not appear
 
 
+class SSTIRegressionTests(unittest.TestCase):
+    """User conversation text is rendered via the dashboard. It must never be
+    concatenated into the Jinja template SOURCE, or {{ }} in a comment becomes
+    Server-Side Template Injection (-> RCE). It must be passed as a variable."""
+
+    def test_template_renders_content_as_variable(self):
+        self.assertIn("{{ content|safe }}", dashboard.TEMPLATE)
+
+    def test_no_route_concatenates_content_into_template_source(self):
+        import inspect
+        src = inspect.getsource(dashboard)
+        # The vulnerable pattern must not appear in actual code (the docstring
+        # example uses "...", not the full "+ '{% endblock %}'").
+        self.assertNotIn(
+            "TEMPLATE + '{% block content %}' + content + '{% endblock %}'", src
+        )
+
+    def test_render_page_helper_exists(self):
+        self.assertTrue(hasattr(dashboard, "_render_page"))
+
+    def test_template_does_not_evaluate_jinja_expression_in_content(self):
+        try:
+            from jinja2 import Template
+        except ImportError:
+            self.skipTest("jinja2 not installed")
+
+        class _I18N:
+            def t(self, key, default=None):
+                return default or key
+
+        rendered = Template(dashboard.TEMPLATE).render(
+            content="{{7*7}}", i18n=_I18N(), lang="en", switcher=""
+        )
+        self.assertIn("{{7*7}}", rendered)   # rendered literally
+        self.assertNotIn("49", rendered)     # NOT evaluated (no SSTI)
+
+    def test_template_does_not_execute_statement_tags_in_content(self):
+        try:
+            from jinja2 import Template
+        except ImportError:
+            self.skipTest("jinja2 not installed")
+
+        class _I18N:
+            def t(self, key, default=None):
+                return default or key
+
+        payload = "{% for x in range(3) %}X{% endfor %}"
+        rendered = Template(dashboard.TEMPLATE).render(
+            content=payload, i18n=_I18N(), lang="en", switcher=""
+        )
+        self.assertIn(payload, rendered)  # literal, not expanded to "XXX"
+        self.assertNotIn(">XXX<", rendered)
+
+
 if __name__ == "__main__":
     unittest.main()
