@@ -16,7 +16,7 @@ sys.path.insert(0, _MAIN)
 
 from daily_summary import (  # noqa: E402
     daily_summary, summary_greeting, yesterday_summary, yesterday_greeting,
-    _load_jsonl, _date_str,
+    _load_jsonl, _date_str, _default_event_log, _default_mood_history,
 )
 
 
@@ -34,6 +34,24 @@ def _write_mood(path: str, entries: list) -> None:
     with open(path, "w", encoding="utf-8") as f:
         for e in entries:
             f.write(json.dumps(e) + "\n")
+
+
+class DefaultPathAlignmentTests(unittest.TestCase):
+    """daily_summary's default paths MUST point at what the app actually writes,
+    else the morning greeting (which omits paths) reads non-existent files and
+    always reports 'no activity'."""
+
+    def test_event_log_default_matches_conversation_log(self):
+        import conversation_log
+        self.assertEqual(_default_event_log(), conversation_log.DEFAULT_LOGFILE)
+
+    def test_mood_history_default_matches_mood_module(self):
+        import mood
+        self.assertEqual(_default_mood_history(), mood._default_mood_history_path())
+
+    def test_event_log_default_not_the_old_wrong_path(self):
+        # Regression: it used to default to logs/avatar_events.jsonl (never written).
+        self.assertNotIn(os.path.join("logs", "avatar_events.jsonl"), _default_event_log())
 
 
 class LoadJsonlTests(unittest.TestCase):

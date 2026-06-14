@@ -30,18 +30,32 @@ except Exception:  # pragma: no cover - defensive fallback
     USER_EVENT_TYPES = frozenset({"user_comment", "user"})
     AVATAR_EVENT_TYPES = frozenset({"avatar_reply", "avatar"})
 
-# ---------------------------------------------------------------------------
-# デフォルトパス（他モジュールと同じ規則）
-# ---------------------------------------------------------------------------
+# デフォルトのログパスは「実際に書き込む側」から取得する。さもないと既定値が
+# 食い違い、引数省略時（朝の挨拶など）に存在しないファイルを読んでしまう。
+try:
+    from conversation_log import DEFAULT_LOGFILE as _DEFAULT_EVENT_LOG
+except Exception:  # pragma: no cover - defensive fallback
+    _DEFAULT_EVENT_LOG = "avatar_event_log.jsonl"
 
-_DEFAULT_EVENT_LOG = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "logs", "avatar_events.jsonl",
-)
-_DEFAULT_MOOD_HISTORY = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "logs", "mood_history.jsonl",
-)
+try:
+    from mood import _default_mood_history_path as _mood_history_default
+except Exception:  # pragma: no cover - defensive fallback
+    _mood_history_default = None
+
+
+def _default_event_log() -> str:
+    """会話ログの既定パス（conversation_log の書き込み先と一致）。"""
+    return _DEFAULT_EVENT_LOG
+
+
+def _default_mood_history() -> str:
+    """好感度履歴の既定パス（mood の書き込み先 config/mood_history.jsonl と一致）。"""
+    if _mood_history_default is not None:
+        return _mood_history_default()
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "config", "mood_history.jsonl",
+    )
 
 # ---------------------------------------------------------------------------
 # 集計コア
@@ -99,8 +113,8 @@ def daily_summary(
         target_date = date.today()
     date_key = target_date.strftime("%Y-%m-%d")
 
-    event_log = event_log_path or _DEFAULT_EVENT_LOG
-    mood_hist = mood_history_path or _DEFAULT_MOOD_HISTORY
+    event_log = event_log_path or _default_event_log()
+    mood_hist = mood_history_path or _default_mood_history()
 
     # ── 会話イベント集計 ──────────────────────────────────────────────────
     events = _load_jsonl(event_log)
