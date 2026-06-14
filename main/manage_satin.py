@@ -308,6 +308,8 @@ def cmd_summary(lang: str = "ja", yesterday: bool = False) -> None:
         print(f"ピーク時間帯       : {s['peak_hour']:02d}:00–{s['peak_hour']:02d}:59")
     if s["affinity"] is not None:
         print(f"好感度             : {s['affinity']:.1f} ({s['affinity_level']})")
+    if s.get("streak", 0) >= 2:
+        print(f"連続記録           : {s['streak']}日")
     if greeting:
         print(f"\nアバター: {greeting}")
 

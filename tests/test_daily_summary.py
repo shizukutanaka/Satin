@@ -17,6 +17,7 @@ sys.path.insert(0, _MAIN)
 from daily_summary import (  # noqa: E402
     daily_summary, summary_greeting, yesterday_summary, yesterday_greeting,
     _load_jsonl, _date_str, _default_event_log, _default_mood_history,
+    interaction_streak,
 )
 
 
@@ -34,6 +35,77 @@ def _write_mood(path: str, entries: list) -> None:
     with open(path, "w", encoding="utf-8") as f:
         for e in entries:
             f.write(json.dumps(e) + "\n")
+
+
+class InteractionStreakTests(unittest.TestCase):
+    """interaction_streak counts the trailing run of consecutive active days
+    in the (one-per-day) mood history."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mood = os.path.join(self._tmp, "mood.jsonl")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_dates(self, days_ago_list):
+        today = date.today()
+        rows = [{"date": (today - timedelta(days=d)).isoformat(),
+                 "affinity": 50.0, "level": "neutral"} for d in days_ago_list]
+        _write_mood(self._mood, rows)
+
+    def test_no_history_is_zero(self):
+        self.assertEqual(interaction_streak(self._mood), 0)
+
+    def test_single_day_is_one(self):
+        self._write_dates([0])
+        self.assertEqual(interaction_streak(self._mood), 1)
+
+    def test_three_consecutive_days(self):
+        self._write_dates([2, 1, 0])
+        self.assertEqual(interaction_streak(self._mood), 3)
+
+    def test_gap_breaks_streak(self):
+        # active 5 days ago, then yesterday + today -> trailing run is 2
+        self._write_dates([5, 1, 0])
+        self.assertEqual(interaction_streak(self._mood), 2)
+
+    def test_duplicate_dates_counted_once(self):
+        today = date.today()
+        rows = [
+            {"date": today.isoformat(), "affinity": 50.0, "level": "neutral"},
+            {"date": today.isoformat(), "affinity": 55.0, "level": "neutral"},
+            {"date": (today - timedelta(days=1)).isoformat(), "affinity": 50.0, "level": "neutral"},
+        ]
+        _write_mood(self._mood, rows)
+        self.assertEqual(interaction_streak(self._mood), 2)
+
+    def test_corrupt_date_skipped(self):
+        today = date.today()
+        rows = [
+            {"date": "not-a-date", "affinity": 50.0, "level": "neutral"},
+            {"date": today.isoformat(), "affinity": 50.0, "level": "neutral"},
+        ]
+        _write_mood(self._mood, rows)
+        self.assertEqual(interaction_streak(self._mood), 1)
+
+    def test_streak_in_summary_dict(self):
+        self._write_dates([1, 0])
+        ev = os.path.join(self._tmp, "ev.jsonl")
+        open(ev, "w").close()
+        result = daily_summary(event_log_path=ev, mood_history_path=self._mood)
+        self.assertEqual(result["streak"], 2)
+
+    def test_streak_appears_in_today_greeting(self):
+        self._write_dates([2, 1, 0])
+        ev = os.path.join(self._tmp, "ev.jsonl")
+        today = date.today()
+        noon = datetime(today.year, today.month, today.day, 12, 0, 0).timestamp()
+        with open(ev, "w") as f:
+            f.write(json.dumps({"event_type": "user_comment", "timestamp": noon}) + "\n")
+        g = summary_greeting(lang="en", event_log_path=ev, mood_history_path=self._mood)
+        self.assertIn("3 days in a row", g)
 
 
 class DefaultPathAlignmentTests(unittest.TestCase):

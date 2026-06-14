@@ -179,8 +179,39 @@ def daily_summary(
         "affinity": affinity,
         "affinity_level": affinity_lvl,
         "affinity_change": affinity_change,
+        "streak": interaction_streak(mood_hist),
         "event_counts": dict(event_type_counts),
     }
+
+
+def interaction_streak(mood_history_path: Optional[str] = None) -> int:
+    """連続して活動した日数（mood 履歴の日付の末尾連続ラン）を返す。
+
+    mood_history は 1 日 1 エントリ（その日にアバターを起動＝活動した記録）なので、
+    日付集合の「末尾から遡って連続している日数」がそのまま連続記録になる。
+    履歴が無ければ 0、1 日だけなら 1。
+    """
+    path = mood_history_path or _default_mood_history()
+    entries = _load_jsonl(path)
+    dates = set()
+    for e in entries:
+        d = e.get("date")
+        if not d:
+            continue
+        try:
+            dates.add(date.fromisoformat(str(d)))
+        except (ValueError, TypeError):
+            continue
+    if not dates:
+        return 0
+    ordered = sorted(dates)
+    streak = 1
+    for i in range(len(ordered) - 1, 0, -1):
+        if (ordered[i] - ordered[i - 1]).days == 1:
+            streak += 1
+        else:
+            break
+    return streak
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +226,7 @@ _GREETINGS: Dict[str, Dict] = {
         "affinity_up": "好感度が上がっています（+{delta:.1f}）。嬉しいです！",
         "affinity_down": "好感度が少し下がりました（{delta:.1f}）。どうかしましたか？",
         "peak": "一番活発だった時間帯は{hour}時台でした。",
+        "streak": "{days}日連続で会えて嬉しいです！",
         "yesterday_prefix": "昨日は",
         "today_prefix": "今日は",
     },
@@ -205,6 +237,7 @@ _GREETINGS: Dict[str, Dict] = {
         "affinity_up": "Our bond is growing (+{delta:.1f})! That makes me happy.",
         "affinity_down": "Our bond dropped a bit ({delta:.1f}). Is everything okay?",
         "peak": "You were most active around {hour}:00.",
+        "streak": "{days} days in a row — I'm so glad!",
         "yesterday_prefix": "Yesterday, ",
         "today_prefix": "Today, ",
     },
@@ -253,6 +286,12 @@ def summary_greeting(
             parts.append(msgs["affinity_up"].format(delta=change))
         elif change < 0:
             parts.append(msgs["affinity_down"].format(delta=change))
+
+    # 連続記録は 2 日以上で、かつ「今日」のサマリーのときだけ祝う（現在進行中の
+    # ストリークが意味を持つのは現時点なので、過去日サマリーでは出さない）。
+    streak = s.get("streak", 0)
+    if is_today and streak >= 2:
+        parts.append(msgs["streak"].format(days=streak))
 
     # 日本語は句点で区切れるので連結、英語は文間にスペースを入れる
     sep = "" if lang_key == "ja" else " "
