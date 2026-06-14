@@ -5,7 +5,7 @@ import shutil
 from datetime import datetime
 import argparse
 
-def rotate_log(logfile, max_size=5*1024*1024, max_backups=5):
+def rotate_log(logfile, max_size=5*1024*1024, max_backups=5, quiet=False):
     if not os.path.exists(logfile):
         return
     size = os.path.getsize(logfile)
@@ -29,7 +29,8 @@ def rotate_log(logfile, max_size=5*1024*1024, max_backups=5):
                 os.remove(os.path.join(log_dir, old))
             except Exception:
                 pass
-    print(f"ログローテート: {rotated}")
+    if not quiet:
+        print(f"ログローテート: {rotated}")
 
 def monitor_and_rotate(logfile, max_size, max_backups, interval):
     print(f"{logfile} を監視し、{max_size//1024}KB超でローテート 最大{max_backups}世代保存")

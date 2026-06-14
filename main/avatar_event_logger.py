@@ -4,8 +4,14 @@ import threading
 from datetime import datetime
 
 class AvatarEventLogger:
-    def __init__(self, logfile="avatar_event_log.jsonl"):
+    def __init__(self, logfile="avatar_event_log.jsonl",
+                 max_size=5 * 1024 * 1024, max_backups=5):
         self.logfile = logfile
+        # 無制限増大を防ぐためのサイズ上限。max_size=0 で自動ローテーション無効。
+        # コンパニオンは履歴を貯め続けるので、書き込み経路で自己上限化しないと
+        # ディスクが膨張し、全リーダー（毎回ファイル全走査）も線形に遅くなる。
+        self.max_size = max_size
+        self.max_backups = max_backups
         self.lock = threading.Lock()
 
     def log_event(self, event_type, **kwargs):
@@ -14,8 +20,18 @@ class AvatarEventLogger:
             "event_type": event_type,
             "details": kwargs
         }
-        with self.lock, open(self.logfile, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        with self.lock:
+            with open(self.logfile, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            # 上限超過時に gzip ローテート。ローテーション失敗はログ記録自体を
+            # 壊さないよう握りつぶす（記録の堅牢性を最優先）。
+            if self.max_size:
+                try:
+                    from avatar_event_log_rotate import rotate_log
+                    rotate_log(self.logfile, self.max_size, self.max_backups,
+                               quiet=True)
+                except Exception:
+                    pass
 
     def replay_events(self, callback, delay_factor=1.0):
         """

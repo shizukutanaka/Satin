@@ -136,5 +136,61 @@ class AvatarEventLoggerTests(unittest.TestCase):
         self.assertEqual(received, ["good1", "good2"])
 
 
+class LogRotationTests(unittest.TestCase):
+    """The write path must self-cap the log so a long-running companion does not
+    grow avatar_event_log.jsonl without bound (and slow every reader)."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._logfile = os.path.join(self._tmp, "events.jsonl")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_log_is_capped_at_max_size(self):
+        logger = AvatarEventLogger(self._logfile, max_size=2000, max_backups=3)
+        for i in range(300):
+            logger.log_event("speak", text="x" * 60, i=i)
+        # File stays near the cap rather than growing with all 300 events.
+        self.assertLessEqual(os.path.getsize(self._logfile), 2000 + 500)
+
+    def test_rotation_creates_gz_backup(self):
+        import glob
+        logger = AvatarEventLogger(self._logfile, max_size=1500, max_backups=3)
+        for i in range(100):
+            logger.log_event("speak", text="y" * 60, i=i)
+        self.assertGreaterEqual(len(glob.glob(self._logfile + ".*.gz")), 1)
+
+    def test_logging_works_after_rotation(self):
+        logger = AvatarEventLogger(self._logfile, max_size=1500, max_backups=3)
+        for i in range(100):
+            logger.log_event("speak", text="z" * 60, i=i)
+        logger.log_event("speak", text="final_marker")
+        with open(self._logfile, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("final_marker", content)
+
+    def test_max_size_zero_disables_rotation(self):
+        import glob
+        logger = AvatarEventLogger(self._logfile, max_size=0)
+        for i in range(200):
+            logger.log_event("speak", text="w" * 60, i=i)
+        # No rotation: all events retained, no gz backups.
+        self.assertEqual(glob.glob(self._logfile + ".*.gz"), [])
+        with open(self._logfile, encoding="utf-8") as f:
+            self.assertEqual(len([l for l in f if l.strip()]), 200)
+
+    def test_rotation_failure_does_not_break_logging(self):
+        from unittest import mock
+        logger = AvatarEventLogger(self._logfile, max_size=100)
+        with mock.patch("avatar_event_log_rotate.rotate_log",
+                        side_effect=OSError("boom")):
+            # Must not raise even though rotation fails.
+            logger.log_event("speak", text="still logged")
+        with open(self._logfile, encoding="utf-8") as f:
+            self.assertIn("still logged", f.read())
+
+
 if __name__ == "__main__":
     unittest.main()
