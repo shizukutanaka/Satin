@@ -56,7 +56,13 @@ class RateLimiter(ABC):
 
     @abstractmethod
     async def acquire(self, tokens: int = 1) -> bool:
-        """Acquire tokens, blocking until available."""
+        """Try to acquire tokens without blocking.
+
+        Returns True if the tokens were granted, False if rate-limited. This is
+        non-blocking — callers check the bool and back off themselves. (A
+        blocking variant is provided by limiters that support waiting, e.g.
+        TokenBucketLimiter.acquire_blocking.)
+        """
         pass
 
     @abstractmethod
@@ -129,7 +135,20 @@ class TokenBucketLimiter(RateLimiter):
                 )
 
     async def acquire(self, tokens: int = 1) -> bool:
-        """Acquire tokens, blocking until available."""
+        """Try to acquire tokens without blocking (returns True/False).
+
+        Consistent with the other limiters and the RateLimiter contract. For
+        the previous wait-until-available behavior use acquire_blocking().
+        """
+        async with self._lock:
+            await self._refill()
+            if self.tokens >= tokens:
+                self.tokens -= tokens
+                return True
+            return False
+
+    async def acquire_blocking(self, tokens: int = 1) -> bool:
+        """Acquire tokens, sleeping until enough have refilled. Always True."""
         while True:
             # Hold the lock only while inspecting/decrementing tokens, never
             # across the sleep — otherwise all acquirers (and update_rate) are

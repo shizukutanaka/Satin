@@ -82,6 +82,38 @@ class TokenBucketTests(unittest.TestCase):
         self.assertIsNotNone(status.retry_after_seconds)
         self.assertGreater(status.retry_after_seconds, 0)
 
+    def test_acquire_is_nonblocking_and_returns_false_when_insufficient(self):
+        # Contract consistency: acquire() must NOT block and must return False
+        # when rate-limited (it previously blocked forever and only ever
+        # returned True, making the bool return type a lie).
+        limiter = TokenBucketLimiter(capacity=1.0, refill_rate=0.001)
+        self.assertTrue(_run(limiter.acquire(1)))   # drains the single token
+        start = time.time()
+        result = _run(limiter.acquire(1))           # must return immediately
+        self.assertFalse(result)
+        self.assertLess(time.time() - start, 0.5)   # did not block
+
+    def test_acquire_blocking_waits_then_succeeds(self):
+        # The preserved blocking variant sleeps until tokens refill, then True.
+        limiter = TokenBucketLimiter(capacity=1.0, refill_rate=50.0)
+        _run(limiter.acquire(1))                     # drain
+        start = time.time()
+        result = _run(limiter.acquire_blocking(1))   # waits ~0.02s for refill
+        self.assertTrue(result)
+        self.assertGreaterEqual(time.time() - start, 0.0)
+
+    def test_all_limiters_acquire_return_bool(self):
+        # Polymorphic contract: every limiter's acquire() returns a real bool.
+        from advanced_rate_limiting import LeakyBucketLimiter, SlidingWindowLimiter
+        tb = TokenBucketLimiter(capacity=1.0, refill_rate=1.0)
+        sw = SlidingWindowLimiter(max_requests=1, window_seconds=10.0)
+        lb = LeakyBucketLimiter(leak_rate=1.0, queue_size=1)
+        for lim in (tb, sw, lb):
+            first = _run(lim.acquire(1))
+            second = _run(lim.acquire(1))   # over limit -> must be False, not block
+            self.assertIs(first, True)
+            self.assertIs(second, False)
+
 
 class SlidingWindowTests(unittest.TestCase):
     def test_empty_window_allows_request(self):
