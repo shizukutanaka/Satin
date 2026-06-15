@@ -212,6 +212,76 @@ class BackupListTests(unittest.TestCase):
             self.assertNotIn("ignored.txt", combined)
 
 
+class BackupRestoreTests(unittest.TestCase):
+    """cmd_backup_restore must extract config/ and log files from a sync backup zip."""
+
+    def setUp(self):
+        import zipfile
+        self._tmp = tempfile.mkdtemp()
+        self._dest = tempfile.mkdtemp()
+        self._zipfile_mod = zipfile
+        # Build a minimal backup zip
+        self._zip = os.path.join(self._tmp, "backup_test.zip")
+        with zipfile.ZipFile(self._zip, "w") as zf:
+            zf.writestr("config/persona.json", '{"name": "Satin"}')
+            zf.writestr("config/plugins/break_reminder.json", '{"enabled": true}')
+            zf.writestr("avatar_event_log.jsonl", '{"event_type":"user_comment"}\n')
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+        shutil.rmtree(self._dest, ignore_errors=True)
+
+    def test_restore_extracts_config_files(self):
+        with mock.patch("builtins.input", return_value="y"):
+            manage_satin.cmd_backup_restore(self._zip, self._dest)
+        self.assertTrue(
+            os.path.exists(os.path.join(self._dest, "config", "persona.json"))
+        )
+        self.assertTrue(
+            os.path.exists(os.path.join(self._dest, "config", "plugins", "break_reminder.json"))
+        )
+
+    def test_restore_extracts_log_file(self):
+        with mock.patch("builtins.input", return_value="y"):
+            manage_satin.cmd_backup_restore(self._zip, self._dest)
+        self.assertTrue(
+            os.path.exists(os.path.join(self._dest, "avatar_event_log.jsonl"))
+        )
+
+    def test_cancel_does_not_extract(self):
+        with mock.patch("builtins.input", return_value="n"):
+            manage_satin.cmd_backup_restore(self._zip, self._dest)
+        self.assertFalse(
+            os.path.exists(os.path.join(self._dest, "config", "persona.json"))
+        )
+
+    def test_missing_zip_exits(self):
+        with self.assertRaises(SystemExit):
+            manage_satin.cmd_backup_restore(os.path.join(self._tmp, "nope.zip"), self._dest)
+
+    def test_non_satin_zip_exits(self):
+        empty_zip = os.path.join(self._tmp, "empty.zip")
+        with self._zipfile_mod.ZipFile(empty_zip, "w"):
+            pass  # empty zip
+        with self.assertRaises(SystemExit):
+            with mock.patch("builtins.input", return_value="y"):
+                manage_satin.cmd_backup_restore(empty_zip, self._dest)
+
+    def test_traversal_entries_are_skipped(self):
+        """Path traversal entries (../../etc/passwd) must not be extracted."""
+        malicious_zip = os.path.join(self._tmp, "malicious.zip")
+        with self._zipfile_mod.ZipFile(malicious_zip, "w") as zf:
+            zf.writestr("config/good.json", "{}")
+            zf.writestr("../../evil.txt", "pwned")
+        with mock.patch("builtins.input", return_value="y"):
+            manage_satin.cmd_backup_restore(malicious_zip, self._dest)
+        self.assertTrue(os.path.exists(os.path.join(self._dest, "config", "good.json")))
+        # The traversal path must NOT have been written
+        evil_path = os.path.normpath(os.path.join(self._dest, "../../evil.txt"))
+        self.assertFalse(os.path.exists(evil_path))
+
+
 # --------------------------------------------------------------------------- #
 # main() dispatcher
 # --------------------------------------------------------------------------- #

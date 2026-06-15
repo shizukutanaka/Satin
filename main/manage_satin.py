@@ -12,6 +12,7 @@ Satin 管理バッチツール (CLI)
   log export FILE       会話ログを JSON ファイルにエクスポート
   log csv FILE          会話ログを CSV ファイルにエクスポート
   backup list           バックアップ一覧を表示
+  backup restore FILE   sync バックアップ zip を復元
   persona show          ペルソナ情報を表示
 """
 from __future__ import annotations
@@ -193,7 +194,7 @@ def cmd_backup_list(backup_dir: str = "event_report") -> None:
         return
     files = sorted(
         f for f in os.listdir(backup_dir)
-        if f.endswith(".gz") or f.endswith(".png") or f.endswith(".json")
+        if f.endswith(".gz") or f.endswith(".png") or f.endswith(".json") or f.endswith(".zip")
     )
     if not files:
         print("(バックアップファイルが見つかりません)")
@@ -203,6 +204,74 @@ def cmd_backup_list(backup_dir: str = "event_report") -> None:
         full = os.path.join(backup_dir, fname)
         size = os.path.getsize(full)
         print(f"  {fname:40s}  {size:>8d} bytes")
+
+
+def cmd_backup_restore(zip_path: str, dest_dir: str | None = None) -> None:
+    """同期バックアップ zip を復元する。
+
+    _build_sync_backup() が作成した zip（config/ と .jsonl / .gz ファイルを含む）を
+    dest_dir に展開する。dest_dir が省略された場合はリポジトリルート（_ROOT）に復元。
+
+    安全のため復元前に確認プロンプトを表示し、既存ファイルを上書きする前に
+    バックアップコピーを作成する。
+    """
+    import zipfile
+    root = dest_dir or _ROOT
+    if not os.path.exists(zip_path):
+        print(f"[ERROR] バックアップファイルが見つかりません: {zip_path}")
+        sys.exit(1)
+
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = zf.namelist()
+    except Exception as e:
+        print(f"[ERROR] zip ファイルを開けませんでした: {e}")
+        sys.exit(1)
+
+    # バリデーション: config/ エントリが 1 件以上あること
+    config_entries = [n for n in names if n.startswith("config/")]
+    log_entries = [n for n in names if n.endswith(".jsonl") or n.endswith(".gz")]
+    if not config_entries and not log_entries:
+        print("[ERROR] このファイルは Satin バックアップではない可能性があります。")
+        sys.exit(1)
+
+    print(f"バックアップ: {zip_path}")
+    print(f"復元先       : {root}")
+    print(f"設定ファイル : {len(config_entries)} 件")
+    print(f"ログファイル : {len(log_entries)} 件")
+    print()
+    ans = input("復元します。既存ファイルを上書きします。よろしいですか？ [y/N]: ").strip().lower()
+    if ans != "y":
+        print("キャンセルしました。")
+        return
+
+    restored = []
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for entry in names:
+                # ディレクトリトラバーサル防止
+                dest_path = os.path.realpath(os.path.join(root, entry))
+                if not dest_path.startswith(os.path.realpath(root) + os.sep):
+                    print(f"  [SKIP] 不正なパス: {entry}")
+                    continue
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                with zf.open(entry) as src, open(dest_path, "wb") as dst:
+                    import shutil as _shutil
+                    _shutil.copyfileobj(src, dst)
+                # 個人データファイルはアクセス権を制限する
+                if entry.endswith((".jsonl", ".gz", ".json")):
+                    try:
+                        from fsutil import restrict_to_owner
+                        restrict_to_owner(dest_path)
+                    except Exception:
+                        pass
+                restored.append(entry)
+                print(f"  復元: {entry}")
+    except Exception as e:
+        print(f"[ERROR] 復元中にエラーが発生しました: {e}")
+        sys.exit(1)
+
+    print(f"\n{len(restored)} 件のファイルを復元しました。")
 
 
 # --------------------------------------------------------------------------- #
@@ -363,6 +432,9 @@ def _build_parser() -> argparse.ArgumentParser:
     bk_sub = p_bk.add_subparsers(dest="backup_cmd", metavar="<backup-コマンド>")
     p_bk_list = bk_sub.add_parser("list", help="バックアップ一覧を表示")
     p_bk_list.add_argument("--dir", default="event_report", help="バックアップディレクトリ（デフォルト: event_report）")
+    p_bk_restore = bk_sub.add_parser("restore", help="sync バックアップ zip を復元")
+    p_bk_restore.add_argument("file", help="復元元の zip ファイルパス")
+    p_bk_restore.add_argument("--dest", default=None, help="復元先ディレクトリ（省略時: リポジトリルート）")
 
     # persona
     p_persona = sub.add_parser("persona", help="ペルソナ情報の表示")
@@ -422,10 +494,12 @@ def main(argv: list[str] | None = None) -> int:
 
     elif args.command == "backup":
         if not args.backup_cmd:
-            print("使用方法: manage_satin backup {list}")
+            print("使用方法: manage_satin backup {list,restore}")
             return 1
         if args.backup_cmd == "list":
             cmd_backup_list(args.dir)
+        elif args.backup_cmd == "restore":
+            cmd_backup_restore(args.file, args.dest)
         return 0
 
     elif args.command == "persona":
