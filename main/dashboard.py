@@ -194,23 +194,16 @@ def index(i18n):
     switcher = LANG_SWITCHER_HTML.format(en='selected' if lang=='en' else '', ja='selected' if lang=='ja' else '')
     # Build summary stats block
     stats_lines = []
-    # Conversation count
-    if os.path.exists(event_log_path):
-        try:
-            total = 0
-            with open(event_log_path, encoding='utf-8') as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        ev = json.loads(line)
-                        if ev.get('event_type') in _USER_TYPES:
-                            total += 1
-                    except (json.JSONDecodeError, KeyError):
-                        continue
-            stats_lines.append(f'{_html.escape(i18n.t("total_messages", "Total messages"))}: <b>{total}</b>')
-        except Exception:
-            pass
+    # Conversation count (archives included so rotation doesn't reset the counter)
+    try:
+        from conversation_log import ConversationLog
+        total = len([
+            ev for ev in ConversationLog(event_log_path).search("", include_archives=True)
+            if ev.get("event_type") in _USER_TYPES
+        ])
+        stats_lines.append(f'{_html.escape(i18n.t("total_messages", "Total messages"))}: <b>{total}</b>')
+    except Exception:
+        pass
     # Current affinity
     if _get_mood_tracker is not None:
         try:
