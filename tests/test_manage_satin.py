@@ -469,6 +469,35 @@ class PersonaShowTests(unittest.TestCase):
         self.assertTrue(len(out) > 0)
 
 
+class PersonaRespondTests(unittest.TestCase):
+    def _run(self, *args):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            manage_satin.cmd_persona_respond(*args)
+        return buf.getvalue()
+
+    def test_respond_prints_reply(self):
+        out = self._run("こんにちは")
+        # Should print "Name: reply" — non-empty and contains a colon
+        self.assertTrue(len(out.strip()) > 0)
+        self.assertIn(":", out)
+
+    def test_respond_with_level(self):
+        out = self._run("こんにちは", "close")
+        self.assertTrue(len(out.strip()) > 0)
+
+    def test_respond_main_dispatch(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = manage_satin.main(["persona", "respond", "こんにちは"])
+        self.assertEqual(rc, 0)
+        self.assertTrue(len(buf.getvalue().strip()) > 0)
+
+
 class LogClearTests(unittest.TestCase):
     """cmd_log_clear must truncate the live log AND delete rotated .gz archives.
     Previously it used log._path (AttributeError) and ignored archives, leaving

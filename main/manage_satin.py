@@ -15,6 +15,8 @@ Satin 管理バッチツール (CLI)
   backup list           バックアップ一覧を表示
   backup restore FILE   sync バックアップ zip を復元
   persona show          ペルソナ情報を表示
+  persona respond TEXT  入力に対する応答をプレビュー（ログ・好感度に影響なし）
+  summary               アクティビティサマリーを表示
 """
 from __future__ import annotations
 
@@ -485,6 +487,29 @@ def cmd_persona_show() -> None:
         pass
 
 
+def cmd_persona_respond(text: str, level: str | None = None) -> None:
+    """与えた入力に対するペルソナの応答をプレビュー表示する（ルールの動作確認用）。
+
+    会話ログや好感度には一切影響しない（純粋に respond() を呼ぶだけ）。
+    level（distant/reserved/neutral/friendly/close）を渡すと好感度別ルールを試せる。
+    """
+    try:
+        from persona import get_persona
+        p = get_persona()
+    except ImportError:
+        print("[ERROR] persona モジュールが見つかりません。")
+        sys.exit(1)
+    try:
+        reply = p.respond(text, level=level)
+    except Exception as e:
+        print(f"[ERROR] 応答生成に失敗しました: {e}")
+        sys.exit(1)
+    if reply:
+        print(f"{p.name or 'Avatar'}: {reply}")
+    else:
+        print("(このペルソナはこの入力に応答ルールを持ちません — オウム返しになります)")
+
+
 def cmd_summary(lang: str = "ja", yesterday: bool = False) -> None:
     """今日（または昨日）のアクティビティサマリーを表示する。"""
     try:
@@ -583,6 +608,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_persona = sub.add_parser("persona", help="ペルソナ情報の表示")
     persona_sub = p_persona.add_subparsers(dest="persona_cmd", metavar="<persona-コマンド>")
     persona_sub.add_parser("show", help="現在のペルソナ情報を表示")
+    p_persona_respond = persona_sub.add_parser("respond", help="入力に対する応答をプレビュー")
+    p_persona_respond.add_argument("text", help="アバターに話しかけるテキスト")
+    p_persona_respond.add_argument(
+        "--level", default=None,
+        choices=["distant", "reserved", "neutral", "friendly", "close"],
+        help="好感度レベル（指定すると好感度別ルールを試せる）",
+    )
 
     # summary
     p_summary = sub.add_parser("summary", help="アクティビティサマリーの表示")
@@ -649,10 +681,12 @@ def main(argv: list[str] | None = None) -> int:
 
     elif args.command == "persona":
         if not args.persona_cmd:
-            print("使用方法: manage_satin persona {show}")
+            print("使用方法: manage_satin persona {show,respond}")
             return 1
         if args.persona_cmd == "show":
             cmd_persona_show()
+        elif args.persona_cmd == "respond":
+            cmd_persona_respond(args.text, level=args.level)
         return 0
 
     elif args.command == "summary":
