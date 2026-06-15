@@ -241,6 +241,23 @@ class SyncBackupContentsTests(unittest.TestCase):
         self.assertNotIn("nope.jsonl", written)
         self.assertIn("config/persona.json", written)
 
+    def test_includes_rotated_gz_archives(self):
+        """ローテートされた .gz アーカイブもバックアップに含まれること。
+        機種変更時に旧会話履歴が丸ごと失われる問題の回帰テスト。"""
+        import gzip
+        gz_name = os.path.basename(self._log) + ".20260101_000000.gz"
+        gz_path = os.path.join(self._tmp, gz_name)
+        with gzip.open(gz_path, "wt", encoding="utf-8") as fh:
+            fh.write('{"event_type":"user_comment","timestamp":1}\n')
+        names = self._names()
+        self.assertIn(gz_name, names)
+
+    def test_backup_without_gz_archives_still_works(self):
+        """アーカイブが存在しない場合も通常通り動作すること。"""
+        names = self._names()
+        self.assertIn("avatar_event_log.jsonl", names)
+        self.assertIn("config/persona.json", names)
+
 
 if __name__ == "__main__":
     unittest.main()

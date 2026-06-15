@@ -78,11 +78,15 @@ backup_dir = 'event_report'
 
 
 def _build_sync_backup(zip_path, config_dir, log_path):
-    """設定一式（config/ 配下を再帰的に）と会話ログを zip にまとめる。
+    """設定一式（config/ 配下を再帰的に）と会話ログ（アーカイブ含む）を zip にまとめる。
 
     旧実装は config/ 直下のファイルのみを対象にしており、config/plugins/*.json
     （i18n / logging / cache / performance / break_reminder の設定）が丸ごと
     バックアップから漏れていた。os.walk で再帰し全サブディレクトリを含める。
+
+    ローテートされた <logfile>.<timestamp>.gz アーカイブも同梱する。これにより
+    機種変更・再インストール時にも過去の全会話履歴を復元できる（ログローテーション
+    後に /sync を取ると旧履歴が失われていた問題の修正）。
 
     Flask 非依存の純ロジックとして切り出し、テスト可能にする。
     Returns: zip に書き込んだ arcname のリスト。
@@ -97,10 +101,20 @@ def _build_sync_backup(zip_path, config_dir, log_path):
                     arc = os.path.join('config', os.path.relpath(fpath, config_dir))
                     zf.write(fpath, arc)
                     written.append(arc)
-        if log_path and os.path.exists(log_path):
-            arc = os.path.basename(log_path)
-            zf.write(log_path, arc)
-            written.append(arc)
+        if log_path:
+            if os.path.exists(log_path):
+                arc = os.path.basename(log_path)
+                zf.write(log_path, arc)
+                written.append(arc)
+            # ローテートされた gzip アーカイブも同梱（会話履歴の完全バックアップ）
+            try:
+                from conversation_log import _find_archives
+                for gz_path in _find_archives(log_path):
+                    arc = os.path.basename(gz_path)
+                    zf.write(gz_path, arc)
+                    written.append(arc)
+            except Exception:
+                pass
     return written
 
 
