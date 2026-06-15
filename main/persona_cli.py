@@ -231,12 +231,16 @@ def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callabl
     if conv_log is None:
         return
     try:
-        all_lines = conv_log.recent_texts(10000)
-        total = len(all_lines) // 2  # each exchange = 2 lines (user + avatar)
+        from conversation_log import USER_EVENT_TYPES
+        all_events = conv_log.search("", include_archives=True)
+        user_msgs = sum(1 for ev in all_events if ev.get("event_type") in USER_EVENT_TYPES)
+        avatar_msgs = len(all_events) - user_msgs
         if is_en:
-            output_fn(f"Total exchanges (all time): {total}")
+            output_fn(f"Total user messages (all time): {user_msgs}")
+            output_fn(f"Total avatar replies (all time): {avatar_msgs}")
         else:
-            output_fn(f"累計会話数: {total}件")
+            output_fn(f"累計ユーザー発言数: {user_msgs}件")
+            output_fn(f"累計アバター返答数: {avatar_msgs}件")
     except Exception:  # pragma: no cover - defensive
         pass
 
