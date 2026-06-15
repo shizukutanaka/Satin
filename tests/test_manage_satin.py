@@ -338,5 +338,70 @@ class PersonaShowTests(unittest.TestCase):
         self.assertTrue(len(out) > 0)
 
 
+class LogClearTests(unittest.TestCase):
+    """cmd_log_clear must truncate the live log AND delete rotated .gz archives.
+    Previously it used log._path (AttributeError) and ignored archives, leaving
+    old private conversation data on disk after a "clear."
+    """
+
+    def setUp(self):
+        import gzip
+        from conversation_log import reset_conversation_log, ConversationLog
+        self._gzip = gzip
+        self._tmp = tempfile.mkdtemp()
+        self._logfile = os.path.join(self._tmp, "events.jsonl")
+        # Write some events so the file exists
+        with open(self._logfile, "w", encoding="utf-8") as f:
+            f.write('{"event_type":"user_comment","timestamp":1,"details":{"text":"hi"}}\n')
+        # Also create a rotated gz archive
+        self._gz = self._logfile + ".20260101_000000.gz"
+        with gzip.open(self._gz, "wt", encoding="utf-8") as fh:
+            fh.write('{"event_type":"user_comment","timestamp":0,"details":{"text":"old"}}\n')
+        # Inject a fresh ConversationLog pointing at our temp file
+        reset_conversation_log()
+        self._log_obj = ConversationLog(self._logfile)
+        self._cl_mod = sys.modules.get("conversation_log")
+
+    def tearDown(self):
+        import shutil
+        from conversation_log import reset_conversation_log
+        shutil.rmtree(self._tmp, ignore_errors=True)
+        reset_conversation_log()
+
+    def _run_clear(self):
+        with mock.patch("builtins.input", return_value="y"), \
+             mock.patch("conversation_log.get_conversation_log",
+                        return_value=self._log_obj):
+            manage_satin.cmd_log_clear(log_path=self._logfile)
+
+    def test_clear_truncates_live_log(self):
+        self._run_clear()
+        self.assertEqual(os.path.getsize(self._logfile), 0)
+
+    def test_clear_deletes_gz_archives(self):
+        self._run_clear()
+        self.assertFalse(os.path.exists(self._gz),
+                         ".gz archive must be deleted by log clear")
+
+    def test_cancel_does_not_clear(self):
+        with mock.patch("builtins.input", return_value="n"), \
+             mock.patch("conversation_log.get_conversation_log",
+                        return_value=self._log_obj):
+            manage_satin.cmd_log_clear(log_path=self._logfile)
+        self.assertGreater(os.path.getsize(self._logfile), 0)
+        self.assertTrue(os.path.exists(self._gz))
+
+    def test_missing_log_prints_message(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        missing = os.path.join(self._tmp, "nope.jsonl")
+        with redirect_stdout(buf), \
+             mock.patch("conversation_log.get_conversation_log",
+                        return_value=self._log_obj):
+            manage_satin.cmd_log_clear(log_path=missing)
+        self.assertIn("存在しません", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

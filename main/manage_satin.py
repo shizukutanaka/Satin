@@ -139,18 +139,29 @@ def cmd_log_show(n: int = 20) -> None:
 
 def cmd_log_clear(log_path: str | None = None) -> None:
     try:
-        from conversation_log import get_conversation_log
+        from conversation_log import get_conversation_log, _find_archives
         log = get_conversation_log()
-        path = log_path or log._path
-        if not os.path.exists(path):
+        path = log_path or log.logfile
+        archives = _find_archives(path)
+        total = (1 if os.path.exists(path) else 0) + len(archives)
+        if total == 0:
             print("(ログファイルが存在しません)")
             return
-        ans = input(f"'{path}' の会話ログをクリアします。よろしいですか？ [y/N]: ").strip().lower()
+        archive_note = f"（アーカイブ {len(archives)} 件を含む）" if archives else ""
+        ans = input(
+            f"'{path}' の会話ログ{archive_note}をクリアします。よろしいですか？ [y/N]: "
+        ).strip().lower()
         if ans != "y":
             print("キャンセルしました。")
             return
-        open(path, "w", encoding="utf-8").close()
-        print(f"会話ログをクリアしました: {path}")
+        if os.path.exists(path):
+            open(path, "w", encoding="utf-8").close()
+        for gz in archives:
+            try:
+                os.remove(gz)
+            except OSError as e:
+                print(f"[WARNING] アーカイブの削除に失敗しました: {gz}: {e}")
+        print(f"会話ログをクリアしました: {path}{archive_note}")
     except ImportError:
         print("[ERROR] conversation_log モジュールが見つかりません。")
         sys.exit(1)
