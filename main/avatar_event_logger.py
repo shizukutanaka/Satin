@@ -46,7 +46,11 @@ class AvatarEventLogger:
         """
         callback(event)でイベントを再生
         delay_factor=1.0で実時間通り、<1.0で高速再生
+        ログファイルが存在しない場合は何もしない。
         """
+        import os
+        if not os.path.exists(self.logfile):
+            return
         events = []
         with open(self.logfile, encoding="utf-8") as f:
             for line in f:

@@ -473,5 +473,75 @@ class LogClearTests(unittest.TestCase):
         self.assertIn("存在しません", buf.getvalue())
 
 
+class LogSearchTests(unittest.TestCase):
+    """cmd_log_search must search through live log (and archives) and display matches."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._logfile = os.path.join(self._tmp, "test.jsonl")
+        import sys
+        sys.path.insert(0, _MAIN)
+        import conversation_log
+        conversation_log.reset_conversation_log()
+        from conversation_log import ConversationLog
+        self._log = ConversationLog(self._logfile)
+        self._log.log_user_comment("今日はいい天気ですね")
+        self._log.log_user_comment("音楽が好きです")
+        self._log.log_user_comment("ゲームを遊んでいます")
+
+    def tearDown(self):
+        import shutil, conversation_log
+        shutil.rmtree(self._tmp, ignore_errors=True)
+        conversation_log.reset_conversation_log()
+
+    def _run_search(self, query, limit=0):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf), \
+             mock.patch("conversation_log.get_conversation_log",
+                        return_value=self._log):
+            manage_satin.cmd_log_search(query, limit)
+        return buf.getvalue()
+
+    def test_search_finds_matching_entry(self):
+        out = self._run_search("音楽")
+        self.assertIn("音楽", out)
+        self.assertNotIn("天気", out)
+
+    def test_search_no_match_shows_message(self):
+        out = self._run_search("存在しないキーワード123")
+        self.assertIn("見つかりませんでした", out)
+
+    def test_search_empty_query_returns_all(self):
+        out = self._run_search("")
+        self.assertIn("天気", out)
+        self.assertIn("音楽", out)
+        self.assertIn("ゲーム", out)
+
+    def test_search_shows_timestamp_and_prefix(self):
+        out = self._run_search("天気")
+        # Should contain timestamp-format prefix [YYYY-MM-DD HH:MM:SS]
+        import re
+        self.assertRegex(out, r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]")
+
+    def test_search_limit_restricts_results(self):
+        out = self._run_search("", limit=1)
+        # With limit=1, only 1 entry should be shown
+        lines = [l for l in out.strip().splitlines() if l.startswith("[")]
+        self.assertEqual(len(lines), 1)
+
+    def test_search_main_dispatch(self):
+        """manage_satin.main() routes 'log search <query>' to cmd_log_search."""
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf), \
+             mock.patch("conversation_log.get_conversation_log",
+                        return_value=self._log):
+            manage_satin.main(["log", "search", "音楽"])
+        self.assertIn("音楽", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

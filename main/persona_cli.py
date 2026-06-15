@@ -10,10 +10,13 @@
 依存は標準ライブラリのみ。input/output 関数を注入できるため完全にテスト可能。
 
 コマンド:
-  /help     コマンド一覧
-  /history  会話履歴の直近を表示
-  /name     ペルソナ名を表示
-  /quit     終了（/exit, /q も同じ）
+  /help          コマンド一覧
+  /history       会話履歴の直近を表示
+  /mood          好感度レベルを表示
+  /reset-mood    好感度をニュートラルにリセット
+  /stats         会話統計を表示
+  /name          ペルソナ名を表示
+  /quit          終了（/exit, /q も同じ）
 """
 from __future__ import annotations
 
@@ -174,7 +177,7 @@ def run_chat(
     return exchanges
 
 
-def _absence_message(mood, name: str, lang: str) -> str:
+def _absence_message(mood, name: str, lang: str) -> str:  # name is kept for API compat
     """前回の会話から長期間経過していた場合に不在への言及メッセージを返す。
 
     24 時間未満・初回・会話回数 0 の場合は空文字を返す。

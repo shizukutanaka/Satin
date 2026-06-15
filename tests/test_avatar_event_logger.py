@@ -90,6 +90,16 @@ class AvatarEventLoggerTests(unittest.TestCase):
         self.logger.replay_events(lambda ev: called.append(ev), delay_factor=0.0)
         self.assertEqual(called, [])
 
+    def test_replay_missing_file_is_noop(self):
+        """replay_events() on a logfile that doesn't exist must not raise."""
+        import os
+        import tempfile
+        nonexistent = os.path.join(tempfile.mkdtemp(), "no_such_file.jsonl")
+        logger = AvatarEventLogger(logfile=nonexistent)
+        called = []
+        logger.replay_events(lambda ev: called.append(ev), delay_factor=0.0)
+        self.assertEqual(called, [])
+
     def test_replay_calls_callback_for_each_event(self):
         for i in range(3):
             self.logger.log_event("step", i=i)

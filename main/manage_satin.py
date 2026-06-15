@@ -11,6 +11,7 @@ Satin 管理バッチツール (CLI)
   log clear             会話ログをクリア
   log export FILE       会話ログを JSON ファイルにエクスポート
   log csv FILE          会話ログを CSV ファイルにエクスポート
+  log search QUERY      会話ログをキーワード検索（アーカイブ含む）
   backup list           バックアップ一覧を表示
   backup restore FILE   sync バックアップ zip を復元
   persona show          ペルソナ情報を表示
@@ -192,6 +193,35 @@ def cmd_log_export(dest: str) -> None:
         sys.exit(1)
     except Exception as e:
         print(f"[ERROR] ログのエクスポートに失敗しました: {e}")
+        sys.exit(1)
+
+
+def cmd_log_search(query: str, limit: int = 0) -> None:
+    """会話ログから query をキーワード検索して結果を表示する（アーカイブ含む）。"""
+    try:
+        from conversation_log import get_conversation_log
+        log = get_conversation_log()
+        from datetime import datetime as _dt
+        results = log.search(query, n=limit, include_archives=True)
+        if not results:
+            print(f"(「{query}」に一致する会話は見つかりませんでした)")
+            return
+        print(f"「{query}」の検索結果: {len(results)} 件")
+        for ev in results:
+            ts = ev.get("timestamp", 0)
+            try:
+                dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+            except (OSError, OverflowError, ValueError):
+                dt_str = "?"
+            event_type = ev.get("event_type", "")
+            text = (ev.get("details") or {}).get("text", "")
+            prefix = "You" if event_type in ("user_comment", "user") else "Avatar"
+            print(f"[{dt_str}] {prefix}: {text}")
+    except ImportError:
+        print("[ERROR] conversation_log モジュールが見つかりません。")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] 検索に失敗しました: {e}")
         sys.exit(1)
 
 
@@ -436,6 +466,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_log_export.add_argument("file", help="エクスポート先のファイルパス")
     p_log_csv = log_sub.add_parser("csv", help="会話ログを CSV にエクスポート")
     p_log_csv.add_argument("file", help="出力先の CSV ファイルパス")
+    p_log_search = log_sub.add_parser("search", help="会話ログをキーワード検索")
+    p_log_search.add_argument("query", help="検索クエリ")
+    p_log_search.add_argument("-n", "--limit", type=int, default=0,
+                              help="最大表示件数（0 = 全件、デフォルト: 0）")
 
     # backup
     p_bk = sub.add_parser("backup", help="バックアップの管理")
@@ -490,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
 
     elif args.command == "log":
         if not args.log_cmd:
-            print("使用方法: manage_satin log {show,clear,export,csv}")
+            print("使用方法: manage_satin log {show,clear,export,csv,search}")
             return 1
         if args.log_cmd == "show":
             cmd_log_show(args.n)
@@ -500,6 +534,8 @@ def main(argv: list[str] | None = None) -> int:
             cmd_log_export(args.file)
         elif args.log_cmd == "csv":
             cmd_log_csv(args.file)
+        elif args.log_cmd == "search":
+            cmd_log_search(args.query, args.limit)
         return 0
 
     elif args.command == "backup":
