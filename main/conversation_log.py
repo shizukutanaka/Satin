@@ -189,13 +189,15 @@ class ConversationLog:
 
         return entries[-n:] if n > 0 else entries
 
-    def to_csv(self, n: int = 0, user_label: str = "You", avatar_label: str = "Avatar") -> str:
+    def to_csv(self, n: int = 0, user_label: str = "You", avatar_label: str = "Avatar",
+               include_archives: bool = True) -> str:
         """会話履歴を CSV 形式の文字列で返す。
 
         Args:
             n: 直近 n 件（0 = 全件）
             user_label:   CSV の speaker 列でユーザーを表すラベル
             avatar_label: CSV の speaker 列でアバターを表すラベル
+            include_archives: True（既定）のとき、ローテート済みアーカイブも含む。
 
         Returns:
             header + rows の CSV 文字列（UTF-8、CRLF 改行）。
@@ -204,7 +206,7 @@ class ConversationLog:
         import io
         from datetime import datetime as _dt
 
-        entries = self.recent(n if n > 0 else 1_000_000)
+        entries = self.search("", n=n, include_archives=include_archives)
         buf = io.StringIO()
         writer = csv.writer(buf, lineterminator="\r\n")
         writer.writerow(["timestamp", "datetime", "speaker", "text"])

@@ -171,7 +171,8 @@ def cmd_log_export(dest: str) -> None:
     try:
         from conversation_log import get_conversation_log
         log = get_conversation_log()
-        events = log.recent(n=10000)
+        # include_archives=True でローテート済みアーカイブも含む完全エクスポート
+        events = log.search("", include_archives=True)
         with open(dest, "w", encoding="utf-8") as f:
             json.dump(events, f, ensure_ascii=False, indent=2)
         print(f"会話ログ {len(events)} 件を '{dest}' にエクスポートしました。")

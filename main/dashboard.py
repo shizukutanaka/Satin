@@ -393,26 +393,20 @@ def conversation(i18n):
 @app.route('/conversation/download')
 @with_lang
 def conversation_download(i18n):
-    """会話履歴をプレーンテキストとしてダウンロードする。"""
+    """会話履歴をプレーンテキストとしてダウンロードする。アーカイブも含む完全版。"""
     import io
+    from conversation_log import ConversationLog
     lines_out = []
-    if os.path.exists(event_log_path):
-        with open(event_log_path, encoding='utf-8') as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    ev = json.loads(line)
-                    et = ev.get('event_type', '')
-                    if et not in _USER_TYPES and et not in _AVATAR_TYPES:
-                        continue
-                    ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-                    speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
-                    details = ev.get('details') or {}
-                    text = details.get('text', '') if isinstance(details, dict) else str(details)
-                    lines_out.append(f'[{ts}] {speaker}: {text}')
-                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-                    continue
+    for ev in ConversationLog(event_log_path).search("", include_archives=True):
+        try:
+            et = ev.get('event_type', '')
+            ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+            speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
+            details = ev.get('details') or {}
+            text = details.get('text', '') if isinstance(details, dict) else str(details)
+            lines_out.append(f'[{ts}] {speaker}: {text}')
+        except (KeyError, ValueError, TypeError, OSError):
+            continue
     text_content = '\n'.join(lines_out) + '\n'
     buf = io.BytesIO(text_content.encode('utf-8'))
     buf.seek(0)

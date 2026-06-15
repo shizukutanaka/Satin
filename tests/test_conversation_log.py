@@ -180,6 +180,40 @@ class ToCsvTests(_TmpLogBase):
         dt_str = rows[0]["datetime"]
         self.assertRegex(dt_str, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
 
+    def test_csv_includes_archived_events(self):
+        """to_csv() must include rotated archive entries (include_archives=True)."""
+        import gzip, csv, io
+        gz_name = os.path.basename(self.logfile) + ".20260101_000000.gz"
+        gz_path = os.path.join(self._tmp, gz_name)
+        ev = {"timestamp": 1.0, "event_type": EVENT_USER_COMMENT,
+              "details": {"text": "archived message"}}
+        with gzip.open(gz_path, "wt", encoding="utf-8") as fh:
+            import json as _json
+            fh.write(_json.dumps(ev) + "\n")
+        self.log.log_exchange("live message", "live reply")
+
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv(include_archives=True))))
+        texts = [r["text"] for r in rows]
+        self.assertIn("archived message", texts)
+        self.assertIn("live message", texts)
+
+    def test_csv_include_archives_false_omits_gz(self):
+        """include_archives=False must not read gz archives."""
+        import gzip, csv, io
+        gz_name = os.path.basename(self.logfile) + ".20260101_000000.gz"
+        gz_path = os.path.join(self._tmp, gz_name)
+        ev = {"timestamp": 1.0, "event_type": EVENT_USER_COMMENT,
+              "details": {"text": "only in archive"}}
+        with gzip.open(gz_path, "wt", encoding="utf-8") as fh:
+            import json as _json
+            fh.write(_json.dumps(ev) + "\n")
+        # Empty live file
+        open(self.logfile, "w").close()
+
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv(include_archives=False))))
+        texts = [r["text"] for r in rows]
+        self.assertNotIn("only in archive", texts)
+
 
 class SingletonTests(unittest.TestCase):
     def tearDown(self):
