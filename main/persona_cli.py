@@ -31,11 +31,16 @@ except Exception:  # pragma: no cover - defensive
     get_conversation_log = None
 
 try:
-    from mood import MoodTracker, get_mood_tracker, absence_message as _absence_message_fn
+    from mood import (
+        MoodTracker, get_mood_tracker,
+        absence_message as _absence_message_fn,
+        check_level_milestone as _check_level_milestone,
+    )
 except Exception:  # pragma: no cover - defensive
     MoodTracker = None  # type: ignore
     get_mood_tracker = None
     _absence_message_fn = None  # type: ignore
+    _check_level_milestone = None  # type: ignore
 
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
@@ -162,15 +167,23 @@ def run_chat(
             continue
 
         # 好感度を更新（指定時のみ）
+        milestone_msg = ""
         if mood is not None:
             try:
+                before_affinity = mood.affinity
                 mood.register(text)
+                if _check_level_milestone is not None:
+                    ms = _check_level_milestone(before_affinity, mood.affinity, lang=lang)
+                    if ms and ms.get("message"):
+                        milestone_msg = ms["message"]
             except Exception:  # pragma: no cover - defensive
                 pass
 
         # 通常の会話 (好感度レベルがあれば mood-specific ルールを優先)
         level = mood.level if mood is not None else None
         reply = respond_to(text, persona, conv_log, level=level)
+        if milestone_msg:
+            reply = (reply + " " + milestone_msg).strip() if reply else milestone_msg
         output_fn(f"{name}: {reply}")
         exchanges += 1
 

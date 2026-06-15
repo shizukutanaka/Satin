@@ -32,6 +32,18 @@ except Exception:
     _USER_TYPES = {"user_comment", "user"}
     _AVATAR_TYPES = {"avatar_reply", "avatar"}
 
+
+def _get_persona_name(fallback: str = "Avatar") -> str:
+    """ペルソナ名を返す。取得できない場合は fallback。リクエストごとに呼んでよい（軽量）。"""
+    try:
+        from persona import get_persona
+        p = get_persona()
+        if p and p.name:
+            return p.name
+    except Exception:
+        pass
+    return fallback
+
 try:
     from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
     _FLASK_AVAILABLE = True
@@ -332,6 +344,7 @@ def conversation(i18n):
         ja='selected' if not lang.startswith('en') else '',
     )
     from conversation_log import ConversationLog
+    avatar_name = _get_persona_name(fallback=i18n.t('avatar', 'Avatar'))
     exchanges = []
     for ev in ConversationLog(event_log_path).search("", n=100, include_archives=True):
         try:
@@ -339,7 +352,7 @@ def conversation(i18n):
             ts = datetime.fromtimestamp(ev['timestamp']).strftime('%H:%M:%S')
             speaker = (
                 i18n.t('you', 'You') if et in _USER_TYPES
-                else i18n.t('avatar', 'Avatar')
+                else avatar_name
             )
             details = ev.get('details') or {}
             text = details.get('text', '') if isinstance(details, dict) else str(details)
@@ -383,12 +396,13 @@ def conversation_download(i18n):
     """会話履歴をプレーンテキストとしてダウンロードする。アーカイブも含む完全版。"""
     import io
     from conversation_log import ConversationLog
+    avatar_name = _get_persona_name(fallback=i18n.t('avatar', 'Avatar'))
     lines_out = []
     for ev in ConversationLog(event_log_path).search("", include_archives=True):
         try:
             et = ev.get('event_type', '')
             ts = datetime.fromtimestamp(ev['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-            speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
+            speaker = i18n.t('you', 'You') if et in _USER_TYPES else avatar_name
             details = ev.get('details') or {}
             text = details.get('text', '') if isinstance(details, dict) else str(details)
             lines_out.append(f'[{ts}] {speaker}: {text}')
@@ -415,7 +429,7 @@ def conversation_download_csv(i18n):
         log = ConversationLog(event_log_path)
         csv_content = log.to_csv(
             user_label=i18n.t('you', 'You'),
-            avatar_label=i18n.t('avatar', 'Avatar'),
+            avatar_label=_get_persona_name(fallback=i18n.t('avatar', 'Avatar')),
         )
     except Exception:
         csv_content = "timestamp,datetime,speaker,text\r\n"
@@ -567,6 +581,7 @@ def conversation_search(i18n):
         # Reuse ConversationLog.search() for filtering (event-type + substring)
         # rather than reinventing the JSONL parse — keeps one search behavior.
         from conversation_log import ConversationLog
+        avatar_name = _get_persona_name(fallback=i18n.t('avatar', 'Avatar'))
         matches = []
         for ev in ConversationLog(event_log_path).search(q):
             et = ev.get('event_type', '')
@@ -576,7 +591,7 @@ def conversation_search(i18n):
                 ts = datetime.fromtimestamp(ev.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')
             except (ValueError, OSError, OverflowError):
                 ts = ''
-            speaker = i18n.t('you', 'You') if et in _USER_TYPES else i18n.t('avatar', 'Avatar')
+            speaker = i18n.t('you', 'You') if et in _USER_TYPES else avatar_name
             matches.append({'ts': ts, 'speaker': speaker, 'text': text})
 
         count_label = _html.escape(i18n.t('search_results', 'Results'))
@@ -819,7 +834,8 @@ def summary(i18n):
 
         date_lbl = 'Date' if is_en else '日付'
         user_lbl = 'Your messages' if is_en else 'あなたのメッセージ'
-        avatar_lbl = 'Avatar replies' if is_en else 'アバターの返答'
+        _aname = _get_persona_name()
+        avatar_lbl = f'{_aname} replies' if is_en else f'{_aname}の返答'
         total_lbl = 'Total interactions' if is_en else '合計やりとり'
         peak_lbl = 'Peak hour' if is_en else 'ピーク時間帯'
         affinity_lbl = 'Affinity' if is_en else '好感度'

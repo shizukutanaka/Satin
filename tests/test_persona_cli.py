@@ -294,6 +294,28 @@ class MoodIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(d.out[0], "Mimi: WELCOME_BACK")
 
+    def test_level_milestone_appended_to_reply(self):
+        """CLI appends milestone message to reply when affinity level crosses a threshold."""
+        from mood import MoodTracker
+        # friendly threshold is 60; put affinity just below so one positive hit crosses it
+        m = MoodTracker(affinity=59.0, positive_delta=10.0)
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "responses": {"en": {"rules": [], "fallback": ["OK"]}},
+        }
+        persona = Persona.from_dict(data, lang="en")
+        d = _Driver(["thank you"])
+        persona_cli.run_chat(
+            persona=persona, conv_log=None, mood=m,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        # At least one reply line should contain the milestone message (non-empty extra text)
+        reply_lines = [l for l in d.out if l.startswith("Mimi:")]
+        self.assertTrue(len(reply_lines) >= 1)
+        # The reply should be longer than just "Mimi: OK" (milestone appended)
+        combined = " ".join(reply_lines)
+        self.assertGreater(len(combined), len("Mimi: OK"))
+
 
 class AbsenceMessageTests(unittest.TestCase):
     """_absence_message() emits nothing for recent/no interactions, message for long absence."""
