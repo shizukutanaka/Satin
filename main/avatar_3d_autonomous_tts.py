@@ -218,15 +218,16 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
             self.break_reminder = maybe_start_break_reminder(
                 speak_func=make_reminder_speak(self.viewer, self.tts_queue), lang=lang
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("休憩リマインダーの開始に失敗しました: %s", e)
             self.break_reminder = None
 
     def _stop_break_reminder(self):
         if self.break_reminder is not None:
             try:
                 self.break_reminder.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("休憩リマインダーの停止に失敗しました: %s", e)
             self.break_reminder = None
 
     def update_talk_text(self):
