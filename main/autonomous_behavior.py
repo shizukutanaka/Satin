@@ -19,9 +19,12 @@ self.talks / self.REST_TEXTS にフォールバックする（後方互換）。
 """
 from __future__ import annotations
 
+import logging
 import random
 
 from optional_deps import np
+
+logger = logging.getLogger(__name__)
 
 try:
     from persona import get_persona
@@ -80,8 +83,8 @@ class AutonomousBehaviorMixin:
                 # 起動時スナップショット（当日初回のみ履歴に記録される）
                 if _mood_history_path is not None:
                     tracker.snapshot_to_history(_mood_history_path())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("起動時の好感度処理に失敗しました: %s", e)
         persona = self.persona
         if persona is not None:
             greeting = persona.greeting(level=level)
@@ -95,8 +98,8 @@ class AutonomousBehaviorMixin:
                         yday = _yesterday_greeting(lang=lang)
                         if yday:
                             greeting = (greeting + " " + yday).strip() if greeting else yday
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("昨日のサマリー取得に失敗しました: %s", e)
             if greeting:
                 self.talk_text = greeting
                 self._on_talk_start(greeting)
@@ -143,8 +146,8 @@ class AutonomousBehaviorMixin:
         if _get_mood_tracker is not None:
             try:
                 level = _get_mood_tracker().level
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("好感度レベルの取得に失敗しました: %s", e)
         persona = self.persona
         if persona is not None:
             text = persona.talk(level=level)

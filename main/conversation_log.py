@@ -15,11 +15,12 @@
 """
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import os
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, Generator, List, Optional
 
 from avatar_event_logger import AvatarEventLogger
 
@@ -37,6 +38,36 @@ EVENT_AVATAR_REPLY = "avatar_reply"
 # 単一の真実の源（single source of truth）。
 USER_EVENT_TYPES = frozenset({EVENT_USER_COMMENT, "user"})
 AVATAR_EVENT_TYPES = frozenset({EVENT_AVATAR_REPLY, "avatar"})
+
+
+def _find_archives(logfile: str) -> List[str]:
+    """ローテートされた gzip アーカイブを古い順で返す。
+
+    avatar_event_log_rotate.rotate_log() は ``<logfile>.<timestamp>.gz`` という
+    命名規則でアーカイブを作成する。同じディレクトリ内の該当ファイルを mtime 昇順
+    （古い順）で返す。ログファイルが存在しない・ディレクトリが読めない場合は空リスト。
+    """
+    try:
+        log_dir = os.path.dirname(os.path.abspath(logfile))
+        basename = os.path.basename(logfile) + "."
+        files = [
+            os.path.join(log_dir, f)
+            for f in os.listdir(log_dir)
+            if f.startswith(basename) and f.endswith(".gz")
+        ]
+        return sorted(files, key=os.path.getmtime)
+    except OSError:
+        return []
+
+
+def _iter_gz_lines(gz_path: str) -> Generator[str, None, None]:
+    """gzip アーカイブの各行を文字列として yield する。読み込みエラーは握りつぶす。"""
+    try:
+        with gzip.open(gz_path, "rt", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                yield line
+    except Exception as e:  # pragma: no cover - OS/format error
+        logger.debug("アーカイブの読み込みをスキップします (%s): %s", gz_path, e)
 
 
 class ConversationLog:
@@ -109,40 +140,53 @@ class ConversationLog:
             lines.append(f"{prefix}: {text}")
         return lines
 
-    def search(self, query: str, n: int = 0) -> List[Dict]:
+    def search(self, query: str, n: int = 0, include_archives: bool = True) -> List[Dict]:
         """会話履歴からキーワード検索し、一致したイベントを古い順で返す。
 
         Args:
             query: 検索クエリ（大文字小文字を無視した部分一致）。空なら全件。
             n: 返す最大件数（0 = 全件）。
+            include_archives: True（既定）のとき、ローテートされた gzip アーカイブも
+                検索する。ログローテーション後も会話履歴が消えないようにするための
+                「コンパニオンが記憶を失わない」保証。
 
         Returns:
             会話イベント（user/avatar、レガシー別名含む）のうち text フィールドに
             query を含むイベントのリスト。イベント分類は USER_EVENT_TYPES /
             AVATAR_EVENT_TYPES（dashboard と共有の正準集合）に従う。
         """
-        if not os.path.exists(self.logfile):
-            return []
         q_lower = query.strip().lower() if query else ""
         conv_types = USER_EVENT_TYPES | AVATAR_EVENT_TYPES
         entries: List[Dict] = []
-        try:
-            with open(self.logfile, encoding="utf-8") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        ev = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if ev.get("event_type") not in conv_types:
-                        continue
-                    text = ((ev.get("details") or {}).get("text") or "")
-                    if not q_lower or q_lower in str(text).lower():
-                        entries.append(ev)
-        except Exception as e:  # pragma: no cover - defensive
-            logger.warning("会話ログの検索に失敗しました: %s", e)
-            return []
+
+        def _collect_line(line: str) -> None:
+            if not line.strip():
+                return
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                return
+            if ev.get("event_type") not in conv_types:
+                return
+            text = ((ev.get("details") or {}).get("text") or "")
+            if not q_lower or q_lower in str(text).lower():
+                entries.append(ev)
+
+        # アーカイブを古い順に検索（ローテーション後も履歴が途切れない）
+        if include_archives:
+            for gz_path in _find_archives(self.logfile):
+                for line in _iter_gz_lines(gz_path):
+                    _collect_line(line)
+
+        # 現行ログファイル
+        if os.path.exists(self.logfile):
+            try:
+                with open(self.logfile, encoding="utf-8") as f:
+                    for line in f:
+                        _collect_line(line)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("会話ログの検索に失敗しました: %s", e)
+
         return entries[-n:] if n > 0 else entries
 
     def to_csv(self, n: int = 0, user_label: str = "You", avatar_label: str = "Avatar") -> str:

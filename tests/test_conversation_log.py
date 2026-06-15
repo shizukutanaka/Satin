@@ -255,5 +255,122 @@ class SpeakCommentWiringTests(unittest.TestCase):
             self.assertEqual(v.comment_text, "hi")
 
 
+class ArchiveSearchTests(unittest.TestCase):
+    """ConversationLog.search() must transparently include rotated .gz archives
+    so that log rotation does not cause the companion to "forget" old conversations."""
+
+    def setUp(self):
+        import gzip
+        self._tmp = tempfile.mkdtemp()
+        self.logfile = os.path.join(self._tmp, "events.jsonl")
+        self._gzip = gzip
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_gz_archive(self, filename, events):
+        """Write a list of event dicts as a .gz JSONL archive."""
+        path = os.path.join(self._tmp, filename)
+        with self._gzip.open(path, "wt", encoding="utf-8") as fh:
+            for ev in events:
+                fh.write(json.dumps(ev) + "\n")
+        return path
+
+    def _make_event(self, event_type, text, ts=1_000_000.0):
+        return {"timestamp": ts, "event_type": event_type,
+                "details": {"text": text}}
+
+    def test_search_finds_events_in_archive(self):
+        archive_ev = self._make_event(EVENT_USER_COMMENT, "archived hello", ts=1.0)
+        self._write_gz_archive(
+            os.path.basename(self.logfile) + ".20260101_000000.gz", [archive_ev]
+        )
+        # Live file is empty (just rotated)
+        open(self.logfile, "w").close()
+
+        results = ConversationLog(self.logfile).search("archived hello")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["details"]["text"], "archived hello")
+
+    def test_search_combines_archive_and_live(self):
+        archive_ev = self._make_event(EVENT_USER_COMMENT, "old memory", ts=1.0)
+        self._write_gz_archive(
+            os.path.basename(self.logfile) + ".20260101_000000.gz", [archive_ev]
+        )
+        log = ConversationLog(self.logfile)
+        log.log_user_comment("new comment")
+
+        results = log.search("")  # empty query → all events
+        texts = [ev["details"]["text"] for ev in results]
+        self.assertIn("old memory", texts)
+        self.assertIn("new comment", texts)
+
+    def test_search_archive_order_is_chronological(self):
+        """Archive events (older) appear before live events (newer)."""
+        archive_ev = self._make_event(EVENT_USER_COMMENT, "past", ts=1.0)
+        self._write_gz_archive(
+            os.path.basename(self.logfile) + ".20260101_000000.gz", [archive_ev]
+        )
+        log = ConversationLog(self.logfile)
+        log.log_user_comment("present")
+
+        results = log.search("")
+        texts = [ev["details"]["text"] for ev in results]
+        self.assertEqual(texts.index("past"), 0)
+        self.assertGreater(texts.index("present"), 0)
+
+    def test_search_include_archives_false_skips_gz(self):
+        archive_ev = self._make_event(EVENT_USER_COMMENT, "secret old msg", ts=1.0)
+        self._write_gz_archive(
+            os.path.basename(self.logfile) + ".20260101_000000.gz", [archive_ev]
+        )
+        open(self.logfile, "w").close()
+
+        results = ConversationLog(self.logfile).search("secret old msg",
+                                                       include_archives=False)
+        self.assertEqual(results, [])
+
+    def test_search_no_archives_present_returns_live_only(self):
+        log = ConversationLog(self.logfile)
+        log.log_user_comment("only live")
+
+        results = log.search("only live")
+        self.assertEqual(len(results), 1)
+
+    def test_corrupt_archive_is_skipped_not_crashed(self):
+        """A truncated or corrupt .gz archive must not crash search()."""
+        bad_path = os.path.join(
+            self._tmp, os.path.basename(self.logfile) + ".20260101_000000.gz"
+        )
+        with open(bad_path, "wb") as fh:
+            fh.write(b"\x1f\x8b\x00garbage")  # invalid gzip header
+        log = ConversationLog(self.logfile)
+        log.log_user_comment("live event")
+
+        # Must not raise
+        results = log.search("live event")
+        self.assertEqual(len(results), 1)
+
+    def test_find_archives_returns_empty_for_no_gz(self):
+        from conversation_log import _find_archives
+        open(self.logfile, "w").close()
+        self.assertEqual(_find_archives(self.logfile), [])
+
+    def test_find_archives_returns_sorted_by_mtime(self):
+        import time
+        from conversation_log import _find_archives
+        base = os.path.basename(self.logfile)
+        p1 = os.path.join(self._tmp, base + ".20260101_000000.gz")
+        p2 = os.path.join(self._tmp, base + ".20260102_000000.gz")
+        with self._gzip.open(p1, "wt") as f:
+            f.write("")
+        time.sleep(0.01)
+        with self._gzip.open(p2, "wt") as f:
+            f.write("")
+        archives = _find_archives(self.logfile)
+        self.assertEqual(archives, [p1, p2])
+
+
 if __name__ == "__main__":
     unittest.main()
