@@ -32,6 +32,15 @@ for _p in (_MAIN, _ROOT):
         sys.path.insert(0, _p)
 
 
+def _get_conversation_log():
+    """絶対パスでシングルトン ConversationLog を初期化して返す。
+
+    CWD に依存しないよう _ROOT からの絶対パスを使う。
+    """
+    from conversation_log import get_conversation_log, DEFAULT_LOGFILE
+    return get_conversation_log(os.path.join(_ROOT, DEFAULT_LOGFILE))
+
+
 # --------------------------------------------------------------------------- #
 # validate
 # --------------------------------------------------------------------------- #
@@ -133,8 +142,7 @@ def cmd_mood_export(dest: str) -> None:
 # --------------------------------------------------------------------------- #
 def cmd_log_show(n: int = 20) -> None:
     try:
-        from conversation_log import get_conversation_log
-        log = get_conversation_log()
+        log = _get_conversation_log()
         # ペルソナ名を取得してアバター側ラベルをカスタマイズする
         avatar_label = "Avatar"
         try:
@@ -160,8 +168,8 @@ def cmd_log_show(n: int = 20) -> None:
 
 def cmd_log_clear(log_path: str | None = None) -> None:
     try:
-        from conversation_log import get_conversation_log, _find_archives
-        log = get_conversation_log()
+        from conversation_log import _find_archives
+        log = _get_conversation_log()
         path = log_path or log.logfile
         archives = _find_archives(path)
         total = (1 if os.path.exists(path) else 0) + len(archives)
@@ -190,8 +198,7 @@ def cmd_log_clear(log_path: str | None = None) -> None:
 
 def cmd_log_export(dest: str) -> None:
     try:
-        from conversation_log import get_conversation_log
-        log = get_conversation_log()
+        log = _get_conversation_log()
         # include_archives=True でローテート済みアーカイブも含む完全エクスポート
         events = log.search("", include_archives=True)
         with open(dest, "w", encoding="utf-8") as f:
@@ -208,8 +215,8 @@ def cmd_log_export(dest: str) -> None:
 def cmd_log_search(query: str, limit: int = 0) -> None:
     """会話ログから query をキーワード検索して結果を表示する（アーカイブ含む）。"""
     try:
-        from conversation_log import get_conversation_log, USER_EVENT_TYPES
-        log = get_conversation_log()
+        from conversation_log import USER_EVENT_TYPES
+        log = _get_conversation_log()
         from datetime import datetime as _dt
         # ペルソナ名を取得してアバター側ラベルをカスタマイズする
         avatar_label = "Avatar"
