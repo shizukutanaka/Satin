@@ -145,6 +145,13 @@ class RecentTests(_TmpLogBase):
         import re
         self.assertRegex(texts[0], r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] You: test message$")
 
+    def test_recent_texts_custom_labels(self):
+        self.log.log_exchange("hello", "Hi!")
+        texts = self.log.recent_texts(user_label="User", avatar_label="Satin")
+        self.assertEqual(len(texts), 2)
+        self.assertTrue(texts[0].endswith("User: hello"), texts[0])
+        self.assertTrue(texts[1].endswith("Satin: Hi!"), texts[1])
+
 
 class ToCsvTests(_TmpLogBase):
     """ConversationLog.to_csv() produces valid CSV output."""

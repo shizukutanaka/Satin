@@ -169,13 +169,21 @@ class ConversationLog:
         archive_tail = list(reversed(archive_entries[-need:]))
         return archive_tail + live_entries
 
-    def recent_texts(self, n: int = 20) -> List[str]:
-        """直近 n 件を「[YYYY-MM-DD HH:MM:SS] You: ...」形式の文字列リストで返す（表示用）。"""
+    def recent_texts(
+        self,
+        n: int = 20,
+        user_label: str = "You",
+        avatar_label: str = "Avatar",
+    ) -> List[str]:
+        """直近 n 件を「[YYYY-MM-DD HH:MM:SS] You: ...」形式の文字列リストで返す（表示用）。
+
+        user_label / avatar_label でラベルをカスタマイズできる（例: ペルソナ名）。
+        """
         from datetime import datetime as _dt
         lines = []
         for ev in self.recent(n):
             text = (ev.get("details") or {}).get("text", "")
-            prefix = "You" if ev.get("event_type") == EVENT_USER_COMMENT else "Avatar"
+            prefix = user_label if ev.get("event_type") in USER_EVENT_TYPES else avatar_label
             ts = ev.get("timestamp", 0)
             try:
                 dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")

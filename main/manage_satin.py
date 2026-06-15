@@ -135,7 +135,16 @@ def cmd_log_show(n: int = 20) -> None:
     try:
         from conversation_log import get_conversation_log
         log = get_conversation_log()
-        lines = log.recent_texts(n)
+        # ペルソナ名を取得してアバター側ラベルをカスタマイズする
+        avatar_label = "Avatar"
+        try:
+            from persona import get_persona
+            p = get_persona()
+            if p and p.name:
+                avatar_label = p.name
+        except Exception:
+            pass
+        lines = log.recent_texts(n, avatar_label=avatar_label)
         if not lines:
             print("(会話ログが空です)")
             return
@@ -199,9 +208,18 @@ def cmd_log_export(dest: str) -> None:
 def cmd_log_search(query: str, limit: int = 0) -> None:
     """会話ログから query をキーワード検索して結果を表示する（アーカイブ含む）。"""
     try:
-        from conversation_log import get_conversation_log
+        from conversation_log import get_conversation_log, USER_EVENT_TYPES
         log = get_conversation_log()
         from datetime import datetime as _dt
+        # ペルソナ名を取得してアバター側ラベルをカスタマイズする
+        avatar_label = "Avatar"
+        try:
+            from persona import get_persona
+            p = get_persona()
+            if p and p.name:
+                avatar_label = p.name
+        except Exception:
+            pass
         results = log.search(query, n=limit, include_archives=True)
         if not results:
             print(f"(「{query}」に一致する会話は見つかりませんでした)")
@@ -215,7 +233,7 @@ def cmd_log_search(query: str, limit: int = 0) -> None:
                 dt_str = "?"
             event_type = ev.get("event_type", "")
             text = (ev.get("details") or {}).get("text", "")
-            prefix = "You" if event_type in ("user_comment", "user") else "Avatar"
+            prefix = "You" if event_type in USER_EVENT_TYPES else avatar_label
             print(f"[{dt_str}] {prefix}: {text}")
     except ImportError:
         print("[ERROR] conversation_log モジュールが見つかりません。")
