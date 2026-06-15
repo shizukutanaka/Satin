@@ -49,14 +49,27 @@ except ImportError:
     _spec_obj.loader.exec_module(_i18n_mod)
     I18N = _i18n_mod.I18N
 
+def _no_cache(response):
+    """会話・感情データは個人情報。ブラウザキャッシュへの保存を禁止する。
+
+    全ルートに after_request で適用する。Flask 未使用時でも参照可能にするため
+    Flask 依存ブロックの外に定義する。
+    """
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+
 if _FLASK_AVAILABLE:
     app = Flask(__name__)
     # ハードコードされた秘密鍵はセッション/CSRF 偽造を許す。環境変数を優先し、
     # 未設定ならプロセス毎のランダム値にフォールバックする。
     app.secret_key = os.environ.get('SATIN_DASHBOARD_SECRET') or os.urandom(24).hex()
+    app.after_request(_no_cache)
 else:
     class _NoopApp:
         def route(self, *a, **kw): return lambda f: f
+        def after_request(self, f): return f
         secret_key = ""
     app = _NoopApp()  # type: ignore
 

@@ -188,5 +188,63 @@ class SSTIRegressionTests(unittest.TestCase):
         self.assertNotIn(">XXX<", rendered)
 
 
+class NoCacheHeaderTests(unittest.TestCase):
+    """すべてのレスポンスに Cache-Control: no-store が含まれること。
+    会話・感情データはブラウザキャッシュに保存されてはならない（個人情報保護）。
+
+    Flask 未インストール環境では _no_cache() 関数を直接テストする。
+    """
+
+    def _get_no_cache_fn(self):
+        """after_request フック関数を取得する。Flask 無しでも動作する。"""
+        # Flask ありなら app.after_request で登録済みの関数を使う。
+        # Flask 無しでも dashboard モジュール内で定義された _no_cache を参照する。
+        return getattr(dashboard, '_no_cache', None)
+
+    def test_no_cache_function_exists(self):
+        fn = self._get_no_cache_fn()
+        self.assertIsNotNone(fn, "_no_cache after_request hook must exist in dashboard")
+
+    def test_no_cache_sets_cache_control_no_store(self):
+        fn = self._get_no_cache_fn()
+        if fn is None:
+            self.skipTest("_no_cache not found")
+
+        class _MockResponse:
+            def __init__(self):
+                self.headers = {}
+
+        resp = _MockResponse()
+        result = fn(resp)
+        self.assertIs(result, resp)
+        self.assertIn("no-store", result.headers.get("Cache-Control", ""))
+
+    def test_no_cache_sets_pragma(self):
+        fn = self._get_no_cache_fn()
+        if fn is None:
+            self.skipTest("_no_cache not found")
+
+        class _MockResponse:
+            def __init__(self):
+                self.headers = {}
+
+        resp = _MockResponse()
+        fn(resp)
+        self.assertEqual(resp.headers.get("Pragma"), "no-cache")
+
+    def test_no_cache_includes_must_revalidate(self):
+        fn = self._get_no_cache_fn()
+        if fn is None:
+            self.skipTest("_no_cache not found")
+
+        class _MockResponse:
+            def __init__(self):
+                self.headers = {}
+
+        resp = _MockResponse()
+        fn(resp)
+        self.assertIn("must-revalidate", resp.headers.get("Cache-Control", ""))
+
+
 if __name__ == "__main__":
     unittest.main()
