@@ -210,6 +210,35 @@ class RunChatHistoryTests(unittest.TestCase):
         )
         self.assertTrue(any("まだ会話履歴" in line for line in d.out))
 
+    def test_search_finds_matching_entry(self):
+        d = _Driver(["hello", "/search hello"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=self.log,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("hello" in line and "You" in line for line in d.out))
+
+    def test_search_no_match_shows_message(self):
+        d = _Driver(["hello", "/search zzznomatch"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=self.log,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("見つかりませんでした" in line for line in d.out))
+
+    def test_search_no_query_shows_usage(self):
+        d = _Driver(["/search"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=self.log,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("/search" in line for line in d.out))
+
+    def test_search_unavailable_without_log(self):
+        outs = []
+        persona_cli._print_search(None, "hello", outs.append)
+        self.assertTrue(any("利用できません" in line for line in outs))
+
 
 class MoodIntegrationTests(unittest.TestCase):
     """run_chat updates the injected mood tracker and exposes /mood."""

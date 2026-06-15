@@ -10,13 +10,14 @@
 依存は標準ライブラリのみ。input/output 関数を注入できるため完全にテスト可能。
 
 コマンド:
-  /help          コマンド一覧
-  /history       会話履歴の直近を表示
-  /mood          好感度レベルを表示
-  /reset-mood    好感度をニュートラルにリセット
-  /stats         会話統計を表示
-  /name          ペルソナ名を表示
-  /quit          終了（/exit, /q も同じ）
+  /help               コマンド一覧
+  /history            会話履歴の直近を表示
+  /search <キーワード> 会話履歴をキーワード検索（アーカイブ含む）
+  /mood               好感度レベルを表示
+  /reset-mood         好感度をニュートラルにリセット
+  /stats              会話統計を表示
+  /name               ペルソナ名を表示
+  /quit               終了（/exit, /q も同じ）
 """
 from __future__ import annotations
 
@@ -73,8 +74,8 @@ def respond_to(
 
 def _help_text() -> str:
     return (
-        "コマンド: /help 一覧 | /history 履歴 | /mood 好感度 | "
-        "/reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
+        "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
+        "/mood 好感度 | /reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
     )
 
 
@@ -164,6 +165,10 @@ def run_chat(
             continue
         if text.lower() == "/stats":
             _print_stats(conv_log, exchanges, lang, output_fn)
+            continue
+        if text.lower().startswith("/search"):
+            query = text[len("/search"):].strip()
+            _print_search(conv_log, query, output_fn)
             continue
 
         # 好感度を更新（指定時のみ）
@@ -272,6 +277,36 @@ def _print_history(conv_log, output_fn: Callable[[str], None]) -> None:
         return
     for line in lines:
         output_fn(line)
+
+
+def _print_search(conv_log, query: str, output_fn: Callable[[str], None]) -> None:
+    """会話ログをキーワード検索して結果を表示する（アーカイブ含む）。"""
+    if conv_log is None:
+        output_fn("(会話履歴は利用できません)")
+        return
+    if not query:
+        output_fn("使用方法: /search <キーワード>")
+        return
+    try:
+        from conversation_log import USER_EVENT_TYPES
+        from datetime import datetime as _dt
+        results = conv_log.search(query, include_archives=True)
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(検索に失敗しました)")
+        return
+    if not results:
+        output_fn(f"(「{query}」に一致する会話は見つかりませんでした)")
+        return
+    output_fn(f"「{query}」の検索結果: {len(results)} 件")
+    for ev in results[-20:]:
+        ts = ev.get("timestamp", 0)
+        try:
+            dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        except (OSError, OverflowError, ValueError):
+            dt_str = "?"
+        prefix = "You" if ev.get("event_type") in USER_EVENT_TYPES else "Avatar"
+        text = (ev.get("details") or {}).get("text", "")
+        output_fn(f"[{dt_str}] {prefix}: {text}")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
