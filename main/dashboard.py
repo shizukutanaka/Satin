@@ -865,6 +865,13 @@ def summary(i18n):
     return _render_page(content, i18n, lang, switcher)
 
 
+@app.route('/healthz')
+def healthz():
+    """ヘルスチェックエンドポイント。監視ツールやプロキシが生死確認に使う。"""
+    from flask import jsonify
+    return jsonify({"status": "ok"})
+
+
 if __name__ == '__main__':
     # debug=True は Werkzeug デバッガ経由の任意コード実行を許すため、
     # 既定では無効。SATIN_DASHBOARD_DEBUG=1 のときのみ有効化する。

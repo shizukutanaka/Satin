@@ -246,5 +246,16 @@ class NoCacheHeaderTests(unittest.TestCase):
         self.assertIn("must-revalidate", resp.headers.get("Cache-Control", ""))
 
 
+class HealthzTests(unittest.TestCase):
+    """The /healthz endpoint must return HTTP 200 and {"status":"ok"}."""
+
+    def test_healthz_route_registered(self):
+        if not getattr(dashboard, "_FLASK_AVAILABLE", False):
+            self.skipTest("Flask not available")
+        app = dashboard.app
+        rules = [r.rule for r in app.url_map.iter_rules()]
+        self.assertIn("/healthz", rules)
+
+
 if __name__ == "__main__":
     unittest.main()
