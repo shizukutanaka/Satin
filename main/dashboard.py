@@ -338,34 +338,28 @@ def conversation(i18n):
         en='selected' if lang.startswith('en') else '',
         ja='selected' if not lang.startswith('en') else '',
     )
+    from conversation_log import ConversationLog
     exchanges = []
-    if os.path.exists(event_log_path):
-        with open(event_log_path, encoding='utf-8') as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    ev = json.loads(line)
-                    et = ev.get('event_type', '')
-                    if et not in _USER_TYPES and et not in _AVATAR_TYPES:
-                        continue
-                    ts = datetime.fromtimestamp(ev['timestamp']).strftime('%H:%M:%S')
-                    speaker = (
-                        i18n.t('you', 'You') if et in _USER_TYPES
-                        else i18n.t('avatar', 'Avatar')
-                    )
-                    details = ev.get('details') or {}
-                    text = details.get('text', '') if isinstance(details, dict) else str(details)
-                    exchanges.append({'ts': ts, 'speaker': speaker, 'text': text})
-                except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-                    continue
+    for ev in ConversationLog(event_log_path).search("", n=100, include_archives=True):
+        try:
+            et = ev.get('event_type', '')
+            ts = datetime.fromtimestamp(ev['timestamp']).strftime('%H:%M:%S')
+            speaker = (
+                i18n.t('you', 'You') if et in _USER_TYPES
+                else i18n.t('avatar', 'Avatar')
+            )
+            details = ev.get('details') or {}
+            text = details.get('text', '') if isinstance(details, dict) else str(details)
+            exchanges.append({'ts': ts, 'speaker': speaker, 'text': text})
+        except (KeyError, ValueError, TypeError, OSError):
+            continue
     title = i18n.t('conversation', 'Chat History')
     content = f'<h3>{_html.escape(title)}</h3>'
     if not exchanges:
         content += f'<p>{_html.escape(i18n.t("no_conversation", "No conversation history yet."))}</p>'
     else:
         content += '<table border=0 cellpadding=6 cellspacing=2 style="width:100%">'
-        for ex in exchanges[-100:]:
+        for ex in exchanges:
             is_user = ex['speaker'] == i18n.t('you', 'You')
             align = 'left' if is_user else 'right'
             bg = '#e8f4fd' if is_user else '#f0fde8'
