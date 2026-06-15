@@ -61,22 +61,44 @@ def _default_mood_history() -> str:
 # 集計コア
 # ---------------------------------------------------------------------------
 
-def _load_jsonl(path: str) -> List[Dict]:
-    """JSONL ファイルをロードし、デコード失敗行はスキップする。"""
+def _load_jsonl(path: str, include_archives: bool = False) -> List[Dict]:
+    """JSONL ファイルをロードし、デコード失敗行はスキップする。
+
+    include_archives=True のとき、ローテートされた <path>.<timestamp>.gz
+    アーカイブも古い順に読み込む（daily_summary での「昨日のサマリー」が
+    ローテーション後もゼロにならないようにする）。
+    """
     entries: List[Dict] = []
-    if not os.path.exists(path):
-        return entries
-    try:
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
+
+    def _collect(line: str) -> None:
+        if not line.strip():
+            return
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+
+    if include_archives:
+        try:
+            import gzip
+            from conversation_log import _find_archives
+            for gz_path in _find_archives(path):
                 try:
-                    entries.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except Exception as e:
-        logger.warning("Failed to load %s: %s", path, e)
+                    with gzip.open(gz_path, "rt", encoding="utf-8", errors="replace") as fh:
+                        for line in fh:
+                            _collect(line)
+                except Exception as e:
+                    logger.debug("アーカイブ読み込みをスキップ (%s): %s", gz_path, e)
+        except Exception as e:
+            logger.debug("アーカイブ検索に失敗: %s", e)
+
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    _collect(line)
+        except Exception as e:
+            logger.warning("Failed to load %s: %s", path, e)
     return entries
 
 
@@ -117,7 +139,9 @@ def daily_summary(
     mood_hist = mood_history_path or _default_mood_history()
 
     # ── 会話イベント集計 ──────────────────────────────────────────────────
-    events = _load_jsonl(event_log)
+    # include_archives=True でローテート済みアーカイブも集計（昨日が rotation
+    # 直後でも "0 件" とならないようにする）。
+    events = _load_jsonl(event_log, include_archives=True)
     day_events = [
         ev for ev in events
         if _date_str(ev.get("timestamp", 0)) == date_key
