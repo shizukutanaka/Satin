@@ -660,6 +660,9 @@ def mood_history(i18n):
 def _conversation_stats(log_path: str) -> dict:
     """JSONL ログから会話統計を集計して辞書で返す（Flask 非依存）。
 
+    ローテートされた .gz アーカイブも含む全期間の統計を返す。
+    アーカイブを無視すると、ローテーション後に統計グラフが空になる問題を防ぐ。
+
     Returns:
         {
           "total_user": int,
@@ -670,31 +673,27 @@ def _conversation_stats(log_path: str) -> dict:
         }
     """
     from collections import defaultdict
+    from conversation_log import ConversationLog
     total_user = 0
     total_avatar = 0
     per_day: dict = defaultdict(int)
     per_hour: dict = defaultdict(int)
-    if os.path.exists(log_path):
-        try:
-            with open(log_path, encoding='utf-8') as fh:
-                for line in fh:
-                    if not line.strip():
-                        continue
-                    try:
-                        ev = json.loads(line)
-                        et = ev.get('event_type', '')
-                        ts = ev.get('timestamp', 0)
-                        if et in _USER_TYPES:
-                            total_user += 1
-                            dt = datetime.fromtimestamp(ts)
-                            per_day[dt.strftime('%Y-%m-%d')] += 1
-                            per_hour[dt.hour] += 1
-                        elif et in _AVATAR_TYPES:
-                            total_avatar += 1
-                    except (json.JSONDecodeError, KeyError, ValueError, OSError, OverflowError):
-                        continue
-        except OSError:
-            pass
+    try:
+        for ev in ConversationLog(log_path).search("", include_archives=True):
+            et = ev.get('event_type', '')
+            ts = ev.get('timestamp', 0)
+            try:
+                if et in _USER_TYPES:
+                    total_user += 1
+                    dt = datetime.fromtimestamp(ts)
+                    per_day[dt.strftime('%Y-%m-%d')] += 1
+                    per_hour[dt.hour] += 1
+                elif et in _AVATAR_TYPES:
+                    total_avatar += 1
+            except (ValueError, OSError, OverflowError):
+                continue
+    except Exception:
+        pass
     peak_hour = max(per_hour, key=per_hour.get) if per_hour else None
     return {
         "total_user": total_user,
