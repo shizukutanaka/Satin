@@ -282,6 +282,13 @@ affinity 50 (neutral):  Satin: お昼だね。ちゃんと休憩してる？
 affinity 90 (close):    Satin: やっと来てくれた！今日は何して遊ぶ？
 ```
 
+The relationship also has **memory of time**. Satin records when you first met
+and, at greeting time, celebrates relationship anniversaries — 7, 30, 100 and 180
+days, then yearly (*「今日で出会ってから30日だね。出会えて本当によかった！」*). Each
+milestone is celebrated only once. If you've been away for over a day it also says
+it missed you, and a `/reset-mood` (or the dashboard's reset) starts the
+relationship over from scratch.
+
 ### Management CLI (`manage_satin`)
 
 A headless admin tool for inspecting and maintaining Satin's state — useful on a

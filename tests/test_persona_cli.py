@@ -345,6 +345,27 @@ class MoodIntegrationTests(unittest.TestCase):
         combined = " ".join(reply_lines)
         self.assertGreater(len(combined), len("Mimi: OK"))
 
+    def test_anniversary_message_shown_at_greeting(self):
+        """A relationship milestone is celebrated in the greeting."""
+        import time
+        from mood import MoodTracker
+        m = MoodTracker(affinity=60, interactions=5)
+        m._first_interaction_time = time.time() - 30 * 86400  # 30 days ago
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "dialogue": {"en": {"greeting": {
+                "morning": ["GM"], "afternoon": ["GM"],
+                "evening": ["GM"], "night": ["GM"]}}},
+            "responses": {"en": {"rules": [], "fallback": ["FB"]}},
+        }
+        persona = Persona.from_dict(data, lang="en")
+        d = _Driver([])
+        persona_cli.run_chat(
+            persona=persona, conv_log=None, mood=m,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+        )
+        self.assertTrue(any("30 days" in line for line in d.out))
+
 
 class AbsenceMessageTests(unittest.TestCase):
     """_absence_message() emits nothing for recent/no interactions, message for long absence."""

@@ -257,5 +257,27 @@ class HealthzTests(unittest.TestCase):
         self.assertIn("/healthz", rules)
 
 
+class MoodResetPersistenceTests(unittest.TestCase):
+    """Regression: mood_reset referenced an unimported name (_default_mood_path),
+    so the save() was silently swallowed and resets were never persisted to disk.
+    The dashboard must expose a usable _mood_path callable for persistence."""
+
+    def test_mood_path_helper_imported(self):
+        # mood is pure-stdlib and importable in tests, so the alias must resolve
+        # to a callable (not None and not an undefined name).
+        self.assertTrue(callable(getattr(dashboard, "_mood_path", None)))
+
+    def test_module_does_not_reference_undefined_mood_path_name(self):
+        import inspect
+        src = inspect.getsource(dashboard)
+        # _default_mood_path was never imported into dashboard; the code must use
+        # the imported alias _mood_path instead. Only the import line may mention
+        # the original name (as "_default_mood_path as _mood_path").
+        for line in src.splitlines():
+            if "_default_mood_path" in line:
+                self.assertIn("as _mood_path", line,
+                              f"Undefined name used outside import: {line!r}")
+
+
 if __name__ == "__main__":
     unittest.main()

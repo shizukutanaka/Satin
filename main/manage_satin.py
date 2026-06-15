@@ -190,6 +190,9 @@ def cmd_mood_reset() -> None:
         tracker.affinity = AFFINITY_START
         tracker.interactions = 0
         tracker._last_interaction_time = 0.0
+        # リセットは「関係の仕切り直し」: 出会いの起点と記念日マーカーも消す
+        tracker._first_interaction_time = 0.0
+        tracker._last_anniversary_days = 0
         path = _default_mood_path()
         tracker.save(path)
         reset_mood_tracker()

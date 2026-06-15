@@ -680,5 +680,110 @@ class AbsenceMessageTests(unittest.TestCase):
         self.assertIn("3 days", msg)
 
 
+class FirstInteractionTimeTests(unittest.TestCase):
+    """register() records the relationship start; it round-trips through to_dict."""
+
+    def setUp(self):
+        reset_mood_tracker()
+
+    def tearDown(self):
+        reset_mood_tracker()
+
+    def test_register_sets_first_interaction_time(self):
+        m = MoodTracker()
+        self.assertEqual(m._first_interaction_time, 0.0)
+        m.register("hello")
+        self.assertGreater(m._first_interaction_time, 0.0)
+
+    def test_first_interaction_time_does_not_change_on_second_register(self):
+        m = MoodTracker()
+        m.register("hello")
+        first = m._first_interaction_time
+        m.register("again")
+        self.assertEqual(m._first_interaction_time, first)
+
+    def test_first_interaction_time_roundtrips(self):
+        m = MoodTracker()
+        m.register("hi")
+        loaded = MoodTracker.from_dict(m.to_dict())
+        self.assertEqual(loaded._first_interaction_time, m._first_interaction_time)
+
+    def test_last_anniversary_days_roundtrips(self):
+        m = MoodTracker()
+        m._last_anniversary_days = 30
+        loaded = MoodTracker.from_dict(m.to_dict())
+        self.assertEqual(loaded._last_anniversary_days, 30)
+
+
+class AnniversaryMessageTests(unittest.TestCase):
+    """Tests for anniversary_message() shared helper."""
+
+    def setUp(self):
+        reset_mood_tracker()
+
+    def tearDown(self):
+        reset_mood_tracker()
+
+    def _make_tracker(self, days_ago: float, interactions: int = 5) -> MoodTracker:
+        import time
+        t = MoodTracker(interactions=interactions)
+        t._first_interaction_time = time.time() - days_ago * 86400
+        return t
+
+    def test_no_message_before_first_milestone(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=3)
+        self.assertEqual(anniversary_message(t), "")
+
+    def test_no_message_when_interactions_zero(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=30, interactions=0)
+        self.assertEqual(anniversary_message(t), "")
+
+    def test_no_message_when_first_ts_zero(self):
+        from mood import anniversary_message
+        t = MoodTracker(interactions=5)
+        t._first_interaction_time = 0.0
+        self.assertEqual(anniversary_message(t), "")
+
+    def test_message_at_7_days_ja(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=7)
+        msg = anniversary_message(t, lang="ja")
+        self.assertIn("7日", msg)
+
+    def test_message_at_30_days_en(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=35)
+        msg = anniversary_message(t, lang="en")
+        self.assertIn("30 days", msg)
+
+    def test_one_year_message_ja(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=365)
+        msg = anniversary_message(t, lang="ja")
+        self.assertIn("1年", msg)
+
+    def test_two_year_message_en(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=730)
+        msg = anniversary_message(t, lang="en")
+        self.assertIn("2 years", msg)
+
+    def test_same_milestone_not_repeated(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=30)
+        first = anniversary_message(t, lang="ja")
+        self.assertNotEqual(first, "")
+        second = anniversary_message(t, lang="ja")
+        self.assertEqual(second, "")
+
+    def test_marker_advances_to_milestone(self):
+        from mood import anniversary_message
+        t = self._make_tracker(days_ago=100)
+        anniversary_message(t, lang="ja")
+        self.assertEqual(t._last_anniversary_days, 100)
+
+
 if __name__ == "__main__":
     unittest.main()

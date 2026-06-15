@@ -10,6 +10,7 @@ try:
         affinity_label,
         load_mood_history as _load_mood_history,
         _default_mood_history_path as _mood_history_path,
+        _default_mood_path as _mood_path,
         mood_history_to_csv as _mood_history_to_csv,
     )
 except Exception:
@@ -17,6 +18,7 @@ except Exception:
     affinity_label = None
     _load_mood_history = None
     _mood_history_path = None
+    _mood_path = None
     _mood_history_to_csv = None
 
 try:
@@ -548,8 +550,11 @@ def mood_reset(i18n):
             tracker.affinity = AFFINITY_START
             tracker.interactions = 0
             tracker._last_interaction_time = 0.0
-            if _default_mood_path is not None:
-                tracker.save(_default_mood_path())
+            # リセットは「関係の仕切り直し」: 出会いの起点と記念日マーカーも消す
+            tracker._first_interaction_time = 0.0
+            tracker._last_anniversary_days = 0
+            if _mood_path is not None:
+                tracker.save(_mood_path())
         except Exception:
             pass
     if redirect is not None and url_for is not None:

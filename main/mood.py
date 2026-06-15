@@ -114,6 +114,8 @@ class MoodTracker:
         negative_delta: float = _DEFAULT_NEGATIVE_DELTA,
         interactions: int = 0,
         last_interaction_time: float = 0.0,
+        first_interaction_time: float = 0.0,
+        last_anniversary_days: int = 0,
     ):
         self.affinity = _clamp(float(affinity))
         self.interactions = int(interactions)
@@ -122,6 +124,10 @@ class MoodTracker:
         self.positive_delta = float(positive_delta)
         self.negative_delta = float(negative_delta)
         self._last_interaction_time = float(last_interaction_time)
+        # 関係が始まった時刻（初回 register 時に記録）。0.0 = 未交流。
+        self._first_interaction_time = float(first_interaction_time)
+        # 既に祝った記念日節目の最大日数（重複祝いを防ぐ）。
+        self._last_anniversary_days = int(last_anniversary_days)
 
     # ---- 状態参照 -------------------------------------------------------- #
     @property
@@ -160,7 +166,11 @@ class MoodTracker:
         before = self.affinity
         self.affinity = _clamp(self.affinity + delta)
         self.interactions += 1
-        self._last_interaction_time = time.time()
+        now = time.time()
+        # 初回交流なら関係の始まりとして記録（記念日計算の起点）
+        if self._first_interaction_time <= 0:
+            self._first_interaction_time = now
+        self._last_interaction_time = now
         return self.affinity - before
 
     def decay(
@@ -205,6 +215,8 @@ class MoodTracker:
             "affinity": self.affinity,
             "interactions": self.interactions,
             "last_interaction_time": self._last_interaction_time,
+            "first_interaction_time": self._first_interaction_time,
+            "last_anniversary_days": self._last_anniversary_days,
         }
 
     def save(self, path: str) -> bool:
@@ -297,6 +309,8 @@ class MoodTracker:
             affinity=data.get("affinity", AFFINITY_START),
             interactions=data.get("interactions", 0),
             last_interaction_time=data.get("last_interaction_time", 0.0),
+            first_interaction_time=data.get("first_interaction_time", 0.0),
+            last_anniversary_days=data.get("last_anniversary_days", 0),
             **kwargs,
         )
 
@@ -530,6 +544,63 @@ def absence_message(tracker: "MoodTracker", lang: str = "ja") -> str:
         if elapsed_days == 1:
             return "昨日ぶりだね。会いたかったよ！"
         return f"{elapsed_days}日ぶりだね。ずっと待ってたよ！"
+
+
+# --------------------------------------------------------------------------- #
+# 関係記念日メッセージ（初めて会ってからの節目を祝う）
+# --------------------------------------------------------------------------- #
+
+# 節目（日数）。これ以降は 1 年ごと（365 の倍数）に祝う。
+_ANNIVERSARY_MILESTONES = (7, 30, 100, 180, 365)
+
+
+def _anniversary_for_days(elapsed_days: int) -> Optional[int]:
+    """elapsed_days までに到達した最大の記念日節目を返す。無ければ None。"""
+    if elapsed_days < _ANNIVERSARY_MILESTONES[0]:
+        return None
+    reached = [m for m in _ANNIVERSARY_MILESTONES if m <= elapsed_days]
+    best = max(reached) if reached else 0
+    # 365 日以降は 1 年ごと（730, 1095, ...）も節目に含める
+    if elapsed_days >= 365:
+        years = elapsed_days // 365
+        best = max(best, years * 365)
+    return best or None
+
+
+def anniversary_message(tracker: "MoodTracker", lang: str = "ja") -> str:
+    """初めて会ってからの節目（記念日）に達していれば祝うメッセージを返す。
+
+    節目: 7 / 30 / 100 / 180 / 365 日、以降は 1 年ごと。
+    同じ節目を何度も祝わないよう、達成済みの最大節目を tracker に記録する
+    （副作用あり。呼び出し側が後で save() することで永続化される）。
+    初回・会話回数 0・節目未到達の場合は空文字。
+    """
+    try:
+        first_ts = tracker._first_interaction_time
+        interactions = tracker.interactions
+    except Exception:
+        return ""
+    if first_ts <= 0 or interactions == 0:
+        return ""
+    elapsed_days = int((time.time() - first_ts) / 86400.0)
+    milestone = _anniversary_for_days(elapsed_days)
+    if milestone is None:
+        return ""
+    # 既に祝った節目なら何もしない
+    if getattr(tracker, "_last_anniversary_days", 0) >= milestone:
+        return ""
+    tracker._last_anniversary_days = milestone
+
+    is_en = str(lang).lower().startswith("en")
+    if milestone % 365 == 0:
+        years = milestone // 365
+        if is_en:
+            unit = "year" if years == 1 else "years"
+            return f"Today marks {years} {unit} since we first met. Thank you for being with me!"
+        return f"今日で出会って{years}年だね。ずっと一緒にいてくれてありがとう！"
+    if is_en:
+        return f"It's been {milestone} days since we first met. I'm so glad we found each other!"
+    return f"今日で出会ってから{milestone}日だね。出会えて本当によかった！"
 
 
 # --------------------------------------------------------------------------- #

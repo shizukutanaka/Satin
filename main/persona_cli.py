@@ -35,12 +35,14 @@ try:
     from mood import (
         MoodTracker, get_mood_tracker,
         absence_message as _absence_message_fn,
+        anniversary_message as _anniversary_message_fn,
         check_level_milestone as _check_level_milestone,
     )
 except Exception:  # pragma: no cover - defensive
     MoodTracker = None  # type: ignore
     get_mood_tracker = None
     _absence_message_fn = None  # type: ignore
+    _anniversary_message_fn = None  # type: ignore
     _check_level_milestone = None  # type: ignore
 
 
@@ -126,6 +128,14 @@ def run_chat(
         greeting = persona.greeting(level=level)
         if greeting:
             output_fn(f"{name}: {greeting}")
+        # 出会ってからの記念日（節目）に達していたら祝う
+        if mood is not None and _anniversary_message_fn is not None:
+            try:
+                anniv = _anniversary_message_fn(mood, lang=lang)
+                if anniv:
+                    output_fn(f"{name}: {anniv}")
+            except Exception:  # pragma: no cover - defensive
+                pass
     output_fn(_help_text())
 
     exchanges = 0
@@ -231,6 +241,9 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
         mood.affinity = AFFINITY_START
         mood.interactions = 0
         mood._last_interaction_time = 0.0
+        # リセットは「関係の仕切り直し」: 出会いの起点と記念日マーカーも消す
+        mood._first_interaction_time = 0.0
+        mood._last_anniversary_days = 0
         if lang == "en":
             output_fn(f"Affinity reset to neutral ({int(AFFINITY_START)}/100).")
         else:
