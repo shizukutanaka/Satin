@@ -153,6 +153,39 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(data["affinity"], 33)
 
 
+class AdjustTests(unittest.TestCase):
+    def test_adjust_adds_affinity(self):
+        m = MoodTracker(affinity=50)
+        delta = m.adjust(8)
+        self.assertEqual(delta, 8.0)
+        self.assertEqual(m.affinity, 58)
+
+    def test_adjust_negative(self):
+        m = MoodTracker(affinity=50)
+        m.adjust(-10)
+        self.assertEqual(m.affinity, 40)
+
+    def test_adjust_clamps_high(self):
+        m = MoodTracker(affinity=98)
+        m.adjust(50)
+        self.assertEqual(m.affinity, 100)
+
+    def test_adjust_clamps_low(self):
+        m = MoodTracker(affinity=3)
+        m.adjust(-50)
+        self.assertEqual(m.affinity, 0)
+
+    def test_adjust_invalid_is_noop(self):
+        m = MoodTracker(affinity=50)
+        self.assertEqual(m.adjust("nope"), 0.0)
+        self.assertEqual(m.affinity, 50)
+
+    def test_adjust_does_not_touch_interactions(self):
+        m = MoodTracker(affinity=50, interactions=3)
+        m.adjust(5)
+        self.assertEqual(m.interactions, 3)
+
+
 class DecayTests(unittest.TestCase):
     def test_decay_reduces_affinity(self):
         m = MoodTracker(affinity=80, interactions=5)

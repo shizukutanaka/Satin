@@ -14,7 +14,8 @@
   /history            会話履歴の直近を表示
   /search <キーワード> 会話履歴をキーワード検索（アーカイブ含む）
   /callme <名前>       アバターに呼んでほしい名前を覚えさせる
-  /whoami             今記憶している呼び名を表示
+  /birthday MM-DD      誕生日を覚えさせる（当日に祝ってくれる）
+  /whoami             今記憶している呼び名・誕生日を表示
   /mood               好感度レベルを表示
   /reset-mood         好感度をニュートラルにリセット
   /stats              会話統計を表示
@@ -57,6 +58,17 @@ except Exception:  # pragma: no cover - defensive
     _personalize = None  # type: ignore
     _profile_path = None  # type: ignore
 
+try:
+    from special_days import (
+        seasonal_greeting as _seasonal_greeting,
+        birthday_greeting as _birthday_greeting,
+        BIRTHDAY_AFFINITY_BONUS as _BIRTHDAY_BONUS,
+    )
+except Exception:  # pragma: no cover - defensive
+    _seasonal_greeting = None  # type: ignore
+    _birthday_greeting = None  # type: ignore
+    _BIRTHDAY_BONUS = 0.0
+
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
 _HISTORY_DEFAULT = 10
@@ -91,8 +103,8 @@ def respond_to(
 def _help_text() -> str:
     return (
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
-        "/callme <名前> 呼び名設定 | /whoami 呼び名確認 | /mood 好感度 | "
-        "/reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
+        "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | /whoami 確認 | "
+        "/mood 好感度 | /reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
     )
 
 
@@ -170,6 +182,30 @@ def run_chat(
                     _say(anniv)
             except Exception:  # pragma: no cover - defensive
                 pass
+        # 誕生日なら祝う（年 1 回、好感度ボーナス付き）— 恋愛ゲームの定番演出
+        if profile is not None and _birthday_greeting is not None:
+            try:
+                bday = _birthday_greeting(profile, lang=lang)
+                if bday:
+                    _say(bday)
+                    if mood is not None and _BIRTHDAY_BONUS:
+                        try:
+                            mood.adjust(_BIRTHDAY_BONUS)
+                        except Exception:  # pragma: no cover - defensive
+                            pass
+                    # 祝った年フラグ等を永続化（重複祝いを防ぐ）
+                    if _profile_path is not None:
+                        profile.save(_profile_path())
+            except Exception:  # pragma: no cover - defensive
+                pass
+        # 季節イベント（正月・バレンタイン・クリスマス等）の特別あいさつ
+        if _seasonal_greeting is not None:
+            try:
+                season = _seasonal_greeting(lang=lang)
+                if season:
+                    _say(season)
+            except Exception:  # pragma: no cover - defensive
+                pass
     output_fn(_help_text())
 
     exchanges = 0
@@ -201,6 +237,10 @@ def run_chat(
         if text.lower().startswith("/callme"):
             new_name = text[len("/callme"):].strip()
             _set_user_name(profile, new_name, name, lang, output_fn)
+            continue
+        if text.lower().startswith("/birthday"):
+            new_bday = text[len("/birthday"):].strip()
+            _set_birthday(profile, new_bday, name, lang, output_fn)
             continue
         if text.lower() == "/whoami":
             _print_user_name(profile, lang, output_fn)
@@ -328,8 +368,37 @@ def _set_user_name(profile, new_name: str, avatar_name: str, lang: str,
         output_fn(f"{avatar_name}: わかった、これからは{saved}って呼ぶね！")
 
 
+def _set_birthday(profile, new_bday: str, avatar_name: str, lang: str,
+                  output_fn: Callable[[str], None]) -> None:
+    """ユーザーの誕生日（MM-DD）を設定して永続化し、アバターが確認の返事をする。"""
+    if profile is None:
+        output_fn("(プロファイルは利用できません)")
+        return
+    if not new_bday:
+        output_fn("使用方法: /birthday MM-DD （例: /birthday 06-15）")
+        return
+    try:
+        saved = profile.set_birthday(new_bday)
+        if saved and _profile_path is not None:
+            profile.save(_profile_path())
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(誕生日の保存に失敗しました)")
+        return
+    if not saved:
+        if lang == "en":
+            output_fn("Please use MM-DD, e.g. /birthday 06-15.")
+        else:
+            output_fn("MM-DD 形式で教えてね。例: /birthday 06-15")
+        return
+    if lang == "en":
+        output_fn(f"{avatar_name}: Got it — your birthday is {saved}. "
+                  f"I won't forget it!")
+    else:
+        output_fn(f"{avatar_name}: 覚えた、誕生日は{saved}だね。忘れないよ！")
+
+
 def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> None:
-    """現在記憶している呼び名を表示する。"""
+    """現在記憶している呼び名・誕生日を表示する。"""
     if profile is None:
         output_fn("(プロファイルは利用できません)")
         return
@@ -343,6 +412,12 @@ def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> No
             output_fn("I don't know your name yet. Try /callme <name>.")
         else:
             output_fn("まだ呼び名を知らないよ。/callme <名前> で教えてね。")
+    bday = getattr(profile, "birthday", "")
+    if bday:
+        if lang == "en":
+            output_fn(f"Your birthday: {bday}")
+        else:
+            output_fn(f"あなたの誕生日: {bday}")
 
 
 def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:

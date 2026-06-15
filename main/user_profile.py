@@ -36,6 +36,28 @@ _MAX_NAME_LEN = 40
 _NEUTRAL_ADDRESS = {"ja": "きみ", "en": "you"}
 
 
+def _sanitize_birthday(s: Optional[str]) -> str:
+    """誕生日を ``MM-DD`` 正規形へ整える。不正なら空文字。
+
+    ``MM-DD`` / ``MM/DD``（1〜2 桁）を受け付け、実在する日付かを検証する
+    （2 月 29 日も許可）。曜日や年は持たない（毎年巡る日付として扱う）。
+    """
+    if not s:
+        return ""
+    import re
+    text = str(s).strip().replace("/", "-")
+    m = re.fullmatch(r"(\d{1,2})-(\d{1,2})", text)
+    if not m:
+        return ""
+    month, day = int(m.group(1)), int(m.group(2))
+    try:
+        import datetime
+        datetime.date(2000, month, day)  # 2000 はうるう年: 02-29 を許可
+    except ValueError:
+        return ""
+    return f"{month:02d}-{day:02d}"
+
+
 def _sanitize_name(name: Optional[str]) -> str:
     """ユーザー名を安全な 1 行文字列へ整える。
 
@@ -55,13 +77,20 @@ def _sanitize_name(name: Optional[str]) -> str:
 class UserProfile:
     """ユーザーの呼び名と任意メモを保持・永続化するクラス。"""
 
-    def __init__(self, name: str = "", note: str = ""):
+    def __init__(self, name: str = "", note: str = "",
+                 birthday: str = "", last_birthday_year: int = 0):
         self.name = _sanitize_name(name)
         self.note = _sanitize_name(note)
+        # 誕生日（MM-DD、毎年巡る）と、最後に祝った年（重複祝い防止）
+        self.birthday = _sanitize_birthday(birthday)
+        self._last_birthday_year = int(last_birthday_year or 0)
 
     # ---- 状態参照 -------------------------------------------------------- #
     def has_name(self) -> bool:
         return bool(self.name)
+
+    def has_birthday(self) -> bool:
+        return bool(self.birthday)
 
     def address(self, lang: str = "ja") -> str:
         """呼びかけに使う文字列を返す。名前未設定なら中立的な代名詞。"""
@@ -76,14 +105,30 @@ class UserProfile:
         self.name = _sanitize_name(name)
         return self.name
 
+    def set_birthday(self, birthday: str) -> str:
+        """誕生日を設定し、整形後の値（MM-DD）を返す。不正なら空文字。"""
+        new = _sanitize_birthday(birthday)
+        if new != self.birthday:
+            # 誕生日を変えたら「今年祝った」フラグもリセット（再度祝えるように）
+            self._last_birthday_year = 0
+        self.birthday = new
+        return self.birthday
+
     def clear(self) -> None:
         """プロファイルを空にする（メモリ上のみ。削除は呼び出し側で）。"""
         self.name = ""
         self.note = ""
+        self.birthday = ""
+        self._last_birthday_year = 0
 
     # ---- 永続化 ---------------------------------------------------------- #
     def to_dict(self) -> Dict:
-        return {"name": self.name, "note": self.note}
+        return {
+            "name": self.name,
+            "note": self.note,
+            "birthday": self.birthday,
+            "last_birthday_year": self._last_birthday_year,
+        }
 
     def save(self, path: str) -> bool:
         """プロファイルを JSON へ保存する。失敗しても例外は送出しない。"""
@@ -105,7 +150,12 @@ class UserProfile:
     def from_dict(cls, data: Dict) -> "UserProfile":
         if not isinstance(data, dict):
             data = {}
-        return cls(name=data.get("name", ""), note=data.get("note", ""))
+        return cls(
+            name=data.get("name", ""),
+            note=data.get("note", ""),
+            birthday=data.get("birthday", ""),
+            last_birthday_year=data.get("last_birthday_year", 0),
+        )
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> "UserProfile":

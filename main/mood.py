@@ -173,6 +173,20 @@ class MoodTracker:
         self._last_interaction_time = now
         return self.affinity - before
 
+    def adjust(self, delta: float) -> float:
+        """好感度を delta だけ直接増減して 0–100 にクランプし、実変化量を返す。
+
+        誕生日・記念日・イベントなど、テキスト評価を経ずに関係性へ直接ボーナス／
+        ペナルティを与えたい場合に使う（register() のメッセージ計数とは独立）。
+        """
+        try:
+            d = float(delta)
+        except (TypeError, ValueError):
+            return 0.0
+        before = self.affinity
+        self.affinity = _clamp(self.affinity + d)
+        return self.affinity - before
+
     def decay(
         self,
         elapsed_seconds: float,

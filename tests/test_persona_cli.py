@@ -525,6 +525,45 @@ class UserProfileIntegrationTests(unittest.TestCase):
         )
         self.assertTrue(any("/callme" in line for line in d.out))
 
+    def test_birthday_sets_and_persists(self):
+        prof = self._profile()
+        d = _Driver(["/birthday 06-15"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertEqual(prof.birthday, "06-15")
+        loaded = self._up.UserProfile.load(self._ppath)
+        self.assertEqual(loaded.birthday, "06-15")
+
+    def test_birthday_invalid_shows_help(self):
+        prof = self._profile()
+        d = _Driver(["/birthday 99-99"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertEqual(prof.birthday, "")
+        self.assertTrue(any("MM-DD" in line for line in d.out))
+
+    def test_birthday_without_arg_shows_usage(self):
+        prof = self._profile()
+        d = _Driver(["/birthday"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("/birthday" in line for line in d.out))
+
+    def test_whoami_shows_birthday(self):
+        prof = self._profile(name="Yuki", birthday="03-03")
+        d = _Driver(["/whoami"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("03-03" in line for line in d.out))
+
     def test_whoami_unknown(self):
         prof = self._profile()
         d = _Driver(["/whoami"])

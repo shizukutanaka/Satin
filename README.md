@@ -266,6 +266,20 @@ placeholder in the persona's `follow_up`/reply lines (falling back to a neutral
 "you" / "きみ" when no name is known). The profile is wiped by
 `manage_satin data purge` along with the rest of your personal data.
 
+#### Special days (dating-sim inspired)
+
+Borrowing the most beloved mechanic of romance games (ときめきメモリアル / LovePlus
+/ otome games), the avatar marks **special days** in real time:
+
+- **Your birthday** — `/birthday MM-DD` teaches it, and on that day the avatar
+  gives a heartfelt birthday greeting (using your name) and a one-time affinity
+  boost. It celebrates only once per year and remembers across sessions.
+- **Seasonal events** — New Year, Valentine's Day, White Day, Tanabata,
+  Halloween, Christmas Eve/Day and New Year's Eve each get their own special
+  greeting at session start, so the companion feels like it lives in real time.
+
+These appear in the headless chat greeting and in the GUI autonomous greeting.
+
 ### Affinity / Mood (relationship that grows)
 
 The avatar now remembers how your relationship develops. Positive words

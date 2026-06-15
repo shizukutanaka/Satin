@@ -59,6 +59,52 @@ class SetNameTests(unittest.TestCase):
         self.assertEqual(p.note, "")
 
 
+class BirthdayTests(unittest.TestCase):
+    def test_valid_mm_dd(self):
+        self.assertEqual(UserProfile(birthday="06-15").birthday, "06-15")
+
+    def test_single_digits_normalized(self):
+        self.assertEqual(UserProfile(birthday="6-5").birthday, "06-05")
+
+    def test_slash_separator_accepted(self):
+        self.assertEqual(UserProfile(birthday="12/25").birthday, "12-25")
+
+    def test_leap_day_allowed(self):
+        self.assertEqual(UserProfile(birthday="02-29").birthday, "02-29")
+
+    def test_invalid_month_rejected(self):
+        self.assertEqual(UserProfile(birthday="13-01").birthday, "")
+
+    def test_invalid_day_rejected(self):
+        self.assertEqual(UserProfile(birthday="02-30").birthday, "")
+
+    def test_garbage_rejected(self):
+        self.assertEqual(UserProfile(birthday="not a date").birthday, "")
+
+    def test_set_birthday_returns_normalized(self):
+        p = UserProfile()
+        self.assertEqual(p.set_birthday("6-15"), "06-15")
+        self.assertTrue(p.has_birthday())
+
+    def test_changing_birthday_resets_celebrated_marker(self):
+        p = UserProfile(birthday="06-15", last_birthday_year=2026)
+        p.set_birthday("07-01")
+        self.assertEqual(p._last_birthday_year, 0)
+
+    def test_birthday_roundtrips(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "p.json")
+        try:
+            UserProfile(birthday="06-15", last_birthday_year=2026).save(path)
+            loaded = UserProfile.load(path)
+            self.assertEqual(loaded.birthday, "06-15")
+            self.assertEqual(loaded._last_birthday_year, 2026)
+        finally:
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+
+
 class PersistenceTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()

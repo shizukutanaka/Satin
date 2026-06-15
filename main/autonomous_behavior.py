@@ -51,6 +51,24 @@ try:
 except Exception:  # pragma: no cover - defensive
     _yesterday_greeting = None
 
+try:
+    from user_profile import get_user_profile as _get_user_profile, \
+        _default_profile_path as _profile_path
+except Exception:  # pragma: no cover - defensive
+    _get_user_profile = None
+    _profile_path = None
+
+try:
+    from special_days import (
+        seasonal_greeting as _seasonal_greeting,
+        birthday_greeting as _birthday_greeting,
+        BIRTHDAY_AFFINITY_BONUS as _BIRTHDAY_BONUS,
+    )
+except Exception:  # pragma: no cover - defensive
+    _seasonal_greeting = None
+    _birthday_greeting = None
+    _BIRTHDAY_BONUS = 0.0
+
 
 class AutonomousBehaviorMixin:
     REST_TEXTS = ['ふう…ちょっと休憩。', 'すこし止まります。']
@@ -115,6 +133,30 @@ class AutonomousBehaviorMixin:
                             tr.save(_mood_path())
                 except Exception as e:
                     logger.debug("記念日メッセージの生成に失敗しました: %s", e)
+            # 誕生日なら祝う（年 1 回、好感度ボーナス付き）— 恋愛ゲームの定番演出
+            if _birthday_greeting is not None and _get_user_profile is not None:
+                try:
+                    prof = _get_user_profile()
+                    bday = _birthday_greeting(prof, lang=lang)
+                    if bday:
+                        greeting = (greeting + " " + bday).strip() if greeting else bday
+                        if _get_mood_tracker is not None and _BIRTHDAY_BONUS:
+                            tr = _get_mood_tracker()
+                            tr.adjust(_BIRTHDAY_BONUS)
+                            if _mood_path is not None:
+                                tr.save(_mood_path())
+                        if _profile_path is not None:
+                            prof.save(_profile_path())
+                except Exception as e:
+                    logger.debug("誕生日メッセージの生成に失敗しました: %s", e)
+            # 季節イベント（正月・バレンタイン・クリスマス等）の特別あいさつ
+            if _seasonal_greeting is not None:
+                try:
+                    season = _seasonal_greeting(lang=lang)
+                    if season:
+                        greeting = (greeting + " " + season).strip() if greeting else season
+                except Exception as e:
+                    logger.debug("季節あいさつの生成に失敗しました: %s", e)
             # 朝（6〜10時）は昨日のアクティビティサマリーをあいさつに添える
             if _yesterday_greeting is not None:
                 import datetime as _dt

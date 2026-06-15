@@ -216,11 +216,23 @@ class PersonaIntegrationTests(unittest.TestCase):
             autonomous_behavior, "_yesterday_greeting", lambda **kw: ""
         )
         self._summary_patcher.start()
+        # Suppress date-dependent special-day greetings so equality tests are
+        # deterministic regardless of the calendar date the suite runs on.
+        self._season_patcher = mock.patch.object(
+            autonomous_behavior, "_seasonal_greeting", lambda **kw: ""
+        )
+        self._season_patcher.start()
+        self._bday_patcher = mock.patch.object(
+            autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""
+        )
+        self._bday_patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
         self._mood_patcher.stop()
         self._summary_patcher.stop()
+        self._season_patcher.stop()
+        self._bday_patcher.stop()
 
     def test_start_sets_greeting_from_persona(self):
         d = _StartStopDummy()
@@ -409,6 +421,81 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
                 d = _StartStopDummy()
                 d.start_autonomous()  # must not raise
 
+        self.assertTrue(d.is_autonomous)
+
+
+class SpecialDaysIntegrationTests(unittest.TestCase):
+    """start_autonomous appends birthday / seasonal greetings (dating-sim flavor)."""
+
+    def _greeting_dummy(self, captured):
+        class _GreetingDummy(_StartStopDummy):
+            def _on_talk_start(self, text):
+                captured.append(text)
+        return _GreetingDummy()
+
+    def test_birthday_appended_and_bonus_applied(self):
+        captured = []
+
+        class _Tracker:
+            level = "neutral"
+            adjusted = 0.0
+
+            def auto_decay(self):
+                return 0.0
+
+            def snapshot_to_history(self, p):
+                return True
+
+            def adjust(self, d):
+                self.adjusted += d
+                return d
+
+            def save(self, p):
+                return True
+
+        tracker = _Tracker()
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_mood_history_path", None), \
+             mock.patch.object(autonomous_behavior, "_mood_path", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_anniversary_message", lambda *a, **k: ""), \
+             mock.patch.object(autonomous_behavior, "_absence_message", lambda *a, **k: ""), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile", lambda: object()), \
+             mock.patch.object(autonomous_behavior, "_profile_path", None), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting",
+                               lambda *a, **k: "HAPPY_BIRTHDAY"):
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+
+        self.assertTrue(any("HAPPY_BIRTHDAY" in t for t in captured))
+        self.assertEqual(tracker.adjusted, autonomous_behavior._BIRTHDAY_BONUS)
+
+    def test_seasonal_greeting_appended(self):
+        captured = []
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting",
+                               lambda **kw: "MERRY_XMAS"):
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+        self.assertTrue(any("MERRY_XMAS" in t for t in captured))
+
+    def test_special_day_failure_does_not_break_start(self):
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting",
+                               lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))):
+            d = _StartStopDummy()
+            d.start_autonomous()  # must not raise
         self.assertTrue(d.is_autonomous)
 
 
