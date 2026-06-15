@@ -236,17 +236,18 @@ python main/persona_cli.py --lang en     # force a language, skip dep checks
 
 ```text
 Satin: こんにちは！調子はどう？
-コマンド: /help 一覧 | /history 履歴 | /name 名前 | /quit 終了
+コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | /mood 好感度 | /reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了
 You: こんにちは
 Satin: やっほー！元気だった？
 You: /quit
 Satin: またね！いつでも来てね。
 ```
 
-Commands: `/help`, `/history` (recent conversation), `/mood` (current affinity),
-`/name`, `/quit` (`/exit`, `/q`). EOF (Ctrl-D) or Ctrl-C also ends the session
-cleanly. The loop accepts injectable input/output functions, so it is fully
-unit-testable.
+Commands: `/help`, `/history` (recent conversation), `/search <keyword>` (search
+history including rotated archives), `/mood` (current affinity), `/reset-mood`
+(reset to neutral), `/stats` (conversation totals), `/name`, `/quit` (`/exit`,
+`/q`). EOF (Ctrl-D) or Ctrl-C also ends the session cleanly. The loop accepts
+injectable input/output functions, so it is fully unit-testable.
 
 ### Affinity / Mood (relationship that grows)
 
@@ -280,6 +281,40 @@ affinity 10 (distant):  Satin: あ、来たんだ。
 affinity 50 (neutral):  Satin: お昼だね。ちゃんと休憩してる？
 affinity 90 (close):    Satin: やっと来てくれた！今日は何して遊ぶ？
 ```
+
+### Management CLI (`manage_satin`)
+
+A headless admin tool for inspecting and maintaining Satin's state — useful on a
+server, over SSH, or in scripts. No GUI required.
+
+```bash
+python main/manage_satin.py validate                 # syntax + semantic config check
+python main/manage_satin.py mood show                # current affinity / level
+python main/manage_satin.py mood reset               # reset affinity to neutral
+python main/manage_satin.py mood export mood.json    # export / import affinity state
+python main/manage_satin.py log show -n 50           # last 50 conversation lines
+python main/manage_satin.py log search こんにちは      # keyword search (archives included)
+python main/manage_satin.py log csv chat.csv         # export conversation to CSV
+python main/manage_satin.py log clear                # wipe live log + rotated archives
+python main/manage_satin.py backup list              # list sync backups
+python main/manage_satin.py backup restore foo.zip   # restore a backup
+python main/manage_satin.py persona show             # persona name / rule counts
+python main/manage_satin.py persona respond "やあ"    # preview a reply (no log/mood side-effects)
+python main/manage_satin.py summary                  # today's activity summary
+```
+
+`validate` checks JSON syntax and also performs semantic checks: it loads
+`persona.json` through the persona loader and verifies the `responses` rules, and
+confirms `mood_config.json` positive/negative blocks are language→word-list maps.
+
+### Web dashboard
+
+The Flask dashboard (`python main/dashboard.py`, port 5003) surfaces the event
+log, chat history (with search and text/CSV download), backups, cloud sync, mood
+(with a daily affinity-history chart and milestone markers), stats and the daily
+summary. A `GET /healthz` endpoint returns `{"status":"ok"}` for uptime probes.
+All conversation/affinity pages are served `no-store` so private data is never
+cached by the browser.
 
 ### Plugin System
 
