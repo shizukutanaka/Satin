@@ -62,6 +62,67 @@ class ValidateConfigsTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
 
 
+class PersonaSemanticValidationTests(unittest.TestCase):
+    """validate_configs performs semantic checks on persona.json."""
+
+    def _write(self, d: str, name: str, content: str) -> str:
+        path = os.path.join(d, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return path
+
+    def test_valid_persona_no_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "persona.json",
+                        '{"name": "Satin", "default_lang": "ja", '
+                        '"responses": {"ja": {"rules": ['
+                        '{"keywords": ["hi"], "replies": ["yo"]}], "fallback": ["ok"]}}}')
+            errors = manage_satin.validate_configs(d)
+        self.assertEqual(errors, [])
+
+    def test_rule_not_dict_is_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "persona.json",
+                        '{"name": "S", "responses": {"ja": {"rules": ["notadict"]}}}')
+            errors = manage_satin.validate_configs(d)
+        self.assertTrue(any("rules[0]" in e for e in errors))
+
+    def test_invalid_persona_syntax_still_caught(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "persona.json", "{bad json")
+            errors = manage_satin.validate_configs(d)
+        self.assertTrue(any("persona.json" in e for e in errors))
+
+
+class MoodConfigSemanticValidationTests(unittest.TestCase):
+    """validate_configs performs semantic checks on mood_config.json."""
+
+    def _write(self, d: str, name: str, content: str) -> str:
+        path = os.path.join(d, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return path
+
+    def test_valid_mood_config_no_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "mood_config.json",
+                        '{"positive": {"ja": ["good"]}, "negative": {"ja": ["bad"]}}')
+            errors = manage_satin.validate_configs(d)
+        self.assertEqual(errors, [])
+
+    def test_positive_not_dict_is_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "mood_config.json", '{"positive": ["notdict"]}')
+            errors = manage_satin.validate_configs(d)
+        self.assertTrue(any("positive" in e for e in errors))
+
+    def test_words_not_list_is_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "mood_config.json", '{"negative": {"ja": "notalist"}}')
+            errors = manage_satin.validate_configs(d)
+        self.assertTrue(any("negative.ja" in e for e in errors))
+
+
 # --------------------------------------------------------------------------- #
 # mood subcommands
 # --------------------------------------------------------------------------- #

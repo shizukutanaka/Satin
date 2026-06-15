@@ -45,16 +45,24 @@ def _get_conversation_log():
 # validate
 # --------------------------------------------------------------------------- #
 def validate_configs(config_dir: str = ".") -> list[str]:
-    """全 JSON 設定ファイルを読み込んで構文チェックし、エラーの一覧を返す。"""
+    """全 JSON 設定ファイルを読み込んで構文チェックし、エラーの一覧を返す。
+
+    persona.json と mood_config.json については意味的な検証も行う:
+    - persona.json: Persona.from_dict() でロードできるか、
+                    responses/dialogue ブロックの rules が dict を含むか
+    - mood_config.json: positive/negative が言語→リストの dict か
+    """
     files = sorted(glob.glob(os.path.join(config_dir, "*.json")))
     errors: list[str] = []
     if not files:
         print(f"[WARN] {config_dir} に JSON ファイルが見つかりませんでした。")
         return errors
+
+    data_by_file: dict = {}
     for fname in files:
         try:
             with open(fname, encoding="utf-8") as f:
-                json.load(f)
+                data_by_file[fname] = json.load(f)
             print(f"[OK]   {os.path.basename(fname)}")
         except json.JSONDecodeError as e:
             msg = f"[ERROR] {fname}: JSON 構文エラー — {e}"
@@ -64,11 +72,77 @@ def validate_configs(config_dir: str = ".") -> list[str]:
             msg = f"[ERROR] {fname}: 読み込み失敗 — {e}"
             print(msg)
             errors.append(msg)
+
+    # ---- 意味的バリデーション ---- #
+    persona_path = os.path.join(config_dir, "persona.json")
+    if persona_path in data_by_file:
+        sem_errs = _validate_persona_json(persona_path, data_by_file[persona_path])
+        errors.extend(sem_errs)
+
+    mood_config_path = os.path.join(config_dir, "mood_config.json")
+    if mood_config_path in data_by_file:
+        sem_errs = _validate_mood_config_json(mood_config_path, data_by_file[mood_config_path])
+        errors.extend(sem_errs)
+
     if errors:
         print(f"\n設定バリデーション完了: {len(errors)} 件のエラー")
     else:
         print("\n全設定ファイルが正常です")
     return errors
+
+
+def _validate_persona_json(fname: str, data: dict) -> list[str]:
+    """persona.json の意味的検証。エラーメッセージのリストを返す（空なら正常）。"""
+    errs: list[str] = []
+    # 1. Persona.from_dict() でロードできるか
+    try:
+        from persona import Persona
+        p = Persona.from_dict(data)
+        if not p.name:
+            print(f"  [WARN] {os.path.basename(fname)}: name が未設定です")
+    except Exception as e:
+        msg = f"[ERROR] {fname}: Persona のロードに失敗しました — {e}"
+        print(msg)
+        errs.append(msg)
+        return errs  # ロード失敗なら以降は不明
+
+    # 2. responses ブロックの rules 検証
+    for lang, block in (data.get("responses") or {}).items():
+        if not isinstance(block, dict):
+            continue
+        for i, rule in enumerate(block.get("rules") or []):
+            if not isinstance(rule, dict):
+                msg = f"[ERROR] {fname}: responses.{lang}.rules[{i}] が辞書ではありません"
+                print(msg); errs.append(msg)
+                continue
+            if not rule.get("keywords"):
+                print(f"  [WARN] {fname}: responses.{lang}.rules[{i}] に keywords がありません")
+            if not rule.get("replies"):
+                print(f"  [WARN] {fname}: responses.{lang}.rules[{i}] に replies がありません")
+        if not block.get("fallback") and not block.get("rules"):
+            print(f"  [WARN] {fname}: responses.{lang} に rules も fallback もありません")
+
+    return errs
+
+
+def _validate_mood_config_json(fname: str, data: dict) -> list[str]:
+    """mood_config.json の意味的検証。エラーメッセージのリストを返す（空なら正常）。"""
+    errs: list[str] = []
+    for key in ("positive", "negative"):
+        block = data.get(key)
+        if block is None:
+            continue
+        if not isinstance(block, dict):
+            msg = f"[ERROR] {fname}: {key} が辞書ではありません"
+            print(msg); errs.append(msg)
+            continue
+        for lang, words in block.items():
+            if not isinstance(words, list):
+                msg = f"[ERROR] {fname}: {key}.{lang} がリストではありません"
+                print(msg); errs.append(msg)
+            elif not words:
+                print(f"  [WARN] {fname}: {key}.{lang} が空リストです")
+    return errs
 
 
 # --------------------------------------------------------------------------- #
