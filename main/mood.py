@@ -502,6 +502,37 @@ def check_level_milestone(
 
 
 # --------------------------------------------------------------------------- #
+# 長期不在メッセージ
+# --------------------------------------------------------------------------- #
+
+def absence_message(tracker: "MoodTracker", lang: str = "ja") -> str:
+    """前回の会話から 24 時間以上経過していた場合に不在への言及メッセージを返す。
+
+    初回・会話回数 0・24 時間未満の場合は空文字。
+    CLI と GUI 自律モードの双方から再利用できる共有ヘルパ。
+    """
+    try:
+        last_ts = tracker._last_interaction_time
+        interactions = tracker.interactions
+    except Exception:
+        return ""
+    if last_ts <= 0 or interactions == 0:
+        return ""
+    elapsed_hours = (time.time() - last_ts) / 3600.0
+    if elapsed_hours < 24:
+        return ""
+    elapsed_days = int(elapsed_hours / 24)
+    if str(lang).lower().startswith("en"):
+        if elapsed_days == 1:
+            return "It's been a day since we last spoke. I missed you!"
+        return f"It's been {elapsed_days} days since we last spoke. I really missed you!"
+    else:
+        if elapsed_days == 1:
+            return "昨日ぶりだね。会いたかったよ！"
+        return f"{elapsed_days}日ぶりだね。ずっと待ってたよ！"
+
+
+# --------------------------------------------------------------------------- #
 # プロセス内シングルトン
 # --------------------------------------------------------------------------- #
 _mood_singleton: Optional[MoodTracker] = None

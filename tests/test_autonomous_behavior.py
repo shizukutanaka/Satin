@@ -344,6 +344,61 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
 
         self.assertEqual(decay_calls, [True])
 
+    def test_absence_message_appended_to_greeting_after_long_absence(self):
+        """When user has been absent >24h, absence_message is appended to the startup greeting."""
+        import time
+
+        class _AbsentTracker:
+            level = "neutral"
+            interactions = 5
+            _last_interaction_time = time.time() - 48 * 3600  # 2 days ago
+
+            def auto_decay(self):
+                pass
+
+            def snapshot_to_history(self, path):
+                pass
+
+        captured = []
+
+        class _GreetingDummy(_StartStopDummy):
+            def _on_talk_start(self, text):
+                captured.append(text)
+
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda: _FakePersona()):
+            with mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                                   lambda: _AbsentTracker()):
+                with mock.patch.object(autonomous_behavior, "_mood_history_path", None):
+                    with mock.patch.object(autonomous_behavior, "_yesterday_greeting",
+                                           lambda **kw: ""):
+                        d = _GreetingDummy()
+                        d.start_autonomous()
+
+        self.assertTrue(len(captured) == 1)
+        # Greeting should include both the persona greeting and the absence note
+        greeting_text = captured[0]
+        self.assertIn("GREETING", greeting_text)
+        # Absence message should be present (ja: 日ぶり or "missed")
+        self.assertTrue(
+            any(word in greeting_text for word in ["日ぶり", "missed"]),
+            f"Expected absence message in greeting, got: {greeting_text!r}"
+        )
+
+    def test_absence_message_failure_does_not_break_start(self):
+        """If absence_message raises, start_autonomous still completes."""
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda: _FakePersona()):
+            with mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                                   lambda: None):  # will cause AttributeError in absence_message
+                with mock.patch.object(autonomous_behavior, "_absence_message",
+                                       lambda tracker, lang: (_ for _ in ()).throw(RuntimeError("boom"))):
+                    with mock.patch.object(autonomous_behavior, "_yesterday_greeting",
+                                           lambda **kw: ""):
+                        d = _StartStopDummy()
+                        d.start_autonomous()  # must not raise
+        self.assertTrue(d.is_autonomous)
+
     def test_mood_tracker_failure_does_not_break_start(self):
         """If the mood tracker raises, start_autonomous still completes safely."""
         def _boom():

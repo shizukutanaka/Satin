@@ -35,10 +35,12 @@ try:
     from mood import (
         get_mood_tracker as _get_mood_tracker,
         _default_mood_history_path as _mood_history_path,
+        absence_message as _absence_message,
     )
 except Exception:  # pragma: no cover - defensive
     _get_mood_tracker = None
     _mood_history_path = None
+    _absence_message = None  # type: ignore
 
 try:
     from daily_summary import yesterday_greeting as _yesterday_greeting
@@ -88,13 +90,21 @@ class AutonomousBehaviorMixin:
         persona = self.persona
         if persona is not None:
             greeting = persona.greeting(level=level)
+            lang = getattr(persona, 'lang', 'ja')
+            # 前回から 24h 以上経過していた場合は不在への言及を挨拶に添える
+            if _absence_message is not None and _get_mood_tracker is not None:
+                try:
+                    absence = _absence_message(_get_mood_tracker(), lang=lang)
+                    if absence:
+                        greeting = (greeting + " " + absence).strip() if greeting else absence
+                except Exception as e:
+                    logger.debug("不在メッセージの生成に失敗しました: %s", e)
             # 朝（6〜10時）は昨日のアクティビティサマリーをあいさつに添える
             if _yesterday_greeting is not None:
                 import datetime as _dt
                 hour = _dt.datetime.now().hour
                 if 6 <= hour < 10:
                     try:
-                        lang = getattr(persona, 'lang', 'ja')
                         yday = _yesterday_greeting(lang=lang)
                         if yday:
                             greeting = (greeting + " " + yday).strip() if greeting else yday

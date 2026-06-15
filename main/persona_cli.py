@@ -28,10 +28,11 @@ except Exception:  # pragma: no cover - defensive
     get_conversation_log = None
 
 try:
-    from mood import MoodTracker, get_mood_tracker
+    from mood import MoodTracker, get_mood_tracker, absence_message as _absence_message_fn
 except Exception:  # pragma: no cover - defensive
     MoodTracker = None  # type: ignore
     get_mood_tracker = None
+    _absence_message_fn = None  # type: ignore
 
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
@@ -177,27 +178,11 @@ def _absence_message(mood, name: str, lang: str) -> str:
     """前回の会話から長期間経過していた場合に不在への言及メッセージを返す。
 
     24 時間未満・初回・会話回数 0 の場合は空文字を返す。
+    mood.absence_message() に委譲する（GUI 自律モードとの共有ヘルパ）。
     """
-    import time as _time
-    try:
-        last_ts = mood._last_interaction_time
-        interactions = mood.interactions
-    except Exception:
-        return ""
-    if last_ts <= 0 or interactions == 0:
-        return ""
-    elapsed_hours = (_time.time() - last_ts) / 3600.0
-    if elapsed_hours < 24:
-        return ""
-    elapsed_days = int(elapsed_hours / 24)
-    if lang == "en":
-        if elapsed_days == 1:
-            return "It's been a day since we last spoke. I missed you!"
-        return f"It's been {elapsed_days} days since we last spoke. I really missed you!"
-    else:
-        if elapsed_days == 1:
-            return "昨日ぶりだね。会いたかったよ！"
-        return f"{elapsed_days}日ぶりだね。ずっと待ってたよ！"
+    if _absence_message_fn is not None:
+        return _absence_message_fn(mood, lang=lang)
+    return ""
 
 
 def _print_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:

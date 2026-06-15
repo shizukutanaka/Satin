@@ -619,5 +619,66 @@ class LevelTransitionHistoryTests(unittest.TestCase):
         self.assertEqual(len(transitions), 1)
 
 
+class AbsenceMessageTests(unittest.TestCase):
+    """Tests for absence_message() shared helper."""
+
+    def setUp(self):
+        reset_mood_tracker()
+
+    def tearDown(self):
+        reset_mood_tracker()
+
+    def _make_tracker(self, last_ts: float, interactions: int = 5) -> MoodTracker:
+        t = MoodTracker(interactions=interactions)
+        t._last_interaction_time = last_ts
+        return t
+
+    def test_no_message_when_interactions_zero(self):
+        from mood import absence_message
+        t = self._make_tracker(last_ts=0.0, interactions=0)
+        self.assertEqual(absence_message(t), "")
+
+    def test_no_message_when_last_ts_zero(self):
+        from mood import absence_message
+        t = self._make_tracker(last_ts=0.0, interactions=3)
+        self.assertEqual(absence_message(t), "")
+
+    def test_no_message_when_less_than_24h(self):
+        import time
+        from mood import absence_message
+        t = self._make_tracker(last_ts=time.time() - 3600)  # 1h ago
+        self.assertEqual(absence_message(t), "")
+
+    def test_message_when_25h_absent_ja(self):
+        import time
+        from mood import absence_message
+        t = self._make_tracker(last_ts=time.time() - 25 * 3600)
+        msg = absence_message(t, lang="ja")
+        self.assertIn("昨日", msg)
+        self.assertGreater(len(msg), 0)
+
+    def test_message_when_25h_absent_en(self):
+        import time
+        from mood import absence_message
+        t = self._make_tracker(last_ts=time.time() - 25 * 3600)
+        msg = absence_message(t, lang="en")
+        self.assertIn("missed", msg)
+        self.assertGreater(len(msg), 0)
+
+    def test_message_multiple_days_ja(self):
+        import time
+        from mood import absence_message
+        t = self._make_tracker(last_ts=time.time() - 72 * 3600)  # 3 days
+        msg = absence_message(t, lang="ja")
+        self.assertIn("3日", msg)
+
+    def test_message_multiple_days_en(self):
+        import time
+        from mood import absence_message
+        t = self._make_tracker(last_ts=time.time() - 72 * 3600)  # 3 days
+        msg = absence_message(t, lang="en")
+        self.assertIn("3 days", msg)
+
+
 if __name__ == "__main__":
     unittest.main()

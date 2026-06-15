@@ -627,13 +627,24 @@ def mood_history(i18n):
             content += f'<tr><th>{_html.escape(i18n.t("date", "Date"))}</th>'
             content += f'<th>{_html.escape(i18n.t("affinity_score", "Affinity"))}</th>'
             content += f'<th></th>'
-            content += f'<th>{_html.escape(i18n.t("affinity_level", "Level"))}</th></tr>'
+            content += f'<th>{_html.escape(i18n.t("affinity_level", "Level"))}</th>'
+            content += f'<th>{_html.escape(i18n.t("milestone", "Milestone"))}</th></tr>'
             for e in entries:
                 score = int(round(float(e.get("affinity", 0))))
                 level = _html.escape(str(e.get("level", "")))
                 date = _html.escape(str(e.get("date", "")))
                 colour = f'hsl({int(score * 1.2)}, 70%, 45%)'
                 bar_width = max(1, score * 2)
+                # マイルストーン列: レベル変化があった行に矢印と前後レベルを表示
+                milestone_html = ""
+                if e.get("level_changed"):
+                    prev = _html.escape(str(e.get("prev_level", "?")))
+                    arrow = "&#8593;" if e.get("affinity", 50) >= 50 else "&#8595;"
+                    milestone_html = (
+                        f'<span style="color:#e07000;font-weight:bold">'
+                        f'{arrow} {prev} &rarr; {level}'
+                        f'</span>'
+                    )
                 content += (
                     f'<tr>'
                     f'<td>{date}</td>'
@@ -642,6 +653,7 @@ def mood_history(i18n):
                     f'<div style="background:{colour};width:{bar_width}px;height:10px"></div>'
                     f'</div></td>'
                     f'<td>{level}</td>'
+                    f'<td>{milestone_html}</td>'
                     f'</tr>'
                 )
             content += '</table>'
