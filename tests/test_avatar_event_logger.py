@@ -191,6 +191,22 @@ class LogRotationTests(unittest.TestCase):
         with open(self._logfile, encoding="utf-8") as f:
             self.assertIn("still logged", f.read())
 
+    def test_rotated_archive_is_owner_only(self):
+        """The .gz archive created by rotation must inherit the live file's
+        0o600 permission — conversation data must not be world-readable."""
+        import glob
+        import stat
+        logger = AvatarEventLogger(self._logfile, max_size=1500, max_backups=3)
+        for i in range(100):
+            logger.log_event("speak", text="priv" * 20, i=i)
+        archives = glob.glob(self._logfile + ".*.gz")
+        self.assertGreaterEqual(len(archives), 1,
+                                "Expected at least one archive after rotation")
+        for gz in archives:
+            mode = stat.S_IMODE(os.stat(gz).st_mode)
+            self.assertEqual(mode & 0o077, 0,
+                             f"{gz} must not be group/other readable")
+
 
 class LogPrivacyTests(unittest.TestCase):
     """The conversation log holds private user content; it must not be created

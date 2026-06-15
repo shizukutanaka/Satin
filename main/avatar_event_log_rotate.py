@@ -1,9 +1,19 @@
 import os
+import re
 import time
 import gzip
 import shutil
 from datetime import datetime
 import argparse
+
+
+def _backup_sort_key(fname: str) -> tuple:
+    """ファイル名内のタイムスタンプでソートする。復元後に mtime が変わっても正しい順序。"""
+    m = re.search(r"\.(\d{8}_\d{6})\.gz$", fname)
+    if m:
+        return (0, m.group(1))
+    return (1, fname)
+
 
 def rotate_log(logfile, max_size=5*1024*1024, max_backups=5, quiet=False):
     if not os.path.exists(logfile):
@@ -15,13 +25,20 @@ def rotate_log(logfile, max_size=5*1024*1024, max_backups=5, quiet=False):
     rotated = f"{logfile}.{ts}.gz"
     with open(logfile, 'rb') as f_in, gzip.open(rotated, 'wb') as f_out:
         shutil.copyfileobj(f_in, f_out)
+    # アーカイブを所有者のみ読み書き可に制限（会話ログは個人情報）
+    try:
+        from fsutil import restrict_to_owner
+        restrict_to_owner(rotated)
+    except Exception:
+        pass
     with open(logfile, 'w', encoding='utf-8') as f:
         pass  # 空ファイルで再作成
-    # 古いバックアップ削除
+    # 古いバックアップ削除（ファイル名内タイムスタンプ順 — mtime 非依存）
     log_dir = os.path.dirname(os.path.abspath(logfile))
     backups = sorted(
-        [f for f in os.listdir(log_dir) if f.startswith(os.path.basename(logfile) + '.') and f.endswith('.gz')],
-        key=lambda f: os.path.getmtime(os.path.join(log_dir, f)),
+        [f for f in os.listdir(log_dir)
+         if f.startswith(os.path.basename(logfile) + '.') and f.endswith('.gz')],
+        key=_backup_sort_key,
     )
     if len(backups) > max_backups:
         for old in backups[:-max_backups]:
