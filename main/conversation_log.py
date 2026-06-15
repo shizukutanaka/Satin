@@ -40,12 +40,27 @@ USER_EVENT_TYPES = frozenset({EVENT_USER_COMMENT, "user"})
 AVATAR_EVENT_TYPES = frozenset({EVENT_AVATAR_REPLY, "avatar"})
 
 
+def _archive_sort_key(path: str) -> tuple:
+    """アーカイブのソートキーを返す。
+
+    命名規則 ``<logfile>.<YYYYMMDD_HHMMSS>.gz`` のタイムスタンプ部分を使う。
+    バックアップ復元後に mtime がリセットされても正しい時系列順を保つ。
+    フォールバックとして mtime を使う（命名規則が異なる旧ファイル向け）。
+    """
+    import re
+    m = re.search(r"\.(\d{8}_\d{6})\.gz$", path)
+    if m:
+        return (0, m.group(1))  # (優先度, タイムスタンプ文字列)
+    return (1, str(os.path.getmtime(path)))  # フォールバック: mtime
+
+
 def _find_archives(logfile: str) -> List[str]:
     """ローテートされた gzip アーカイブを古い順で返す。
 
-    avatar_event_log_rotate.rotate_log() は ``<logfile>.<timestamp>.gz`` という
-    命名規則でアーカイブを作成する。同じディレクトリ内の該当ファイルを mtime 昇順
-    （古い順）で返す。ログファイルが存在しない・ディレクトリが読めない場合は空リスト。
+    avatar_event_log_rotate.rotate_log() は ``<logfile>.<YYYYMMDD_HHMMSS>.gz``
+    という命名規則でアーカイブを作成する。ファイル名に埋め込まれたタイムスタンプで
+    ソートするため、バックアップ復元後に mtime がリセットされても順序が壊れない。
+    ログファイルが存在しない・ディレクトリが読めない場合は空リスト。
     """
     try:
         log_dir = os.path.dirname(os.path.abspath(logfile))
@@ -55,7 +70,7 @@ def _find_archives(logfile: str) -> List[str]:
             for f in os.listdir(log_dir)
             if f.startswith(basename) and f.endswith(".gz")
         ]
-        return sorted(files, key=os.path.getmtime)
+        return sorted(files, key=_archive_sort_key)
     except OSError:
         return []
 

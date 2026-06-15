@@ -409,17 +409,26 @@ class ArchiveSearchTests(unittest.TestCase):
         open(self.logfile, "w").close()
         self.assertEqual(_find_archives(self.logfile), [])
 
-    def test_find_archives_returns_sorted_by_mtime(self):
+    def test_find_archives_returns_sorted_by_filename_timestamp(self):
+        """Sort order uses the embedded timestamp, not mtime.
+
+        This matters after a backup restore where all files get the same
+        mtime.  Writing archives in reverse mtime order verifies that the
+        embedded timestamp wins.
+        """
         import time
         from conversation_log import _find_archives
         base = os.path.basename(self.logfile)
         p1 = os.path.join(self._tmp, base + ".20260101_000000.gz")
         p2 = os.path.join(self._tmp, base + ".20260102_000000.gz")
-        with self._gzip.open(p1, "wt") as f:
-            f.write("")
-        time.sleep(0.01)
+        # Write p2 (newer timestamp) first so its mtime is older
         with self._gzip.open(p2, "wt") as f:
             f.write("")
+        time.sleep(0.01)
+        with self._gzip.open(p1, "wt") as f:
+            f.write("")
+        # mtime order is p2, p1 (p1 written later → newer mtime)
+        # but timestamp order should be p1, p2 (20260101 < 20260102)
         archives = _find_archives(self.logfile)
         self.assertEqual(archives, [p1, p2])
 
