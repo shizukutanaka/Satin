@@ -111,25 +111,48 @@ class ConversationLog:
         """直近 n 件の会話イベント (user_comment / avatar_reply) を古い順で返す。
 
         ログファイルが無い・壊れた行がある場合も安全に処理する。
+        ライブファイルの件数が n に満たない場合（ローテーション直後など）は
+        アーカイブも遡って補完する。
         """
-        if n <= 0 or not os.path.exists(self.logfile):
+        if n <= 0:
             return []
-        entries: List[Dict] = []
-        try:
-            with open(self.logfile, encoding="utf-8") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        ev = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if ev.get("event_type") in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
-                        entries.append(ev)
-        except Exception as e:  # pragma: no cover - defensive
-            logger.warning("会話ログの読み出しに失敗しました: %s", e)
-            return []
-        return entries[-n:]
+        # まずライブファイルから収集する
+        live_entries: List[Dict] = []
+        if os.path.exists(self.logfile):
+            try:
+                with open(self.logfile, encoding="utf-8") as f:
+                    for line in f:
+                        if not line.strip():
+                            continue
+                        try:
+                            ev = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if ev.get("event_type") in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
+                            live_entries.append(ev)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("会話ログの読み出しに失敗しました: %s", e)
+        # ライブファイルで n 件揃う場合はアーカイブ走査は不要
+        if len(live_entries) >= n:
+            return live_entries[-n:]
+        # 不足分をアーカイブ（新しい順）から補完する
+        need = n - len(live_entries)
+        archive_entries: List[Dict] = []
+        for gz_path in reversed(_find_archives(self.logfile)):
+            for line in _iter_gz_lines(gz_path):
+                if not line.strip():
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if ev.get("event_type") in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
+                    archive_entries.append(ev)
+            if len(archive_entries) >= need:
+                break
+        # アーカイブは新→旧の順に読んでいるので反転して古→新に並べ直す
+        archive_tail = list(reversed(archive_entries[-need:]))
+        return archive_tail + live_entries
 
     def recent_texts(self, n: int = 20) -> List[str]:
         """直近 n 件を「You: ...」「Avatar: ...」形式の文字列リストで返す（表示用）。"""

@@ -104,6 +104,24 @@ class RecentTests(_TmpLogBase):
         log = ConversationLog(os.path.join(self._tmp, "nope.jsonl"))
         self.assertEqual(log.recent(), [])
 
+    def test_recent_falls_back_to_archives_when_live_is_empty(self):
+        """Right after log rotation the live file is empty; recent() must
+        return entries from the newest archive instead of an empty list."""
+        import gzip
+        gz_name = os.path.basename(self.logfile) + ".20260101_000000.gz"
+        gz_path = os.path.join(self._tmp, gz_name)
+        with gzip.open(gz_path, "wt", encoding="utf-8") as fh:
+            import json as _json
+            fh.write(_json.dumps({
+                "timestamp": 1.0, "event_type": EVENT_USER_COMMENT,
+                "details": {"text": "archived"}
+            }) + "\n")
+        # empty live file (just rotated)
+        open(self.logfile, "w").close()
+        entries = self.log.recent(5)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["details"]["text"], "archived")
+
     def test_recent_skips_corrupt_lines(self):
         with open(self.logfile, "w", encoding="utf-8") as f:
             f.write("not json\n")
