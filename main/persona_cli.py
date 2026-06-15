@@ -49,6 +49,8 @@ except Exception:  # pragma: no cover - defensive
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
 _HISTORY_DEFAULT = 10
 _MOOD_RESET_COMMANDS = {"/reset-mood", "/resetmood"}
+# N 回ごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
+_FOLLOW_UP_EVERY = 4
 
 
 def respond_to(
@@ -199,8 +201,18 @@ def run_chat(
         reply = respond_to(text, persona, conv_log, level=level)
         if milestone_msg:
             reply = (reply + " " + milestone_msg).strip() if reply else milestone_msg
-        output_fn(f"{name}: {reply}")
         exchanges += 1
+        # 数回ごとにアバターから話題を振る（受け身すぎないように）。
+        # ただし返答が既に疑問文で終わっていれば二重質問を避ける。
+        if _FOLLOW_UP_EVERY > 0 and exchanges % _FOLLOW_UP_EVERY == 0 \
+                and not reply.rstrip().endswith(("？", "?")):
+            try:
+                question = persona.follow_up_question(level=level)
+            except Exception:  # pragma: no cover - defensive
+                question = ""
+            if question:
+                reply = (reply + " " + question).strip() if reply else question
+        output_fn(f"{name}: {reply}")
 
     return exchanges
 

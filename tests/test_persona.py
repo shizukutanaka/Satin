@@ -354,6 +354,60 @@ class RespondWithLevelTests(unittest.TestCase):
         self.assertNotEqual(close_reply, generic_reply)
 
 
+class FollowUpQuestionTests(unittest.TestCase):
+    """persona.follow_up_question() returns curiosity prompts, level-gated."""
+
+    def _persona(self):
+        data = {
+            "default_lang": "en",
+            "responses": {
+                "en": {
+                    "rules": [],
+                    "fallback": ["FB"],
+                    "follow_up": ["Q1", "Q2"],
+                    "follow_up_by_affinity": {"close": ["CLOSE_Q"]},
+                },
+            },
+        }
+        return Persona.from_dict(data, lang="en")
+
+    def test_returns_a_follow_up(self):
+        p = self._persona()
+        self.assertIn(p.follow_up_question(), {"Q1", "Q2"})
+
+    def test_close_level_uses_affinity_question(self):
+        p = self._persona()
+        self.assertEqual(p.follow_up_question(level="close"), "CLOSE_Q")
+
+    def test_unknown_level_falls_back_to_generic(self):
+        p = self._persona()
+        self.assertIn(p.follow_up_question(level="reserved"), {"Q1", "Q2"})
+
+    def test_empty_when_no_follow_up_configured(self):
+        data = {"default_lang": "en",
+                "responses": {"en": {"rules": [], "fallback": ["FB"]}}}
+        p = Persona.from_dict(data, lang="en")
+        self.assertEqual(p.follow_up_question(), "")
+
+    def test_no_repeat_consecutive(self):
+        data = {"default_lang": "en",
+                "responses": {"en": {"rules": [], "fallback": ["FB"],
+                                     "follow_up": ["A", "B"]}}}
+        p = Persona.from_dict(data, lang="en")
+        seen = {p.follow_up_question() for _ in range(6)}
+        # both options should appear over several calls (no-repeat rotates them)
+        self.assertEqual(seen, {"A", "B"})
+
+    def test_bundled_config_has_follow_up(self):
+        repo_cfg = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "persona.json",
+        )
+        p = Persona.load(config_path=repo_cfg, lang="ja")
+        self.assertTrue(p.follow_up_question())
+        self.assertTrue(p.follow_up_question(level="close"))
+
+
 class TalkByAffinityTests(unittest.TestCase):
     """persona.talk(level=) uses talk_by_affinity when available."""
 

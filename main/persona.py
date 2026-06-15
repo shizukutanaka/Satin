@@ -106,6 +106,12 @@ _DEFAULT_RESPONSES: Dict[str, Dict] = {
             "へえ、もっと教えて！",
             "そっか、いいね。",
         ],
+        "follow_up": [
+            "ところで、今日はどんな一日だった？",
+            "最近、何か楽しいことあった？",
+            "あなたのことも聞かせてよ。",
+            "今、いちばん気になってることは何？",
+        ],
     },
     "en": {
         "rules": [
@@ -127,6 +133,12 @@ _DEFAULT_RESPONSES: Dict[str, Dict] = {
             "Mhm, I'm listening.",
             "Oh, tell me more!",
             "Nice, sounds good.",
+        ],
+        "follow_up": [
+            "By the way, how was your day?",
+            "Anything fun happen lately?",
+            "Tell me a bit about you, too.",
+            "What's on your mind the most right now?",
         ],
     },
 }
@@ -325,6 +337,32 @@ class Persona:
                         return self._pick(f"respond:{lang or self.lang}:rule:{idx}", replies)
         if fallback:
             return self._pick(f"respond:{lang or self.lang}:fallback", fallback)
+        return ""
+
+    def follow_up_question(
+        self,
+        lang: Optional[str] = None,
+        level: Optional[str] = None,
+    ) -> str:
+        """会話を続けるための「聞き返し」質問を 1 つ返す（無ければ空文字）。
+
+        受け身な相づちだけでなく、アバターから能動的に話題を振ることで会話が
+        続きやすくする。responses ブロックの ``follow_up`` リストから選ぶ。
+        level（好感度レベル）が指定され ``follow_up_by_affinity[level]`` が
+        定義されていれば、関係性に応じた質問を優先する（親しいほど踏み込んだ質問）。
+        連続重複は ``_pick`` で回避する。
+        """
+        block = self._resolve_responses_block(lang)
+        if level:
+            by_affinity = block.get("follow_up_by_affinity") or {}
+            level_qs = list(by_affinity.get(level) or [])
+            if level_qs:
+                return self._pick(
+                    f"follow_up_affinity:{level}:{lang or self.lang}", level_qs
+                )
+        questions = list(block.get("follow_up") or [])
+        if questions:
+            return self._pick(f"follow_up:{lang or self.lang}", questions)
         return ""
 
     # ---- 構築 ------------------------------------------------------------ #

@@ -37,6 +37,10 @@ except Exception:  # pragma: no cover - defensive
     maybe_start_break_reminder = None
 
 
+# N 回のコメントごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
+_FOLLOW_UP_EVERY = 4
+
+
 def make_reminder_speak(viewer, tts_queue):
     """休憩リマインダー用の speak コールバックを生成する。
 
@@ -132,6 +136,20 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 # 関係性の状態更新/保存が失敗＝ユーザー体験の劣化。沈黙せず記録する
                 # （TTS/UI は壊さないが、原因を追えるようにする）。
                 logger.warning("好感度の更新・保存に失敗しました: %s", e)
+        # 数回のやりとりごとにアバターから話題を振る（受け身すぎないように）。
+        # 既に疑問文で終わっている応答には添えない（二重質問を避ける）。
+        if persona is not None and _FOLLOW_UP_EVERY > 0 \
+                and not reply.rstrip().endswith(("？", "?")):
+            try:
+                interactions = None
+                if get_mood_tracker is not None:
+                    interactions = get_mood_tracker().interactions
+                if interactions and interactions % _FOLLOW_UP_EVERY == 0:
+                    question = persona.follow_up_question(level=level)
+                    if question:
+                        reply = (reply + " " + question).strip()
+            except Exception as e:
+                logger.debug("聞き返し質問の生成に失敗しました: %s", e)
         # 会話履歴を記録（失敗しても UI/TTS を壊さない）
         if get_conversation_log is not None:
             try:

@@ -211,6 +211,31 @@ class SpeakCommentMoodTests(unittest.TestCase):
         self.assertGreater(data["affinity"], 50)
         shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_follow_up_appended_every_n_interactions(self):
+        """Every N comments the avatar appends a proactive follow-up question."""
+        follow_persona = Persona.from_dict({
+            "responses": {"en": {
+                "rules": [{"keywords": ["hello"], "replies": ["REPLY_HELLO"]}],
+                "fallback": ["FB"],
+                "follow_up": ["WHATS_NEW"],
+            }},
+            "default_lang": "en",
+        }, lang="en")
+        # tracker whose interaction count lands exactly on the threshold after register()
+        tracker = _mood_mod.MoodTracker(
+            affinity=50, interactions=_mod._FOLLOW_UP_EVERY - 1)
+        patcher = mock.patch.object(
+            _mod.AutonomousBehaviorMixin, "persona",
+            property(lambda self: follow_persona))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker):
+            with mock.patch.object(_mod, "_default_mood_path", lambda: None):
+                with mock.patch.object(_mod, "_default_mood_history_path", lambda: None):
+                    v = _make_viewer(queue.Queue())
+                    v.speak_comment("hello")
+        self.assertIn("WHATS_NEW", v.comment_text)
+
     def test_mood_save_failure_does_not_crash(self):
         """If save() fails (e.g. disk full), TTS must still complete."""
         class _SaveBoomTracker:

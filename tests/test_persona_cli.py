@@ -151,6 +151,42 @@ class RunChatTests(unittest.TestCase):
         self.assertEqual(n, 2)
         self.assertIn("Mimi: HI", out)
 
+    def test_follow_up_appended_every_n_exchanges(self):
+        """The avatar proactively asks a follow-up question every N exchanges."""
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "responses": {"en": {
+                "rules": [{"keywords": ["hello"], "replies": ["HI"]}],
+                "fallback": ["FB"],
+                "follow_up": ["WHATS_NEW"],
+            }},
+        }
+        persona = Persona.from_dict(data, lang="en")
+        d = _Driver(["hello"] * persona_cli._FOLLOW_UP_EVERY)
+        persona_cli.run_chat(
+            persona=persona, conv_log=self._log,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        # The Nth reply line should carry the appended follow-up question
+        self.assertTrue(any("WHATS_NEW" in line for line in d.out))
+
+    def test_follow_up_not_appended_before_threshold(self):
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "responses": {"en": {
+                "rules": [{"keywords": ["hello"], "replies": ["HI"]}],
+                "fallback": ["FB"],
+                "follow_up": ["WHATS_NEW"],
+            }},
+        }
+        persona = Persona.from_dict(data, lang="en")
+        d = _Driver(["hello"])  # only 1 exchange (< N)
+        persona_cli.run_chat(
+            persona=persona, conv_log=self._log,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertFalse(any("WHATS_NEW" in line for line in d.out))
+
     def test_blank_lines_ignored(self):
         n, out = self._run(["", "  ", "hello"], greet=False)
         self.assertEqual(n, 1)

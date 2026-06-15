@@ -206,6 +206,11 @@ replies never repeat the previous line, and if no rule matches the avatar gives 
 friendly fallback acknowledgment. If the persona is unavailable or returns nothing
 the avatar falls back to echoing your text, preserving the original behavior.
 
+The avatar isn't purely reactive: every few exchanges it adds a **follow-up
+question** from the `follow_up` list (e.g. *「ところで、今日はどんな一日だった？」*) to
+keep the conversation going, instead of only acknowledging. Closer relationships
+unlock more personal questions via an optional `follow_up_by_affinity` block.
+
 #### Conversation history
 
 Every exchange (your comment + the avatar's reply) is recorded to the avatar
