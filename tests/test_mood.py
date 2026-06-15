@@ -517,5 +517,107 @@ class LevelMilestoneTests(unittest.TestCase):
             self.assertIn(key, result)
 
 
+class LevelTransitionHistoryTests(unittest.TestCase):
+    """snapshot_to_history() records level_changed milestones."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._history = os.path.join(self._tmp, "mood_history.jsonl")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_entry(self, affinity: float, level: str, date_str: str) -> None:
+        """ファイルに過去エントリを直接書き込む（日付固定のためモックの代替）。"""
+        entry = {"date": date_str, "timestamp": 0.0, "affinity": affinity,
+                 "level": level, "interactions": 1}
+        with open(self._history, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def test_no_level_change_has_no_flag(self):
+        # 前日のエントリ: neutral
+        self._write_entry(50.0, "neutral", "2026-01-01")
+        # 今日: still neutral
+        t = MoodTracker(affinity=55.0, interactions=1)
+        t.snapshot_to_history(self._history)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history)
+        self.assertEqual(len(entries), 2)
+        self.assertNotIn("level_changed", entries[1])
+
+    def test_level_up_sets_flag(self):
+        self._write_entry(55.0, "neutral", "2026-01-01")
+        t = MoodTracker(affinity=65.0, interactions=1)  # friendly
+        t.snapshot_to_history(self._history)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history)
+        self.assertTrue(entries[1].get("level_changed"))
+        self.assertEqual(entries[1].get("prev_level"), "neutral")
+        self.assertEqual(entries[1].get("level"), "friendly")
+
+    def test_level_down_sets_flag(self):
+        self._write_entry(65.0, "friendly", "2026-01-01")
+        t = MoodTracker(affinity=45.0, interactions=1)  # neutral
+        t.snapshot_to_history(self._history)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history)
+        self.assertTrue(entries[1].get("level_changed"))
+        self.assertEqual(entries[1].get("prev_level"), "friendly")
+        self.assertEqual(entries[1].get("level"), "neutral")
+
+    def test_first_entry_never_has_flag(self):
+        t = MoodTracker(affinity=70.0, interactions=1)
+        t.snapshot_to_history(self._history)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history)
+        self.assertNotIn("level_changed", entries[0])
+
+    def test_load_level_transitions_filters_correctly(self):
+        self._write_entry(50.0, "neutral", "2026-01-01")
+        self._write_entry(55.0, "neutral", "2026-01-02")  # no change
+        self._write_entry(65.0, "friendly", "2026-01-03")  # no flag (written directly)
+        # Write a transition entry manually
+        entry_with_flag = {"date": "2026-01-03", "timestamp": 0.0, "affinity": 65.0,
+                           "level": "friendly", "interactions": 3,
+                           "level_changed": True, "prev_level": "neutral"}
+        # Rewrite file with the transition entry at day 3
+        import datetime
+        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        with open(self._history, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"date": "2026-01-01", "timestamp": 0.0, "affinity": 50.0,
+                                "level": "neutral", "interactions": 1}) + "\n")
+            f.write(json.dumps({"date": "2026-01-02", "timestamp": 0.0, "affinity": 55.0,
+                                "level": "neutral", "interactions": 2}) + "\n")
+            f.write(json.dumps(entry_with_flag) + "\n")
+            f.write(json.dumps({"date": "2026-01-04", "timestamp": 0.0, "affinity": 68.0,
+                                "level": "friendly", "interactions": 4}) + "\n")
+        from mood import load_level_transitions
+        transitions = load_level_transitions(self._history)
+        self.assertEqual(len(transitions), 1)
+        self.assertEqual(transitions[0]["prev_level"], "neutral")
+        self.assertEqual(transitions[0]["level"], "friendly")
+
+    def test_load_level_transitions_empty_when_no_history(self):
+        from mood import load_level_transitions
+        self.assertEqual(load_level_transitions(self._history), [])
+
+    def test_same_day_update_preserves_transition_flag(self):
+        """前日 neutral → 今日 friendly が検出され、同日再書き込みでもフラグが残る。"""
+        self._write_entry(50.0, "neutral", "2026-01-01")
+        t_up = MoodTracker(affinity=65.0, interactions=2)  # friendly — level up
+        t_up.snapshot_to_history(self._history)
+        # 同日更新（好感度が少し変わった）
+        t_up.affinity = 67.0
+        t_up.snapshot_to_history(self._history)
+        from mood import load_mood_history, load_level_transitions
+        entries = load_mood_history(self._history)
+        # 2 エントリのまま（前日 + 今日）
+        self.assertEqual(len(entries), 2)
+        # マイルストーンは維持されている
+        transitions = load_level_transitions(self._history)
+        self.assertEqual(len(transitions), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -227,13 +227,15 @@ class MoodTracker:
         """今日の好感度スナップショットを JSONL 履歴ファイルに追記する。
 
         同日内に既にスナップショットがあれば最終行を上書きして最新値を反映。
-        新しい日なら行を追加する。失敗しても例外は送出しない。
+        新しい日なら行を追加する。前回スナップショットからレベルが変わった場合は
+        ``level_changed: true`` と ``prev_level`` をエントリに付加する（マイルストーン記録）。
+        失敗しても例外は送出しない。
         """
         try:
             import datetime
             today = datetime.date.today().isoformat()
             now_ts = time.time()
-            entry = {
+            entry: Dict = {
                 "date": today,
                 "timestamp": now_ts,
                 "affinity": round(self.affinity, 2),
@@ -250,18 +252,32 @@ class MoodTracker:
                     lines = [l for l in f.readlines() if l.strip()]
 
             # 最終行が今日なら上書き、それ以外なら追記
-            new_line = json.dumps(entry, ensure_ascii=False)
+            # レベル変化検出: 同日上書き時は前日以前のエントリと比較して
+            # 初回記録時の遷移フラグを失わないようにする
             if lines:
                 try:
                     last = json.loads(lines[-1])
-                    if last.get("date") == today:
+                    is_same_day = last.get("date") == today
+                    # 比較対象は「今日以前の最後の別日エントリ」
+                    if is_same_day:
+                        # 同日上書き: 2 行前（前日以前）のエントリとレベルを比較
+                        prev_day_entry = json.loads(lines[-2]) if len(lines) >= 2 else None
+                    else:
+                        prev_day_entry = last
+                    if prev_day_entry is not None:
+                        prev_level = prev_day_entry.get("level")
+                        if prev_level and prev_level != self.level:
+                            entry["level_changed"] = True
+                            entry["prev_level"] = prev_level
+                    new_line = json.dumps(entry, ensure_ascii=False)
+                    if is_same_day:
                         lines[-1] = new_line
                     else:
                         lines.append(new_line)
-                except json.JSONDecodeError:
-                    lines.append(new_line)
+                except (json.JSONDecodeError, IndexError):
+                    lines.append(json.dumps(entry, ensure_ascii=False))
             else:
-                lines.append(new_line)
+                lines.append(json.dumps(entry, ensure_ascii=False))
 
             tmp = f"{history_path}.tmp"
             with open(tmp, "w", encoding="utf-8") as f:
@@ -371,6 +387,16 @@ def load_mood_history(history_path: Optional[str] = None, n: int = 30) -> List[D
     except Exception:
         return []
     return entries[-n:]
+
+
+def load_level_transitions(history_path: Optional[str] = None) -> List[Dict]:
+    """好感度レベルが変化したマイルストーンエントリを古い順で返す。
+
+    ``snapshot_to_history()`` が ``level_changed: true`` を付与したエントリのみを
+    フィルタして返す。ファイルが無ければ空リスト。
+    """
+    return [e for e in load_mood_history(history_path, n=1_000_000)
+            if e.get("level_changed")]
 
 
 def mood_history_to_csv(history_path: Optional[str] = None, n: int = 0) -> str:

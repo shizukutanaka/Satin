@@ -131,7 +131,19 @@ class RecentTests(_TmpLogBase):
 
     def test_recent_texts_format(self):
         self.log.log_exchange("hello", "Hi!")
-        self.assertEqual(self.log.recent_texts(), ["You: hello", "Avatar: Hi!"])
+        texts = self.log.recent_texts()
+        self.assertEqual(len(texts), 2)
+        # 形式: "[YYYY-MM-DD HH:MM:SS] You: hello" または "You: hello"（タイムスタンプ付き）
+        self.assertTrue(texts[0].endswith("You: hello"), texts[0])
+        self.assertTrue(texts[1].endswith("Avatar: Hi!"), texts[1])
+
+    def test_recent_texts_includes_timestamp(self):
+        self.log.log_user_comment("test message")
+        texts = self.log.recent_texts()
+        self.assertEqual(len(texts), 1)
+        # タイムスタンプ付き形式を確認
+        import re
+        self.assertRegex(texts[0], r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] You: test message$")
 
 
 class ToCsvTests(_TmpLogBase):

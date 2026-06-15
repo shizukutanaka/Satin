@@ -199,8 +199,8 @@ class RunChatHistoryTests(unittest.TestCase):
             persona=_persona(), conv_log=self.log,
             input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
         )
-        self.assertTrue(any(line.startswith("You: hello") for line in d.out))
-        self.assertTrue(any(line.startswith("Avatar: HI") for line in d.out))
+        self.assertTrue(any("You: hello" in line for line in d.out))
+        self.assertTrue(any("Avatar: HI" in line for line in d.out))
 
     def test_history_empty_message(self):
         d = _Driver(["/history"])

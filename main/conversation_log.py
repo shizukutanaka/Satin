@@ -170,12 +170,18 @@ class ConversationLog:
         return archive_tail + live_entries
 
     def recent_texts(self, n: int = 20) -> List[str]:
-        """直近 n 件を「You: ...」「Avatar: ...」形式の文字列リストで返す（表示用）。"""
+        """直近 n 件を「[YYYY-MM-DD HH:MM:SS] You: ...」形式の文字列リストで返す（表示用）。"""
+        from datetime import datetime as _dt
         lines = []
         for ev in self.recent(n):
             text = (ev.get("details") or {}).get("text", "")
             prefix = "You" if ev.get("event_type") == EVENT_USER_COMMENT else "Avatar"
-            lines.append(f"{prefix}: {text}")
+            ts = ev.get("timestamp", 0)
+            try:
+                dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+                lines.append(f"[{dt_str}] {prefix}: {text}")
+            except (OSError, OverflowError, ValueError):
+                lines.append(f"{prefix}: {text}")
         return lines
 
     def search(self, query: str, n: int = 0, include_archives: bool = True) -> List[Dict]:

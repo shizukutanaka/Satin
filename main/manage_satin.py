@@ -66,7 +66,10 @@ def validate_configs(config_dir: str = ".") -> list[str]:
 # --------------------------------------------------------------------------- #
 def cmd_mood_show() -> None:
     try:
-        from mood import get_mood_tracker, _default_mood_path, affinity_label
+        from mood import (
+            get_mood_tracker, _default_mood_path, _default_mood_history_path,
+            affinity_label, load_level_transitions,
+        )
         tracker = get_mood_tracker()
         score = int(round(tracker.affinity))
         level = tracker.level
@@ -81,6 +84,13 @@ def cmd_mood_show() -> None:
             print(f"最後の対話    : {dt.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
             print("最後の対話    : なし")
+        # レベル変化マイルストーンを表示
+        transitions = load_level_transitions(_default_mood_history_path())
+        if transitions:
+            print("関係の節目    :")
+            for t in transitions[-5:]:  # 最近 5 件
+                arrow = "↑" if t.get("prev_level", "") < t.get("level", "") else "↓"
+                print(f"  {t.get('date', '?')} {arrow} {t.get('prev_level', '?')} → {t.get('level', '?')}")
         print(f"保存先        : {_default_mood_path()}")
     except ImportError:
         print("[ERROR] mood モジュールが見つかりません。")
