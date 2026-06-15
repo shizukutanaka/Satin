@@ -97,5 +97,6 @@
     "existing_backups": "Existing backups",
     "sync_description": "Create a local backup of config files and conversation log.",
     "stats": "Stats",
-    "summary": "Summary"
+    "summary": "Summary",
+    "milestone": "Milestone"
 }
