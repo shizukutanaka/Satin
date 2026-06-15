@@ -484,6 +484,12 @@ def _personal_data_paths() -> "list[tuple[str, str]]":
         items.append(("好感度の履歴", _default_mood_history_path()))
     except Exception:
         pass
+    # ユーザープロファイル（呼び名・好み）
+    try:
+        from user_profile import _default_profile_path
+        items.append(("ユーザープロファイル", _default_profile_path()))
+    except Exception:
+        pass
     return items
 
 
@@ -534,6 +540,11 @@ def cmd_data_purge(assume_yes: bool = False, dry_run: bool = False) -> None:
     try:
         from conversation_log import reset_conversation_log
         reset_conversation_log()
+    except Exception:
+        pass
+    try:
+        from user_profile import reset_user_profile
+        reset_user_profile()
     except Exception:
         pass
 

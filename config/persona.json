@@ -284,9 +284,9 @@
         "なんか面白いね。"
       ],
       "follow_up": [
-        "ところで、今日はどんな一日だった？",
+        "ところで、{user}、今日はどんな一日だった？",
         "最近、何か楽しいことあった？",
-        "あなたのことも聞かせてよ。",
+        "{user}のことも聞かせてよ。",
         "今、いちばん気になってることは何？",
         "今日はこれから何をするの？"
       ],
@@ -434,11 +434,11 @@
         "That's interesting!"
       ],
       "follow_up": [
-        "By the way, how was your day?",
+        "By the way {user}, how was your day?",
         "Anything fun happen lately?",
         "Tell me a bit about you, too.",
         "What's on your mind the most right now?",
-        "What are you up to next?"
+        "So {user}, what are you up to next?"
       ],
       "follow_up_by_affinity": {
         "close": [

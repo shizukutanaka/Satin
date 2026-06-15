@@ -13,6 +13,8 @@
   /help               コマンド一覧
   /history            会話履歴の直近を表示
   /search <キーワード> 会話履歴をキーワード検索（アーカイブ含む）
+  /callme <名前>       アバターに呼んでほしい名前を覚えさせる
+  /whoami             今記憶している呼び名を表示
   /mood               好感度レベルを表示
   /reset-mood         好感度をニュートラルにリセット
   /stats              会話統計を表示
@@ -44,6 +46,16 @@ except Exception:  # pragma: no cover - defensive
     _absence_message_fn = None  # type: ignore
     _anniversary_message_fn = None  # type: ignore
     _check_level_milestone = None  # type: ignore
+
+try:
+    from user_profile import (
+        get_user_profile, personalize as _personalize,
+        _default_profile_path as _profile_path,
+    )
+except Exception:  # pragma: no cover - defensive
+    get_user_profile = None
+    _personalize = None  # type: ignore
+    _profile_path = None  # type: ignore
 
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
@@ -79,7 +91,8 @@ def respond_to(
 def _help_text() -> str:
     return (
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
-        "/mood 好感度 | /reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
+        "/callme <名前> 呼び名設定 | /whoami 呼び名確認 | /mood 好感度 | "
+        "/reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
     )
 
 
@@ -90,6 +103,7 @@ def run_chat(
     output_fn: Optional[Callable[[str], None]] = None,
     greet: bool = True,
     mood: "Optional[MoodTracker]" = None,
+    profile=None,
 ) -> int:
     """対話ループを実行する。
 
@@ -100,6 +114,7 @@ def run_chat(
         output_fn: 出力関数（省略時は組み込み print。テスト用に差し替え可能）。
         greet: 開始時に時刻依存のあいさつを表示するか。
         mood: 好感度トラッカー（指定時のみ各発話で好感度を更新。None なら無効）。
+        profile: ユーザープロファイル（呼び名の記憶。省略時は共有シングルトン）。
 
     Returns:
         処理したユーザー発話の件数（コマンドを除く）。
@@ -116,26 +131,43 @@ def run_chat(
             conv_log = get_conversation_log()
         except Exception:  # pragma: no cover - defensive
             conv_log = None
+    if profile is None and get_user_profile is not None:
+        try:
+            profile = get_user_profile()
+        except Exception:  # pragma: no cover - defensive
+            profile = None
 
     name = persona.name or "Avatar"
     lang = "en" if str(persona.lang).startswith("en") else "ja"
+
+    def _say(text: str) -> None:
+        """{user} を呼び名へ置換してアバター発話を出力する。"""
+        if _personalize is not None:
+            text = _personalize(text, profile, lang)
+        output_fn(f"{name}: {text}")
     if greet:
         # 前回の会話から長期間経過していたら不在への言及を先に表示する
         if mood is not None:
             absence_msg = _absence_message(mood, name, lang)
             if absence_msg:
-                output_fn(f"{name}: {absence_msg}")
+                _say(absence_msg)
         # 好感度レベルがあれば、関係性に応じたあいさつを優先する
         level = mood.level if mood is not None else None
         greeting = persona.greeting(level=level)
         if greeting:
-            output_fn(f"{name}: {greeting}")
+            # 呼び名が分かっていれば冒頭に添えて「覚えている」ことを示す
+            # （文頭の呼びかけは日英どちらでも自然: 「たろう、おはよう」/「Taro, ...」）
+            if profile is not None and getattr(profile, "name", "") \
+                    and "{user}" not in greeting:
+                sep = ", " if lang == "en" else "、"
+                greeting = f"{profile.name}{sep}{greeting}"
+            _say(greeting)
         # 出会ってからの記念日（節目）に達していたら祝う
         if mood is not None and _anniversary_message_fn is not None:
             try:
                 anniv = _anniversary_message_fn(mood, lang=lang)
                 if anniv:
-                    output_fn(f"{name}: {anniv}")
+                    _say(anniv)
             except Exception:  # pragma: no cover - defensive
                 pass
     output_fn(_help_text())
@@ -158,13 +190,20 @@ def run_chat(
         # コマンド処理
         if text.lower() in _QUIT_COMMANDS:
             farewell = persona.respond("さようなら") or "またね！"
-            output_fn(f"{name}: {farewell}")
+            _say(farewell)
             break
         if text.lower() == "/help":
             output_fn(_help_text())
             continue
         if text.lower() == "/name":
             output_fn(f"{name}")
+            continue
+        if text.lower().startswith("/callme"):
+            new_name = text[len("/callme"):].strip()
+            _set_user_name(profile, new_name, name, lang, output_fn)
+            continue
+        if text.lower() == "/whoami":
+            _print_user_name(profile, lang, output_fn)
             continue
         if text.lower() == "/history":
             _print_history(conv_log, output_fn)
@@ -212,7 +251,7 @@ def run_chat(
                 question = ""
             if question:
                 reply = (reply + " " + question).strip() if reply else question
-        output_fn(f"{name}: {reply}")
+        _say(reply)
 
     return exchanges
 
@@ -262,6 +301,48 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
             output_fn(f"好感度をニュートラル（{int(AFFINITY_START)}/100）にリセットしました。")
     except Exception:  # pragma: no cover - defensive
         output_fn("(好感度のリセットに失敗しました)")
+
+
+def _set_user_name(profile, new_name: str, avatar_name: str, lang: str,
+                   output_fn: Callable[[str], None]) -> None:
+    """ユーザーの呼び名を設定して永続化し、アバターが確認の返事をする。"""
+    if profile is None:
+        output_fn("(プロファイルは利用できません)")
+        return
+    if not new_name:
+        output_fn("使用方法: /callme <呼んでほしい名前>")
+        return
+    try:
+        saved = profile.set_name(new_name)
+        if _profile_path is not None:
+            profile.save(_profile_path())
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(呼び名の保存に失敗しました)")
+        return
+    if not saved:
+        output_fn("(その名前は使えません)")
+        return
+    if lang == "en":
+        output_fn(f"{avatar_name}: Got it — I'll call you {saved} from now on!")
+    else:
+        output_fn(f"{avatar_name}: わかった、これからは{saved}って呼ぶね！")
+
+
+def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> None:
+    """現在記憶している呼び名を表示する。"""
+    if profile is None:
+        output_fn("(プロファイルは利用できません)")
+        return
+    if getattr(profile, "name", ""):
+        if lang == "en":
+            output_fn(f"I'm calling you: {profile.name}")
+        else:
+            output_fn(f"あなたの呼び名: {profile.name}")
+    else:
+        if lang == "en":
+            output_fn("I don't know your name yet. Try /callme <name>.")
+        else:
+            output_fn("まだ呼び名を知らないよ。/callme <名前> で教えてね。")
 
 
 def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:

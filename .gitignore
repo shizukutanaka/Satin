@@ -26,3 +26,7 @@ config/mood.json
 main/config/mood.json
 config/mood_history.jsonl
 main/config/mood_history.jsonl
+
+# ユーザープロファイル(名前・好み: ランタイム生成の個人データ)
+config/user_profile.json
+main/config/user_profile.json

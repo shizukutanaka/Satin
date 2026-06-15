@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
@@ -471,6 +472,102 @@ class AbsenceMessageTests(unittest.TestCase):
         # First line should be the absence message (contains "day" or "日")
         absence_lines = [l for l in d.out if "day" in l.lower() or "日" in l]
         self.assertTrue(len(absence_lines) > 0)
+
+
+class UserProfileIntegrationTests(unittest.TestCase):
+    """run_chat learns and uses the user's name via /callme, /whoami."""
+
+    def setUp(self):
+        import user_profile
+        self._up = user_profile
+        self._tmp = tempfile.mkdtemp()
+        self._ppath = os.path.join(self._tmp, "up.json")
+        # Redirect profile persistence to the temp file
+        self._patcher = mock.patch.object(persona_cli, "_profile_path",
+                                          lambda: self._ppath)
+        self._patcher.start()
+
+    def tearDown(self):
+        import shutil
+        self._patcher.stop()
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _profile(self, **kw):
+        return self._up.UserProfile(**kw)
+
+    def test_callme_sets_and_confirms_name(self):
+        prof = self._profile()
+        d = _Driver(["/callme Taro"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertEqual(prof.name, "Taro")
+        self.assertTrue(any("Taro" in line for line in d.out))
+
+    def test_callme_persists_to_disk(self):
+        prof = self._profile()
+        d = _Driver(["/callme Hana"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(os.path.exists(self._ppath))
+        loaded = self._up.UserProfile.load(self._ppath)
+        self.assertEqual(loaded.name, "Hana")
+
+    def test_callme_without_name_shows_usage(self):
+        prof = self._profile()
+        d = _Driver(["/callme"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("/callme" in line for line in d.out))
+
+    def test_whoami_unknown(self):
+        prof = self._profile()
+        d = _Driver(["/whoami"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("まだ呼び名" in line or "don't know" in line.lower()
+                            for line in d.out))
+
+    def test_whoami_known(self):
+        prof = self._profile(name="Yuki")
+        d = _Driver(["/whoami"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("Yuki" in line for line in d.out))
+
+    def test_greeting_addresses_known_user_by_name(self):
+        prof = self._profile(name="Ken")
+        d = _Driver([])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+        )
+        # The first (greeting) line should contain the name
+        self.assertTrue(any("Ken" in line for line in d.out))
+
+    def test_user_placeholder_substituted_in_reply(self):
+        # A persona whose fallback contains {user}; the reply must show the name
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "responses": {"en": {"rules": [], "fallback": ["Hi {user}!"]}},
+        }
+        persona = Persona.from_dict(data, lang="en")
+        prof = self._profile(name="Sam")
+        d = _Driver(["whatever"])
+        persona_cli.run_chat(
+            persona=persona, conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("Hi Sam!" in line for line in d.out))
 
 
 class MainEntryTests(unittest.TestCase):

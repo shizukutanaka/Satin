@@ -721,6 +721,7 @@ class PersonalDataPathsTests(unittest.TestCase):
         self.assertTrue(any("会話ログ" in d for d in descs))
         self.assertTrue(any("好感度の状態" in d for d in descs))
         self.assertTrue(any("好感度の履歴" in d for d in descs))
+        self.assertTrue(any("ユーザープロファイル" in d for d in descs))
 
 
 if __name__ == "__main__":
