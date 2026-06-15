@@ -291,7 +291,8 @@ class Persona:
         """
         if not text or not str(text).strip():
             return ""
-        norm = str(text).strip().lower()
+        import unicodedata as _ud
+        norm = _ud.normalize("NFC", str(text).strip().lower())
 
         block = self._resolve_responses_block(lang)
         rules = block.get("rules") or []

@@ -207,7 +207,8 @@ class ConversationLog:
             query を含むイベントのリスト。イベント分類は USER_EVENT_TYPES /
             AVATAR_EVENT_TYPES（dashboard と共有の正準集合）に従う。
         """
-        q_lower = query.strip().lower() if query else ""
+        import unicodedata
+        q_lower = unicodedata.normalize("NFC", query.strip().lower()) if query else ""
         conv_types = USER_EVENT_TYPES | AVATAR_EVENT_TYPES
         entries: List[Dict] = []
 
@@ -221,7 +222,8 @@ class ConversationLog:
             if ev.get("event_type") not in conv_types:
                 return
             text = ((ev.get("details") or {}).get("text") or "")
-            if not q_lower or q_lower in str(text).lower():
+            # NFC 正規化で NFC/NFD 混在入力でも一致（日本語の濁点合字対応）
+            if not q_lower or q_lower in unicodedata.normalize("NFC", str(text).lower()):
                 entries.append(ev)
 
         # アーカイブを古い順に検索（ローテーション後も履歴が途切れない）
