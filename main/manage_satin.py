@@ -17,6 +17,7 @@ Satin 管理バッチツール (CLI)
   persona show          ペルソナ情報を表示
   persona respond TEXT  入力に対する応答をプレビュー（ログ・好感度に影響なし）
   summary               アクティビティサマリーを表示
+  data purge            全個人データ（会話・好感度・履歴）を完全削除
 """
 from __future__ import annotations
 
@@ -460,6 +461,85 @@ def cmd_log_csv(dest: str) -> None:
         sys.exit(1)
 
 
+def _personal_data_paths() -> "list[tuple[str, str]]":
+    """ユーザーの個人データファイルの (説明, パス) 一覧を返す。
+
+    会話ログ本体＋ローテート済みアーカイブ、好感度状態、好感度の日次履歴を含む。
+    mood_config.json はユーザー設定（嗜好）であり「思い出」ではないため対象外。
+    """
+    items: list[tuple[str, str]] = []
+    # 会話ログ（本体 + gz アーカイブ）
+    try:
+        from conversation_log import DEFAULT_LOGFILE, _find_archives
+        log_path = os.path.join(_ROOT, DEFAULT_LOGFILE)
+        items.append(("会話ログ", log_path))
+        for gz in _find_archives(log_path):
+            items.append(("会話ログ(アーカイブ)", gz))
+    except Exception:
+        pass
+    # 好感度状態・履歴
+    try:
+        from mood import _default_mood_path, _default_mood_history_path
+        items.append(("好感度の状態", _default_mood_path()))
+        items.append(("好感度の履歴", _default_mood_history_path()))
+    except Exception:
+        pass
+    return items
+
+
+def cmd_data_purge(assume_yes: bool = False, dry_run: bool = False) -> None:
+    """ユーザーの全個人データ（会話・好感度・履歴）を完全に削除する。
+
+    「忘れられる権利」に相当する一括消去。会話ログ・アーカイブ・好感度状態・
+    好感度履歴をすべて削除する。破壊的操作のため既定で確認を求める
+    （--yes でスキップ）。--dry-run は削除せず対象一覧のみ表示する。
+    """
+    items = _personal_data_paths()
+    existing = [(desc, p) for desc, p in items if p and os.path.exists(p)]
+
+    if not existing:
+        print("(削除対象の個人データはありません)")
+        return
+
+    print("以下の個人データを削除します:")
+    for desc, p in existing:
+        print(f"  - {desc}: {p}")
+
+    if dry_run:
+        print(f"\n[dry-run] {len(existing)} 件が対象です（削除は行いませんでした）。")
+        return
+
+    if not assume_yes:
+        ans = input(
+            f"\n本当に {len(existing)} 件すべてを完全に削除しますか？この操作は取り消せません。 [y/N]: "
+        ).strip().lower()
+        if ans != "y":
+            print("キャンセルしました。")
+            return
+
+    deleted = 0
+    for desc, p in existing:
+        try:
+            os.remove(p)
+            deleted += 1
+        except OSError as e:
+            print(f"[WARNING] 削除に失敗しました: {p}: {e}")
+
+    # シングルトンを破棄して、削除後にメモリ上の状態が残らないようにする
+    try:
+        from mood import reset_mood_tracker
+        reset_mood_tracker()
+    except Exception:
+        pass
+    try:
+        from conversation_log import reset_conversation_log
+        reset_conversation_log()
+    except Exception:
+        pass
+
+    print(f"\n個人データ {deleted} 件を削除しました。Satin はあなたとの思い出をすべて忘れました。")
+
+
 def cmd_persona_show() -> None:
     """現在のペルソナ情報を表示する。"""
     try:
@@ -624,6 +704,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_summary.add_argument("--lang", default="ja", help="表示言語（ja/en、デフォルト: ja）")
     p_summary.add_argument("--yesterday", action="store_true", help="昨日のサマリーを表示")
 
+    # data
+    p_data = sub.add_parser("data", help="個人データの管理")
+    data_sub = p_data.add_subparsers(dest="data_cmd", metavar="<data-コマンド>")
+    p_data_purge = data_sub.add_parser(
+        "purge", help="全個人データ（会話・好感度・履歴）を完全削除"
+    )
+    p_data_purge.add_argument("--yes", action="store_true", help="確認をスキップして削除")
+    p_data_purge.add_argument("--dry-run", action="store_true", help="削除対象を表示するだけ")
+
     return parser
 
 
@@ -694,6 +783,14 @@ def main(argv: list[str] | None = None) -> int:
 
     elif args.command == "summary":
         cmd_summary(lang=args.lang, yesterday=args.yesterday)
+        return 0
+
+    elif args.command == "data":
+        if not args.data_cmd:
+            print("使用方法: manage_satin data {purge}")
+            return 1
+        if args.data_cmd == "purge":
+            cmd_data_purge(assume_yes=args.yes, dry_run=args.dry_run)
         return 0
 
     return 0

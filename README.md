@@ -308,11 +308,24 @@ python main/manage_satin.py backup restore foo.zip   # restore a backup
 python main/manage_satin.py persona show             # persona name / rule counts
 python main/manage_satin.py persona respond "やあ"    # preview a reply (no log/mood side-effects)
 python main/manage_satin.py summary                  # today's activity summary
+python main/manage_satin.py data purge --dry-run     # preview every personal-data file
+python main/manage_satin.py data purge               # erase ALL personal data (confirms first)
 ```
 
 `validate` checks JSON syntax and also performs semantic checks: it loads
 `persona.json` through the persona loader and verifies the `responses` rules, and
 confirms `mood_config.json` positive/negative blocks are language→word-list maps.
+
+#### Privacy: the right to be forgotten
+
+Satin stores everything locally — conversation log (and rotated archives),
+affinity state (`config/mood.json`) and the daily affinity history
+(`config/mood_history.jsonl`). `data purge` erases **all** of it in one step so
+you can hand off or wipe a machine cleanly. It lists exactly what will be deleted
+and asks for confirmation first; use `--dry-run` to preview without deleting, or
+`--yes` to skip the prompt in scripts. (Your customisations in
+`config/mood_config.json` and `config/persona.json` are preferences, not memories,
+so they are left untouched.)
 
 ### Web dashboard
 

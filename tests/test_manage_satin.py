@@ -633,5 +633,95 @@ class LogSearchTests(unittest.TestCase):
         self.assertIn("音楽", buf.getvalue())
 
 
+class DataPurgeTests(unittest.TestCase):
+    """cmd_data_purge deletes all personal-data files; honours dry-run and confirmation."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        # Create three fake personal-data files
+        self._files = []
+        for name in ("conv.jsonl", "mood.json", "mood_history.jsonl"):
+            p = os.path.join(self._tmp, name)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("data\n")
+            self._files.append(p)
+        self._items = [
+            ("会話ログ", self._files[0]),
+            ("好感度の状態", self._files[1]),
+            ("好感度の履歴", self._files[2]),
+        ]
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _run(self, *, inp=None, **kwargs):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        ctx = mock.patch.object(manage_satin, "_personal_data_paths",
+                                return_value=self._items)
+        with ctx, redirect_stdout(buf):
+            if inp is not None:
+                with mock.patch("builtins.input", return_value=inp):
+                    manage_satin.cmd_data_purge(**kwargs)
+            else:
+                manage_satin.cmd_data_purge(**kwargs)
+        return buf.getvalue()
+
+    def test_dry_run_does_not_delete(self):
+        out = self._run(dry_run=True)
+        self.assertIn("dry-run", out)
+        for p in self._files:
+            self.assertTrue(os.path.exists(p))
+
+    def test_confirmed_purge_deletes_all(self):
+        out = self._run(inp="y")
+        for p in self._files:
+            self.assertFalse(os.path.exists(p))
+        self.assertIn("削除しました", out)
+
+    def test_cancel_keeps_files(self):
+        self._run(inp="n")
+        for p in self._files:
+            self.assertTrue(os.path.exists(p))
+
+    def test_assume_yes_skips_confirmation(self):
+        # No input() patched; --yes must not prompt
+        out = self._run(assume_yes=True)
+        for p in self._files:
+            self.assertFalse(os.path.exists(p))
+        self.assertIn("削除しました", out)
+
+    def test_nothing_to_delete(self):
+        for p in self._files:
+            os.remove(p)
+        out = self._run(assume_yes=True)
+        self.assertIn("ありません", out)
+
+    def test_main_dispatch_dry_run(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with mock.patch.object(manage_satin, "_personal_data_paths",
+                               return_value=self._items), redirect_stdout(buf):
+            rc = manage_satin.main(["data", "purge", "--dry-run"])
+        self.assertEqual(rc, 0)
+        self.assertIn("dry-run", buf.getvalue())
+        for p in self._files:
+            self.assertTrue(os.path.exists(p))
+
+
+class PersonalDataPathsTests(unittest.TestCase):
+    """_personal_data_paths enumerates conversation log, mood state, and mood history."""
+
+    def test_includes_expected_categories(self):
+        items = manage_satin._personal_data_paths()
+        descs = [d for d, _ in items]
+        self.assertTrue(any("会話ログ" in d for d in descs))
+        self.assertTrue(any("好感度の状態" in d for d in descs))
+        self.assertTrue(any("好感度の履歴" in d for d in descs))
+
+
 if __name__ == "__main__":
     unittest.main()
