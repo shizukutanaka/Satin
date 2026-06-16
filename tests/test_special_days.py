@@ -44,6 +44,51 @@ class SeasonalGreetingTests(unittest.TestCase):
         self.assertTrue(a)
 
 
+class SeasonalGreetingByLevelTests(unittest.TestCase):
+    """Affinity level changes the wording of romance-heavy seasonal events."""
+
+    def test_valentine_close_differs_from_distant(self):
+        v_close = seasonal_greeting("ja", datetime.date(2026, 2, 14), level="close")
+        v_distant = seasonal_greeting("ja", datetime.date(2026, 2, 14), level="distant")
+        self.assertTrue(v_close)
+        self.assertTrue(v_distant)
+        self.assertNotEqual(v_close, v_distant)
+
+    def test_valentine_close_mentions_honmei(self):
+        msg = seasonal_greeting("ja", datetime.date(2026, 2, 14), level="close")
+        self.assertIn("本命", msg)
+
+    def test_valentine_distant_mentions_giri(self):
+        msg = seasonal_greeting("ja", datetime.date(2026, 2, 14), level="distant")
+        self.assertIn("義理", msg)
+
+    def test_undefined_level_falls_back_to_generic(self):
+        # neutral has no Valentine override -> generic seasonal text
+        generic = seasonal_greeting("ja", datetime.date(2026, 2, 14))
+        neutral = seasonal_greeting("ja", datetime.date(2026, 2, 14), level="neutral")
+        self.assertEqual(generic, neutral)
+
+    def test_non_romance_day_ignores_level(self):
+        # New Year has no per-level override; level shouldn't change output
+        a = seasonal_greeting("ja", datetime.date(2027, 1, 1), level="close")
+        b = seasonal_greeting("ja", datetime.date(2027, 1, 1))
+        self.assertEqual(a, b)
+
+    def test_christmas_close_en(self):
+        msg = seasonal_greeting("en", datetime.date(2026, 12, 25), level="close")
+        self.assertTrue(msg)
+        self.assertNotEqual(msg, seasonal_greeting("en", datetime.date(2026, 12, 25)))
+
+    def test_level_none_is_generic(self):
+        a = seasonal_greeting("ja", datetime.date(2026, 2, 14), level=None)
+        b = seasonal_greeting("ja", datetime.date(2026, 2, 14))
+        self.assertEqual(a, b)
+
+    def test_ordinary_day_with_level_empty(self):
+        self.assertEqual(
+            seasonal_greeting("ja", datetime.date(2026, 6, 15), level="close"), "")
+
+
 class BirthdayGreetingTests(unittest.TestCase):
     def test_no_profile(self):
         self.assertEqual(birthday_greeting(None, "ja", datetime.date(2026, 6, 15)), "")

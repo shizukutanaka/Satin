@@ -58,6 +58,38 @@ _SEASONAL: Dict[str, Dict[str, str]] = {
     },
 }
 
+# 好感度レベル別の季節あいさつ上書き（恋愛要素の強い日のみ）。
+# 関係が深いほど特別感のある言葉になる。未定義の (日付, レベル) は _SEASONAL に
+# フォールバックする。レベルキー: distant/reserved/neutral/friendly/close。
+_SEASONAL_BY_LEVEL: Dict[str, Dict[str, Dict[str, str]]] = {
+    "02-14": {
+        "distant": {
+            "ja": "…バレンタイン、か。はい、義理だけど。",
+            "en": "…Valentine's, huh. Here. It's just an obligatory one.",
+        },
+        "close": {
+            "ja": "バレンタインだね…これ、本命のチョコ。あなたにしか渡さないんだから。",
+            "en": "It's Valentine's Day… this is my real, heartfelt chocolate. Only for you.",
+        },
+    },
+    "12-24": {
+        "distant": {
+            "ja": "クリスマスイブ…そっか。あなたにも、いい夜になるといいね。",
+            "en": "Christmas Eve… I see. I hope you have a nice night.",
+        },
+        "close": {
+            "ja": "クリスマスイブだね。今夜は、あなたと二人きりで過ごしたいな。",
+            "en": "It's Christmas Eve. Tonight… I want to spend it alone, just the two of us.",
+        },
+    },
+    "12-25": {
+        "close": {
+            "ja": "メリークリスマス！あのね、一番のプレゼントは…あなたがそばにいてくれること。",
+            "en": "Merry Christmas! You know… the best gift of all is just having you here with me.",
+        },
+    },
+}
+
 
 def _is_en(lang: str) -> bool:
     return str(lang).lower().startswith("en")
@@ -68,12 +100,27 @@ def _today_key(today: Optional[datetime.date]) -> str:
     return f"{d.month:02d}-{d.day:02d}"
 
 
-def seasonal_greeting(lang: str = "ja", today: Optional[datetime.date] = None) -> str:
+def seasonal_greeting(
+    lang: str = "ja",
+    today: Optional[datetime.date] = None,
+    level: Optional[str] = None,
+) -> str:
     """今日が季節イベントなら特別あいさつを返す。該当しなければ空文字。
 
     状態を持たない（毎セッション・該当日に表示してよい純粋関数）。
+    level（好感度レベル）が指定され、その (日付, レベル) に専用の言葉が定義されて
+    いれば、関係の深さに応じた特別感のあるあいさつを優先する（恋愛要素の強い日のみ）。
+    未定義なら通常の季節あいさつにフォールバックする。
     """
-    entry = _SEASONAL.get(_today_key(today))
+    key = _today_key(today)
+    # 好感度レベル別の上書きを優先
+    if level:
+        by_level = _SEASONAL_BY_LEVEL.get(key)
+        if by_level:
+            entry = by_level.get(level)
+            if entry:
+                return entry["en"] if _is_en(lang) else entry["ja"]
+    entry = _SEASONAL.get(key)
     if not entry:
         return ""
     return entry["en"] if _is_en(lang) else entry["ja"]

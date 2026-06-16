@@ -175,9 +175,10 @@ class AutonomousBehaviorMixin:
                 except Exception as e:
                     logger.debug("誕生日メッセージの生成に失敗しました: %s", e)
             # 季節イベント（正月・バレンタイン・クリスマス等）の特別あいさつ
+            # 好感度レベルがあれば関係の深さに応じた特別版を優先する
             if _seasonal_greeting is not None:
                 try:
-                    season = _seasonal_greeting(lang=lang)
+                    season = _seasonal_greeting(lang=lang, level=level)
                     if season:
                         greeting = (greeting + " " + season).strip() if greeting else season
                 except Exception as e:

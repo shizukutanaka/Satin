@@ -243,9 +243,11 @@ def run_chat(
             except Exception:  # pragma: no cover - defensive
                 pass
         # 季節イベント（正月・バレンタイン・クリスマス等）の特別あいさつ
+        # 好感度レベルがあれば関係の深さに応じた特別版を優先する
         if _seasonal_greeting is not None:
             try:
-                season = _seasonal_greeting(lang=lang)
+                season_level = mood.level if mood is not None else None
+                season = _seasonal_greeting(lang=lang, level=season_level)
                 if season:
                     _say(season)
             except Exception:  # pragma: no cover - defensive
