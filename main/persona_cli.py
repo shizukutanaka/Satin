@@ -452,6 +452,16 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
             output_fn(f"{dmood_prefix}: {emoji} {dlabel}")
         except Exception:  # pragma: no cover - defensive
             pass
+    # 低好感度のときは関係改善のヒントを出す
+    try:
+        level = mood.level
+        if level in ("distant", "reserved"):
+            if lang == "en":
+                output_fn("Tip: Try chatting more, giving a gift (/gift), or saying nice things!")
+            else:
+                output_fn("ヒント: もっとおしゃべりしたり、/gift でプレゼントを贈ったりしてみて！")
+    except Exception:  # pragma: no cover - defensive
+        pass
 
 
 def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
