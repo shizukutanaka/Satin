@@ -309,9 +309,25 @@ class AutonomousBehaviorMixin:
             except Exception as e:
                 logger.debug("趣味・事実ベース雑談の生成に失敗しました: %s", e)
 
+        # 時刻帯（朝/午後/夕/夜）を取得して時刻に合った一言を選べるようにする
+        time_bucket = None
+        try:
+            import datetime as _dt
+            _hour = _dt.datetime.now().hour
+            if 5 <= _hour < 11:
+                time_bucket = "morning"
+            elif 11 <= _hour < 17:
+                time_bucket = "afternoon"
+            elif 17 <= _hour < 22:
+                time_bucket = "evening"
+            else:
+                time_bucket = "night"
+        except Exception:
+            pass
+
         persona = self.persona
         if persona is not None:
-            text = persona.talk(level=level, mood_key=mood_key)
+            text = persona.talk(level=level, mood_key=mood_key, time_bucket=time_bucket)
             if text:
                 return text
         talks = getattr(self, 'talks', None) or ['']

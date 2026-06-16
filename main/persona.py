@@ -59,6 +59,28 @@ _DEFAULT_DIALOGUE: Dict[str, Dict] = {
             "evening": ["こんばんは。おつかれさま。"],
             "night": ["こんな時間まで…無理しないでね。"],
         },
+        "talk_by_time": {
+            "morning": [
+                "おはよう！今日もいい朝だね。",
+                "朝ごはん食べた？一日の元気のもとだよ。",
+                "朝の空気って気持ちいいね。",
+            ],
+            "afternoon": [
+                "お昼も過ぎたね。ちゃんと食べてる？",
+                "午後もがんばろう！応援してるよ。",
+                "ちょっと眠くなる時間だよね。",
+            ],
+            "evening": [
+                "そろそろ夕方だね。今日も一日お疲れさまだよ。",
+                "夕暮れって、なんかほっとするね。",
+                "疲れてない？ちゃんと休んでね。",
+            ],
+            "night": [
+                "こんな時間まで起きてるんだ。夜更かしは体に毒だよ？",
+                "もう夜遅いね。今日もよくがんばったね。",
+                "夜はしんと静かでいいね。",
+            ],
+        },
     },
     "en": {
         "talk": [
@@ -74,6 +96,28 @@ _DEFAULT_DIALOGUE: Dict[str, Dict] = {
             "afternoon": ["Good afternoon! How are you?"],
             "evening": ["Good evening. Nice to see you."],
             "night": ["It's late... don't push yourself too hard."],
+        },
+        "talk_by_time": {
+            "morning": [
+                "Good morning! Today looks like a nice day.",
+                "Did you have breakfast? It's the fuel for the day!",
+                "The morning air feels so fresh, right?",
+            ],
+            "afternoon": [
+                "Afternoon already! Did you eat lunch?",
+                "Keep up the good work! I'm cheering you on.",
+                "That after-lunch sleepiness can get you, huh?",
+            ],
+            "evening": [
+                "Evening already. Thanks for today — you worked hard.",
+                "There's something calming about dusk, isn't there?",
+                "Tired? Make sure to rest.",
+            ],
+            "night": [
+                "Up this late? Don't push yourself too hard.",
+                "It's really late. You did great today.",
+                "Nights are so quiet... I kind of like it.",
+            ],
         },
     },
 }
@@ -237,6 +281,7 @@ class Persona:
         lang: Optional[str] = None,
         level: Optional[str] = None,
         mood_key: Optional[str] = None,
+        time_bucket: Optional[str] = None,
     ) -> str:
         """雑談台詞を 1 つ返す。
 
@@ -244,7 +289,9 @@ class Persona:
         1. mood_key が指定され ``talk_by_daily_mood[mood_key]`` があれば
            それを 1/3 の確率で採用（毎回同じにならないよう確率制御）。
         2. level が指定され ``talk_by_affinity[level]`` があれば採用。
-        3. 汎用 ``talk`` リスト。
+        3. time_bucket が指定され ``talk_by_time[bucket]`` があれば
+           25% の確率で差し込む（時刻を感じさせる一言）。
+        4. 汎用 ``talk`` リスト。
         """
         import random as _random
         block = self._resolve_lang_block(lang)
@@ -259,6 +306,12 @@ class Persona:
             level_opts = list(by_affinity.get(level, []))
             if level_opts:
                 return self._pick(f"talk_affinity:{level}:{lang or self.lang}", level_opts)
+        # 時刻帯別台詞（25% の確率で差し込む）
+        if time_bucket:
+            by_time = block.get("talk_by_time") or {}
+            time_opts = list(by_time.get(time_bucket, []))
+            if time_opts and _random.random() < 0.25:
+                return self._pick(f"talk_time:{time_bucket}:{lang or self.lang}", time_opts)
         return self._pick(f"talk:{lang or self.lang}", list(block.get("talk", [])))
 
     def rest(self, lang: Optional[str] = None) -> str:

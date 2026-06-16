@@ -84,7 +84,12 @@
           "…まあ、いいや。",
           "少し涼んでいこう。",
           "…何か用かな。",
-          "今日は何の日だろう。"
+          "今日は何の日だろう。",
+          "…ちょっとだけ走ってみようかな。",
+          "…静かだ。",
+          "なんか、ぼーっとしてしまう。",
+          "…空を見てた。",
+          "別に、なんでもないよ。"
         ],
         "reserved": [
           "今日はどんな日だろう。",
@@ -93,7 +98,12 @@
           "…最近、少し話しやすくなってきた気がする。",
           "今日のご飯は何にしようかな。",
           "空がきれいだな。",
-          "いいお天気。"
+          "いいお天気。",
+          "なんか、ちょっとずつ慣れてきたかも。",
+          "走ると気分がすっきりするね。",
+          "今日は何をしようかな。",
+          "ちょっとだけ、話してみようかな。",
+          "風が気持ちいいね。"
         ],
         "neutral": [
           "今日も元気でいこう！",
@@ -102,7 +112,12 @@
           "いい感じの一日だな。",
           "最近、なんか楽しいな。",
           "今日はどんなことが起きるかな。",
-          "気持ちいい風だ。"
+          "気持ちいい風だ。",
+          "なんかわくわくする！",
+          "一緒にいると落ち着くな。",
+          "もっと話したいな！",
+          "今日もいい日になりそう。",
+          "あなたと話してると時間が経つの早いね。"
         ],
         "friendly": [
           "一緒にいると楽しいな！",
@@ -111,7 +126,12 @@
           "あなたと話すの好きだよ。",
           "なんか最近、毎日が楽しくなってきた。",
           "もっとお話ししたいな〜。",
-          "ねえ、今日も遊ぼうよ！"
+          "ねえ、今日も遊ぼうよ！",
+          "あなたのことがどんどん好きになってる気がする。",
+          "一緒にいるとほんとに楽しい！",
+          "また来てくれてうれしいな。",
+          "今日も一日、ありがとうね。",
+          "あなたのこと話してたら笑顔になっちゃう。"
         ],
         "close": [
           "ずっとそばにいたいな。",
@@ -120,7 +140,42 @@
           "今日もありがとうね。だいすき。",
           "あなたといる時間が、一番幸せ。",
           "何してても、あなたのこと頭に浮かぶんだ。",
-          "また会えたね。来てくれて嬉しい。"
+          "また会えたね。来てくれて嬉しい。",
+          "あなたのことしか考えてなかった、ちょっと。",
+          "ずっとこの時間が続けばいいのにな。",
+          "いると、なんか全部うまくいく気がするんだよね。",
+          "離れてる間もずっと一緒にいる気がしてた。",
+          "あなたと話してると、世界が少し明るく見える。"
+        ]
+      },
+      "talk_by_time": {
+        "morning": [
+          "おはよう！今日もいい朝だね。",
+          "朝ごはん食べた？一日の元気のもとだよ。",
+          "朝の空気って気持ちいいね。",
+          "今日も一日、一緒にがんばろうね！",
+          "朝って、なんかはじまりって感じがして好き。"
+        ],
+        "afternoon": [
+          "お昼も過ぎたね。ちゃんと食べてる？",
+          "午後もがんばろう！応援してるよ。",
+          "ちょっと眠くなる時間だよね。",
+          "お昼休み、ゆっくり取れてる？",
+          "午後の陽差しって、なんか好きだな。"
+        ],
+        "evening": [
+          "そろそろ夕方だね。今日も一日お疲れさまだよ。",
+          "夕暮れって、なんかほっとするね。",
+          "疲れてない？ちゃんと休んでね。",
+          "夕方の空、きれいだな〜。",
+          "今日もよく頑張ったね！一緒に夕日見よう。"
+        ],
+        "night": [
+          "こんな時間まで起きてるんだ。夜更かしは体に毒だよ？",
+          "もう夜遅いね。今日もよくがんばったね。",
+          "夜はしんと静かでいいね。",
+          "夜更かしのお供、してあげるね。",
+          "夜の空、星がきれいだよ。"
         ]
       },
       "talk_by_daily_mood": {
@@ -238,7 +293,12 @@
           "...Fine, I guess.",
           "Just thinking.",
           "Wonder what's going on.",
-          "Suppose I'll stay here a while."
+          "Suppose I'll stay here a while.",
+          "...Maybe I'll take a little run.",
+          "...It's quiet.",
+          "Kind of zoning out today.",
+          "...Was just looking at the sky.",
+          "Nothing in particular. Just here."
         ],
         "reserved": [
           "I wonder what today will bring.",
@@ -247,7 +307,12 @@
           "Getting a bit more comfortable lately.",
           "What should I do today…",
           "The sky looks nice.",
-          "What a peaceful day."
+          "What a peaceful day.",
+          "Maybe I'm starting to get used to things.",
+          "Running always clears my head.",
+          "What to do, what to do…",
+          "Maybe I'll try talking a little.",
+          "There's a nice breeze."
         ],
         "neutral": [
           "Let's make today a good one!",
@@ -256,7 +321,12 @@
           "Pretty nice day, isn't it?",
           "Lately things feel kind of fun.",
           "Wonder what'll happen today.",
-          "There's a nice breeze."
+          "There's a nice breeze.",
+          "Feeling good today!",
+          "Having you around is calming.",
+          "Want to talk more!",
+          "Looks like it'll be a good day.",
+          "Time flies when I'm talking to you."
         ],
         "friendly": [
           "It's fun being around you!",
@@ -265,7 +335,12 @@
           "I really enjoy talking with you.",
           "Things have been way more fun lately!",
           "I want to chat more~",
-          "Hey, let's play together today!"
+          "Hey, let's play together today!",
+          "I think I like you more every day.",
+          "Being together is just the best!",
+          "I'm glad you came again.",
+          "Thanks for today.",
+          "Thinking of you always makes me smile."
         ],
         "close": [
           "I want to stay by your side forever.",
@@ -274,7 +349,42 @@
           "Thank you for today. You mean a lot to me.",
           "Being with you makes me happiest.",
           "You pop into my head no matter what I'm doing.",
-          "You came back. I'm so glad."
+          "You came back. I'm so glad.",
+          "I can't stop thinking about you.",
+          "I wish this time together could last forever.",
+          "When you're here, everything feels right.",
+          "Even when we're apart, I feel like you're close.",
+          "The world seems a little brighter when you're around."
+        ]
+      },
+      "talk_by_time": {
+        "morning": [
+          "Good morning! Today looks like a nice day.",
+          "Did you have breakfast? It's the fuel for the day!",
+          "The morning air feels so fresh, right?",
+          "Let's take on the day together!",
+          "Mornings feel like a fresh start, don't they?"
+        ],
+        "afternoon": [
+          "Afternoon already! Did you eat lunch?",
+          "Keep up the good work! I'm cheering you on.",
+          "That after-lunch sleepiness can get you, huh?",
+          "Are you getting your afternoon breaks?",
+          "There's something I like about afternoon sunlight."
+        ],
+        "evening": [
+          "Evening already. Thanks for today — you worked hard.",
+          "There's something calming about dusk, isn't there?",
+          "Tired? Make sure to rest.",
+          "The evening sky is beautiful, isn't it?",
+          "You did great today! Let's watch the sunset."
+        ],
+        "night": [
+          "Up this late? Don't push yourself too hard.",
+          "It's really late. You did great today.",
+          "Nights are so quiet... I kind of like it.",
+          "I'll keep you company through the night.",
+          "The stars are out. Pretty, right?"
         ]
       },
       "talk_by_daily_mood": {

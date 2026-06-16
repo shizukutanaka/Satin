@@ -605,6 +605,132 @@ class TalkByAffinityTests(unittest.TestCase):
         self.assertNotEqual(close_talk, generic_talk)
 
 
+class TalkByTimeTests(unittest.TestCase):
+    """persona.talk(time_bucket=) uses talk_by_time when available."""
+
+    def _make_persona(self, time_lines=None):
+        """Build a test persona with deterministic time_by_time content."""
+        lines = time_lines or {
+            "morning": ["MORNING_TALK"],
+            "afternoon": ["AFTERNOON_TALK"],
+            "evening": ["EVENING_TALK"],
+            "night": ["NIGHT_TALK"],
+        }
+        data = {
+            "name": "T", "default_lang": "en",
+            "dialogue": {"en": {
+                "talk": ["GENERIC"],
+                "talk_by_time": lines,
+            }},
+        }
+        return Persona.from_dict(data, lang="en")
+
+    def test_morning_bucket_can_return_morning_line(self):
+        """talk(time_bucket='morning') with forced random returns the morning line."""
+        from unittest import mock
+        p = self._make_persona()
+        with mock.patch("random.random", return_value=0.1):  # < 0.25 → time fires
+            result = p.talk(time_bucket="morning")
+        self.assertEqual(result, "MORNING_TALK")
+
+    def test_evening_bucket_can_return_evening_line(self):
+        from unittest import mock
+        p = self._make_persona()
+        with mock.patch("random.random", return_value=0.1):
+            result = p.talk(time_bucket="evening")
+        self.assertEqual(result, "EVENING_TALK")
+
+    def test_time_bucket_skipped_when_random_high(self):
+        """When random >= 0.25, time bucket is skipped and falls through to generic."""
+        from unittest import mock
+        p = self._make_persona()
+        with mock.patch("random.random", return_value=0.9):  # > 0.25 → skip time
+            result = p.talk(time_bucket="morning")
+        self.assertEqual(result, "GENERIC")
+
+    def test_no_time_bucket_returns_generic(self):
+        """If time_bucket is None, talk_by_time is never consulted."""
+        p = self._make_persona()
+        result = p.talk(time_bucket=None)
+        self.assertEqual(result, "GENERIC")
+
+    def test_level_takes_priority_over_time(self):
+        """talk_by_affinity has higher priority than talk_by_time."""
+        from unittest import mock
+        data = {
+            "name": "T", "default_lang": "en",
+            "dialogue": {"en": {
+                "talk": ["GENERIC"],
+                "talk_by_affinity": {"close": ["CLOSE_LINE"]},
+                "talk_by_time": {"morning": ["MORNING_LINE"]},
+            }},
+        }
+        p = Persona.from_dict(data, lang="en")
+        with mock.patch("random.random", return_value=0.1):
+            result = p.talk(level="close", time_bucket="morning")
+        # level takes priority: should be CLOSE_LINE, not MORNING_LINE
+        self.assertEqual(result, "CLOSE_LINE")
+
+    def test_bundled_persona_has_talk_by_time(self):
+        """config/persona.json has talk_by_time for all 4 time buckets in ja and en."""
+        import os
+        import json
+        cfg_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "persona.json",
+        )
+        from unittest import mock
+        p = Persona.load(config_path=cfg_path, lang="ja")
+        for bucket in ("morning", "afternoon", "evening", "night"):
+            with mock.patch("random.random", return_value=0.1):
+                result = p.talk(time_bucket=bucket)
+            self.assertTrue(result, f"Expected non-empty talk for bucket '{bucket}'")
+
+    def test_pick_talk_text_passes_time_bucket(self):
+        """_pick_talk_text() computes time_bucket and passes it to persona.talk()."""
+        import sys
+        import os
+        import datetime
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main"))
+        import autonomous_behavior as _ab
+        from unittest import mock
+
+        received_bucket = []
+
+        class _FakePersona:
+            lang = "en"
+
+            def talk(self, lang=None, level=None, mood_key=None, time_bucket=None):
+                received_bucket.append(time_bucket)
+                return "FAKE"
+
+        class _Mixin(_ab.AutonomousBehaviorMixin):
+            talks = ["fallback"]
+
+            @property
+            def persona(self):
+                return _FakePersona()
+
+        obj = object.__new__(_Mixin)
+        # Patch datetime.datetime.now() to return a morning hour (7am).
+        # _pick_talk_text uses `import datetime as _dt` locally, so we patch
+        # the global datetime.datetime class so the local import sees it.
+        fake_now = mock.MagicMock()
+        fake_now.hour = 7
+
+        with mock.patch("autonomous_behavior._get_mood_tracker", None), \
+             mock.patch("autonomous_behavior._get_daily_mood", None), \
+             mock.patch("autonomous_behavior._get_user_profile", None), \
+             mock.patch("autonomous_behavior._recall_fact", None), \
+             mock.patch("datetime.datetime") as fake_dt_cls:
+            fake_dt_cls.now.return_value = fake_now
+            result = obj._pick_talk_text()
+
+        self.assertEqual(result, "FAKE")
+        self.assertEqual(received_bucket, ["morning"])
+
+
 class SingletonTests(unittest.TestCase):
     def tearDown(self):
         reset_persona()
