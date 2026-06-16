@@ -370,6 +370,43 @@ class RespondWithLevelTests(unittest.TestCase):
                             "close and distant fallbacks should produce different text")
 
 
+class ApologyTests(unittest.TestCase):
+    """Saying sorry is recognized and gives a forgiving response (relationship healing)."""
+
+    def _repo_cfg(self):
+        return os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "persona.json",
+        )
+
+    def test_apology_ja_generic_responds(self):
+        p = Persona.load(config_path=self._repo_cfg(), lang="ja")
+        reply = p.respond("ごめんね")
+        self.assertTrue(reply)
+        self.assertNotEqual(reply, "ごめんね")
+
+    def test_apology_en_generic_responds(self):
+        p = Persona.load(config_path=self._repo_cfg(), lang="en")
+        reply = p.respond("I'm sorry")
+        self.assertTrue(reply)
+
+    def test_apology_distant_level_warmer(self):
+        """At distant level, apology should produce a healing-themed reply."""
+        p = Persona.load(config_path=self._repo_cfg(), lang="ja")
+        reply = p.respond("ごめん", level="distant")
+        self.assertTrue(reply)
+
+    def test_apology_default_responses(self):
+        """Default (no config) responses also recognize apologies."""
+        from persona import _DEFAULT_RESPONSES
+        p = Persona()  # uses defaults
+        reply = p.respond("ごめん")
+        self.assertTrue(reply)
+        p2 = Persona(default_lang="en", lang="en")
+        reply2 = p2.respond("sorry about that")
+        self.assertTrue(reply2)
+
+
 class GoodnightRitualTests(unittest.TestCase):
     """Bundled config has a dedicated, warm goodnight response distinct from generic bye."""
 

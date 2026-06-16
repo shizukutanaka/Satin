@@ -597,6 +597,19 @@
             ]
           },
           {
+            "keywords": [
+              "ごめん",
+              "すまない",
+              "すみません",
+              "許して"
+            ],
+            "replies": [
+              "…謝ってくれるんだ。ちょっと、見直したかも。",
+              "…うん。気にしてないって言ったら嘘だけど…ありがとう。",
+              "…そっか。少しずつでいいから、また話そう。"
+            ]
+          },
+          {
             "fallback": [
               "…そうですか。",
               "なるほど…。",
@@ -1050,6 +1063,19 @@
             ],
             "replies": [
               "...Fine, I suppose."
+            ]
+          },
+          {
+            "keywords": [
+              "sorry",
+              "apologize",
+              "my bad",
+              "forgive"
+            ],
+            "replies": [
+              "...You're apologizing? Maybe I misjudged you a little.",
+              "...I won't pretend it didn't hurt, but… thank you for saying that.",
+              "...Okay. Let's take it slow, but let's talk again."
             ]
           },
           {

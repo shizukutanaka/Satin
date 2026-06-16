@@ -482,6 +482,26 @@ class MoodConfigLoadTests(unittest.TestCase):
         tracker2.register("good night")
         self.assertGreater(tracker2.affinity, before2)
 
+    def test_bundled_mood_config_treats_apology_as_positive(self):
+        """Shipped mood_config.json should give affinity for ごめん / sorry (healing)."""
+        import json
+        repo_cfg = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "mood_config.json",
+        )
+        with open(repo_cfg, encoding="utf-8") as f:
+            cfg = json.load(f)
+        t = MoodTracker.load(None, mood_config=cfg)
+        t.affinity = 15.0  # distant
+        before = t.affinity
+        t.register("ごめんね")
+        self.assertGreater(t.affinity, before)
+        t2 = MoodTracker.load(None, mood_config=cfg)
+        t2.affinity = 15.0
+        before2 = t2.affinity
+        t2.register("I'm so sorry")
+        self.assertGreater(t2.affinity, before2)
+
     def test_get_mood_tracker_auto_loads_mood_config(self):
         """get_mood_tracker() with no args should use mood_config.json keywords."""
         import json

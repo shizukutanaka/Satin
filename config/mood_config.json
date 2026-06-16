@@ -12,7 +12,8 @@
       "おもしろい", "面白い", "笑える", "わらえる",
       "がんばって", "頑張って", "応援", "おうえん",
       "優しい", "やさしい", "いつも", "ずっと",
-      "おやすみ", "おやすみなさい"
+      "おやすみ", "おやすみなさい",
+      "ごめん", "ごめんね", "ごめんなさい", "すまない", "すみません", "許して"
     ],
     "en": [
       "thank", "thanks", "grateful", "appreciate",
@@ -22,7 +23,8 @@
       "good job", "well done", "perfect", "beautiful",
       "fun", "funny", "interesting", "enjoy",
       "cheer", "support", "always", "forever",
-      "good night", "sleep well", "sweet dreams"
+      "good night", "sleep well", "sweet dreams",
+      "sorry", "apologize", "my bad", "forgive me"
     ]
   },
   "negative": {
