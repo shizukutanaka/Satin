@@ -368,6 +368,65 @@ class MakeReminderSpeakTests(unittest.TestCase):
         self.assertEqual(v.comment_text, "break time")
 
 
+class UserPlaceholderResolutionTests(unittest.TestCase):
+    """{user} placeholder in GUI speak_comment replies must be resolved to the name."""
+
+    def test_user_placeholder_replaced_with_name(self):
+        """When persona fallback contains {user}, it's resolved to the user's profile name."""
+        from user_profile import UserProfile
+        profile = UserProfile(name="Hanako")
+
+        # Build a persona whose fallback always uses {user}
+        _placeholder_persona = Persona.from_dict({
+            "responses": {
+                "ja": {
+                    "rules": [],
+                    "fallback": ["{user}、聞いてるよ。"],
+                    "follow_up": [],
+                },
+            },
+            "default_lang": "ja",
+        })
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: profile), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               new_callable=lambda: property(
+                                   lambda self: _placeholder_persona)):
+            v.speak_comment("なんか聞いて")
+
+        self.assertNotIn("{user}", v.comment_text)
+        self.assertIn("Hanako", v.comment_text)
+
+    def test_user_placeholder_fallback_without_name(self):
+        """When no name is set, {user} falls back to 'きみ' (ja default)."""
+        from user_profile import UserProfile
+        profile = UserProfile()  # no name
+
+        _placeholder_persona = Persona.from_dict({
+            "responses": {
+                "ja": {
+                    "rules": [],
+                    "fallback": ["{user}、聞いてるよ。"],
+                    "follow_up": [],
+                },
+            },
+            "default_lang": "ja",
+        })
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: profile), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               new_callable=lambda: property(
+                                   lambda self: _placeholder_persona)):
+            v.speak_comment("なんか聞いて")
+
+        self.assertNotIn("{user}", v.comment_text)
+        self.assertIn("きみ", v.comment_text)
+
+
 class SpeakCommentRitualHurtTests(unittest.TestCase):
     """Hurt event and ritual bonus wiring in speak_comment()."""
 

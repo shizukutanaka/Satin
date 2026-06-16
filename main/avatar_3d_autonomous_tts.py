@@ -43,6 +43,15 @@ except Exception:  # pragma: no cover - defensive
     _detect_ritual_event_gui = None
 
 try:
+    from user_profile import (
+        get_user_profile as _get_user_profile_gui,
+        personalize as _personalize_gui,
+    )
+except Exception:  # pragma: no cover - defensive
+    _get_user_profile_gui = None
+    _personalize_gui = None
+
+try:
     from break_reminder import maybe_start_break_reminder  # noqa: E402
 except Exception:  # pragma: no cover - defensive
     maybe_start_break_reminder = None
@@ -193,6 +202,14 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 get_conversation_log().log_exchange(comment, reply)
             except Exception as e:
                 logger.warning("会話履歴の記録に失敗しました: %s", e)
+        # {user} プレースホルダを呼び名へ解決（GUI は _say() を持たないため個別に処理）
+        if _personalize_gui is not None and "{user}" in reply:
+            try:
+                prof = _get_user_profile_gui() if _get_user_profile_gui is not None else None
+                lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
+                reply = _personalize_gui(reply, prof, lang)
+            except Exception:
+                pass
         self.comment_text = reply
         self.mode = 'comment'
         self.ticks = 0
