@@ -342,8 +342,10 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
                                        lambda **kw: ""):
                     with mock.patch.object(autonomous_behavior, "_mood_description",
                                            lambda *a, **kw: ""):
-                        d = _StartStopDummy()
-                        d.start_autonomous()
+                        with mock.patch.object(autonomous_behavior, "_check_daily_login",
+                                               lambda *a, **kw: ""):
+                            d = _StartStopDummy()
+                            d.start_autonomous()
 
         self.assertEqual(captured_levels, ["close"])
         self.assertEqual(d.talk_text, "GREETING_close")
@@ -475,6 +477,7 @@ class SpecialDaysIntegrationTests(unittest.TestCase):
              mock.patch.object(autonomous_behavior, "_anniversary_message", lambda *a, **k: ""), \
              mock.patch.object(autonomous_behavior, "_absence_message", lambda *a, **k: ""), \
              mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_check_daily_login", lambda *a, **k: ""), \
              mock.patch.object(autonomous_behavior, "_get_user_profile", lambda: object()), \
              mock.patch.object(autonomous_behavior, "_profile_path", None), \
              mock.patch.object(autonomous_behavior, "_birthday_greeting",

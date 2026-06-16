@@ -993,6 +993,89 @@ class AnniversaryMessageTests(unittest.TestCase):
         self.assertEqual(t._last_anniversary_days, 100)
 
 
+class DailyLoginTests(unittest.TestCase):
+    """Tests for check_daily_login — daily-first-visit bonus and login streak."""
+
+    def setUp(self):
+        from mood import check_daily_login
+        self._check = check_daily_login
+
+    def test_first_login_returns_message_and_bonus(self):
+        t = MoodTracker(affinity=50.0)
+        before = t.affinity
+        msg = self._check(t, today="2026-06-16", lang="ja")
+        self.assertIsNotNone(msg)
+        self.assertGreater(t.affinity, before)
+        self.assertEqual(t._login_streak, 1)
+        self.assertEqual(t._last_login_date, "2026-06-16")
+
+    def test_second_login_same_day_returns_none(self):
+        t = MoodTracker(affinity=50.0)
+        self._check(t, today="2026-06-16", lang="ja")
+        affinity_after_first = t.affinity
+        msg = self._check(t, today="2026-06-16", lang="ja")
+        self.assertIsNone(msg)
+        # No additional bonus on the same day
+        self.assertEqual(t.affinity, affinity_after_first)
+
+    def test_consecutive_days_increase_streak(self):
+        t = MoodTracker(affinity=50.0)
+        self._check(t, today="2026-06-16", lang="ja")
+        self.assertEqual(t._login_streak, 1)
+        self._check(t, today="2026-06-17", lang="ja")
+        self.assertEqual(t._login_streak, 2)
+        self._check(t, today="2026-06-18", lang="ja")
+        self.assertEqual(t._login_streak, 3)
+
+    def test_gap_resets_streak(self):
+        t = MoodTracker(affinity=50.0)
+        self._check(t, today="2026-06-16", lang="ja")
+        self._check(t, today="2026-06-17", lang="ja")
+        self.assertEqual(t._login_streak, 2)
+        # Skip a day -> reset to 1
+        self._check(t, today="2026-06-19", lang="ja")
+        self.assertEqual(t._login_streak, 1)
+
+    def test_streak_milestone_message_at_3(self):
+        t = MoodTracker(affinity=50.0)
+        self._check(t, today="2026-06-16", lang="ja")
+        self._check(t, today="2026-06-17", lang="ja")
+        msg = self._check(t, today="2026-06-18", lang="ja")
+        self.assertIsNotNone(msg)
+        self.assertIn("3", msg)
+
+    def test_bonus_capped(self):
+        from mood import _DAILY_LOGIN_MAX_BONUS
+        t = MoodTracker(affinity=0.0, login_streak=100, last_login_date="2026-06-15")
+        before = t.affinity
+        self._check(t, today="2026-06-16", lang="ja")
+        gained = t.affinity - before
+        self.assertLessEqual(gained, _DAILY_LOGIN_MAX_BONUS + 0.001)
+
+    def test_en_message(self):
+        t = MoodTracker(affinity=50.0)
+        msg = self._check(t, today="2026-06-16", lang="en")
+        self.assertIsNotNone(msg)
+        self.assertTrue(any(w in msg.lower() for w in ("welcome", "glad", "day")))
+
+    def test_persistence_roundtrip(self):
+        t = MoodTracker(affinity=50.0)
+        self._check(t, today="2026-06-16", lang="ja")
+        self._check(t, today="2026-06-17", lang="ja")
+        data = t.to_dict()
+        self.assertEqual(data["login_streak"], 2)
+        self.assertEqual(data["last_login_date"], "2026-06-17")
+        restored = MoodTracker.from_dict(data)
+        self.assertEqual(restored._login_streak, 2)
+        self.assertEqual(restored._last_login_date, "2026-06-17")
+
+    def test_corrupt_date_resets_streak_to_one(self):
+        t = MoodTracker(affinity=50.0, last_login_date="not-a-date", login_streak=5)
+        msg = self._check(t, today="2026-06-16", lang="ja")
+        self.assertIsNotNone(msg)
+        self.assertEqual(t._login_streak, 1)
+
+
 class InteractionMilestoneTests(unittest.TestCase):
     """Tests for check_interaction_milestone — cumulative conversation count rewards."""
 

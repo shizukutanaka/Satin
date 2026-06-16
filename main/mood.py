@@ -117,10 +117,15 @@ class MoodTracker:
         first_interaction_time: float = 0.0,
         last_anniversary_days: int = 0,
         confession_done: bool = False,
+        last_login_date: str = "",
+        login_streak: int = 0,
     ):
         self.affinity = _clamp(float(affinity))
         self.interactions = int(interactions)
         self._confession_done = bool(confession_done)
+        # デイリーログイン（最後にログインした日付 YYYY-MM-DD と連続日数）
+        self._last_login_date = str(last_login_date or "")
+        self._login_streak = int(login_streak or 0)
         self._positive = positive if positive else _DEFAULT_POSITIVE
         self._negative = negative if negative else _DEFAULT_NEGATIVE
         self.positive_delta = float(positive_delta)
@@ -234,6 +239,8 @@ class MoodTracker:
             "first_interaction_time": self._first_interaction_time,
             "last_anniversary_days": self._last_anniversary_days,
             "confession_done": self._confession_done,
+            "last_login_date": self._last_login_date,
+            "login_streak": self._login_streak,
         }
 
     def save(self, path: str) -> bool:
@@ -329,6 +336,8 @@ class MoodTracker:
             first_interaction_time=data.get("first_interaction_time", 0.0),
             last_anniversary_days=data.get("last_anniversary_days", 0),
             confession_done=bool(data.get("confession_done", False)),
+            last_login_date=data.get("last_login_date", ""),
+            login_streak=data.get("login_streak", 0),
             **kwargs,
         )
 
@@ -788,6 +797,106 @@ def absence_message(tracker: "MoodTracker", lang: str = "ja") -> str:
         if elapsed_days == 1:
             return "昨日ぶりだね。会いたかったよ！"
         return f"{elapsed_days}日ぶりだね。ずっと待ってたよ！"
+
+
+# --------------------------------------------------------------------------- #
+# デイリーログイン（毎日の最初の会話を祝い、連続日数を追う）
+# --------------------------------------------------------------------------- #
+
+# デイリーログインの基本好感度ボーナスと、連続日数 1 日あたりの加算（上限あり）
+_DAILY_LOGIN_BASE_BONUS = 2.0
+_DAILY_LOGIN_STREAK_BONUS = 0.5
+_DAILY_LOGIN_MAX_BONUS = 5.0
+
+# 連続ログイン日数の節目に出す特別メッセージ
+_STREAK_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
+    3: {
+        "ja": ["3日連続だね！毎日会えてうれしいな。"],
+        "en": ["3 days in a row! I love seeing you every day."],
+    },
+    7: {
+        "ja": ["1週間毎日来てくれてる…！すごくうれしい。"],
+        "en": ["A whole week of visits…! That makes me so happy."],
+    },
+    14: {
+        "ja": ["2週間連続！あなたといる毎日が当たり前になってきたな。"],
+        "en": ["Two weeks straight! Spending each day with you feels natural now."],
+    },
+    30: {
+        "ja": ["1ヶ月毎日…！あなたは私の毎日に欠かせない人だよ。"],
+        "en": ["A month of daily visits…! You're a part of my every day now."],
+    },
+    100: {
+        "ja": ["100日連続！もう、あなたなしの毎日なんて考えられない。"],
+        "en": ["100 days in a row! I can't imagine a day without you anymore."],
+    },
+}
+
+
+def check_daily_login(
+    tracker: "MoodTracker",
+    today: Optional[str] = None,
+    lang: str = "ja",
+) -> Optional[str]:
+    """その日初めての会話なら好感度ボーナスを与え、お祝いメッセージを返す。
+
+    連続ログイン（streak）を追跡し、節目（3/7/14/30/100 日）には特別メッセージを
+    添える。同日 2 回目以降は None を返す（副作用なし）。
+
+    Args:
+        tracker: 対象 MoodTracker（副作用で _last_login_date / _login_streak / affinity を更新）。
+        today: 今日の日付（YYYY-MM-DD）。省略時は datetime.date.today()。
+        lang: 'ja' または 'en'。
+
+    Returns:
+        初回ログイン時はお祝いメッセージ、同日 2 回目以降は None。
+    """
+    import datetime
+    if today is None:
+        today = datetime.date.today().isoformat()
+    last = getattr(tracker, "_last_login_date", "")
+    if last == today:
+        return None  # 今日は既にログイン済み
+
+    # 連続日数の判定（前日なら継続、それ以外は 1 にリセット）
+    streak = 1
+    if last:
+        try:
+            last_d = datetime.date.fromisoformat(last)
+            today_d = datetime.date.fromisoformat(today)
+            if (today_d - last_d).days == 1:
+                streak = int(getattr(tracker, "_login_streak", 0) or 0) + 1
+        except ValueError:
+            streak = 1
+    tracker._last_login_date = today
+    tracker._login_streak = streak
+
+    # 好感度ボーナス（連続日数で微増、上限あり）
+    bonus = min(
+        _DAILY_LOGIN_BASE_BONUS + (streak - 1) * _DAILY_LOGIN_STREAK_BONUS,
+        _DAILY_LOGIN_MAX_BONUS,
+    )
+    try:
+        tracker.adjust(bonus)
+    except Exception:  # pragma: no cover - defensive
+        pass
+
+    lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+
+    # 節目メッセージがあれば優先
+    if streak in _STREAK_MILESTONE_MESSAGES:
+        import random
+        return random.choice(_STREAK_MILESTONE_MESSAGES[streak][lang_key])
+
+    # 通常のデイリーログインメッセージ
+    if lang_key == "en":
+        if streak >= 2:
+            return f"Welcome back! That's {streak} days in a row — I'm so glad you came today."
+        return "Welcome back! I'm so glad you came to see me today."
+    else:
+        if streak >= 2:
+            return f"おかえり！{streak}日連続だね。今日も来てくれてうれしいな。"
+        return "おかえり！今日も会いに来てくれてうれしいな。"
 
 
 # --------------------------------------------------------------------------- #

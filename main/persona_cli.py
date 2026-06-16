@@ -45,6 +45,7 @@ try:
         check_level_milestone as _check_level_milestone,
         check_confession_event as _check_confession_event,
         check_interaction_milestone as _check_interaction_milestone,
+        check_daily_login as _check_daily_login,
         affinity_level,
         affinity_label as _affinity_label,
     )
@@ -56,6 +57,7 @@ except Exception:  # pragma: no cover - defensive
     _check_level_milestone = None  # type: ignore
     _check_confession_event = None  # type: ignore
     _check_interaction_milestone = None  # type: ignore
+    _check_daily_login = None  # type: ignore
     affinity_level = None  # type: ignore
     _affinity_label = None  # type: ignore
 
@@ -206,6 +208,14 @@ def run_chat(
                 sep = ", " if lang == "en" else "、"
                 greeting = f"{profile.name}{sep}{greeting}"
             _say(greeting)
+        # デイリーログイン: その日初回なら好感度ボーナス＋お祝い（連続日数を追う）
+        if mood is not None and _check_daily_login is not None:
+            try:
+                login_msg = _check_daily_login(mood, lang=lang)
+                if login_msg:
+                    _say(login_msg)
+            except Exception:  # pragma: no cover - defensive
+                pass
         # 出会ってからの記念日（節目）に達していたら祝う
         if mood is not None and _anniversary_message_fn is not None:
             try:
@@ -488,6 +498,13 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
                 output_fn(f"We've known each other for {days} {unit}.")
             else:
                 output_fn(f"出会ってから{days}日目だよ。")
+        # 連続ログイン日数
+        streak = int(getattr(mood, "_login_streak", 0) or 0)
+        if streak >= 2:
+            if lang == "en":
+                output_fn(f"Login streak: {streak} days in a row! 🔥")
+            else:
+                output_fn(f"連続ログイン: {streak}日連続！🔥")
     except Exception:  # pragma: no cover - defensive
         pass
     # デイリームードを添える
@@ -526,6 +543,9 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
         # リセットは「関係の仕切り直し」: 出会いの起点と記念日マーカーも消す
         mood._first_interaction_time = 0.0
         mood._last_anniversary_days = 0
+        # デイリーログインの連続記録も仕切り直す
+        mood._last_login_date = ""
+        mood._login_streak = 0
         if lang == "en":
             output_fn(f"Affinity reset to neutral ({int(AFFINITY_START)}/100).")
         else:

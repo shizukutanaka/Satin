@@ -38,6 +38,7 @@ try:
         _default_mood_path as _mood_path,
         absence_message as _absence_message,
         anniversary_message as _anniversary_message,
+        check_daily_login as _check_daily_login,
     )
 except Exception:  # pragma: no cover - defensive
     _get_mood_tracker = None
@@ -45,6 +46,7 @@ except Exception:  # pragma: no cover - defensive
     _mood_path = None
     _absence_message = None  # type: ignore
     _anniversary_message = None  # type: ignore
+    _check_daily_login = None  # type: ignore
 
 try:
     from daily_summary import yesterday_greeting as _yesterday_greeting
@@ -132,6 +134,18 @@ class AutonomousBehaviorMixin:
                         greeting = (greeting + " " + absence).strip() if greeting else absence
                 except Exception as e:
                     logger.debug("不在メッセージの生成に失敗しました: %s", e)
+            # デイリーログイン: その日初回なら好感度ボーナス＋お祝いを挨拶へ添える。
+            # check_daily_login はログイン日付・連続日数を更新するので保存して重複を防ぐ。
+            if _check_daily_login is not None and _get_mood_tracker is not None:
+                try:
+                    tr = _get_mood_tracker()
+                    login_msg = _check_daily_login(tr, lang=lang)
+                    if login_msg:
+                        greeting = (greeting + " " + login_msg).strip() if greeting else login_msg
+                        if _mood_path is not None:
+                            tr.save(_mood_path())
+                except Exception as e:
+                    logger.debug("デイリーログインの処理に失敗しました: %s", e)
             # 出会ってからの節目（記念日）に達していたら祝いを添える。
             # anniversary_message は達成済みフラグを更新するので保存して重複を防ぐ。
             if _anniversary_message is not None and _get_mood_tracker is not None:

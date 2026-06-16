@@ -413,6 +413,28 @@ class MoodIntegrationTests(unittest.TestCase):
         combined = " ".join(reply_lines)
         self.assertGreater(len(combined), len("Mimi: OK"))
 
+    def test_daily_login_message_at_greeting(self):
+        """First conversation of the day shows a daily-login welcome + bonus."""
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50, interactions=1)
+        before = m.affinity
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "dialogue": {"en": {"greeting": {
+                "morning": ["GM"], "afternoon": ["GM"],
+                "evening": ["GM"], "night": ["GM"]}}},
+            "responses": {"en": {"rules": [], "fallback": ["FB"]}},
+        }
+        persona = Persona.from_dict(data, lang="en")
+        d = _Driver([])
+        persona_cli.run_chat(
+            persona=persona, conv_log=None, mood=m,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+        )
+        # A daily-login line should appear and affinity should have risen
+        self.assertGreater(m.affinity, before)
+        self.assertEqual(m._login_streak, 1)
+
     def test_anniversary_message_shown_at_greeting(self):
         """A relationship milestone is celebrated in the greeting."""
         import time
