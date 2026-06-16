@@ -46,10 +46,21 @@ try:
     from user_profile import (
         get_user_profile as _get_user_profile_gui,
         personalize as _personalize_gui,
+        _default_profile_path as _default_profile_path_gui,
     )
 except Exception:  # pragma: no cover - defensive
     _get_user_profile_gui = None
     _personalize_gui = None
+    _default_profile_path_gui = None
+
+try:
+    from profile_questions import (
+        next_unanswered_question as _next_unanswered_question_gui,
+        acknowledge_answer as _acknowledge_answer_gui,
+    )
+except Exception:  # pragma: no cover - defensive
+    _next_unanswered_question_gui = None
+    _acknowledge_answer_gui = None
 
 try:
     from break_reminder import maybe_start_break_reminder  # noqa: E402
@@ -110,6 +121,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             'あなたも一緒にどう？'
         ]
         self.tts_queue = None
+        self.pending_fact_key = None  # 一問一答: 回答待ちの質問キー
 
     def set_tts_queue(self, tts_queue):
         self.tts_queue = tts_queue
@@ -126,6 +138,24 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             except Exception as e:
                 logger.debug("好感度レベルの取得に失敗（応答は継続）: %s", e)
         persona = self.persona
+        lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
+
+        # 一問一答の回答待ちなら今回の発話を答えとして記録する（失敗しても会話は続ける）。
+        ack_msg = ""
+        if self.pending_fact_key is not None:
+            if _get_user_profile_gui is not None and _acknowledge_answer_gui is not None:
+                try:
+                    prof = _get_user_profile_gui()
+                    if prof is not None:
+                        saved = prof.set_fact(self.pending_fact_key, comment)
+                        if saved:
+                            ack_msg = _acknowledge_answer_gui(self.pending_fact_key, saved, lang=lang)
+                            if _default_profile_path_gui is not None:
+                                prof.save(_default_profile_path_gui())
+                except Exception as e:
+                    logger.debug("一問一答の回答記録に失敗（GUI）: %s", e)
+            self.pending_fact_key = None
+
         if persona is not None:
             try:
                 generated = persona.respond(comment, level=level)
@@ -141,7 +171,6 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 tracker = get_mood_tracker()
                 before_affinity = tracker.affinity
                 before_interactions = tracker.interactions
-                lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
                 raw_delta = tracker.register(comment)
                 # 謝罪・おやすみルーティン: 小さな好感度ボーナス
                 if _detect_ritual_event_gui is not None:
@@ -191,7 +220,23 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 if get_mood_tracker is not None:
                     interactions = get_mood_tracker().interactions
                 if interactions and interactions % _FOLLOW_UP_EVERY == 0:
-                    question = persona.follow_up_question(level=level)
+                    question = ""
+                    # getting-to-know-you Q&A: neutral+ かつ回答待ち無しのとき半々の確率で
+                    # プロフィール質問を優先する（persona.follow_up_question より具体的）。
+                    if (level in {"neutral", "friendly", "close"}
+                            and self.pending_fact_key is None
+                            and _next_unanswered_question_gui is not None
+                            and _get_user_profile_gui is not None):
+                        if random.random() < 0.5:
+                            try:
+                                prof = _get_user_profile_gui()
+                                qpair = _next_unanswered_question_gui(prof, lang)
+                                if qpair:
+                                    self.pending_fact_key, question = qpair
+                            except Exception:
+                                question = ""
+                    if not question:
+                        question = persona.follow_up_question(level=level)
                     if question:
                         reply = (reply + " " + question).strip()
             except Exception as e:
@@ -206,10 +251,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if _personalize_gui is not None and "{user}" in reply:
             try:
                 prof = _get_user_profile_gui() if _get_user_profile_gui is not None else None
-                lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
                 reply = _personalize_gui(reply, prof, lang)
             except Exception:
                 pass
+        # 一問一答の回答確認文を前置き（「ちゃんと聞いてる」感を演出）
+        if ack_msg:
+            reply = (ack_msg + " " + reply).strip() if reply else ack_msg
         self.comment_text = reply
         self.mode = 'comment'
         self.ticks = 0

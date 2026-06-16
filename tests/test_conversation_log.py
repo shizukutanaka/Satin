@@ -299,6 +299,7 @@ class SpeakCommentWiringTests(unittest.TestCase):
             v.mode = "idle"
             v.ticks = 0
             v.tts_queue = queue.Queue()
+            v.pending_fact_key = None
             v.speak_comment("hello")
 
         recorded = test_log.recent()
@@ -322,6 +323,7 @@ class SpeakCommentWiringTests(unittest.TestCase):
             v.mode = "idle"
             v.ticks = 0
             v.tts_queue = queue.Queue()
+            v.pending_fact_key = None
             v.speak_comment("hi")  # must not raise
             self.assertEqual(v.comment_text, "hi")
 

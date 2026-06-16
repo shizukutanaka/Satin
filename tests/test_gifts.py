@@ -152,5 +152,59 @@ class CLIGiftIntegrationTests(unittest.TestCase):
                             or "affinity" in l.lower() for l in logs))
 
 
+class GiftPersistenceTests(unittest.TestCase):
+    """_give_gift() must save mood immediately so bonus survives an abrupt exit."""
+
+    def setUp(self):
+        import persona_cli
+        self._pc = persona_cli
+
+    def test_mood_saved_immediately_after_gift(self):
+        """Affinity bonus from /gift is written to disk inside _give_gift()."""
+        import json
+        import os
+        import tempfile
+        from mood import MoodTracker
+
+        tmp = tempfile.mkdtemp()
+        mood_path = os.path.join(tmp, "mood.json")
+        history_path = os.path.join(tmp, "history.json")
+        tracker = MoodTracker(affinity=20.0)
+
+        # _give_gift() does `from mood import _default_mood_path` locally, so patch at source
+        from unittest import mock
+        import mood as _mood_mod
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: mood_path), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path",
+                               lambda: history_path):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        self.assertTrue(os.path.exists(mood_path),
+                        "mood.json must be written immediately after a gift")
+        with open(mood_path, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertGreater(data["affinity"], 20.0,
+                           "Saved affinity should reflect the gift bonus")
+
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_mood_save_failure_does_not_crash(self):
+        """If mood save throws (disk full, etc.), _give_gift() still completes."""
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=30.0)
+        logs = []
+        from unittest import mock
+        import mood as _mood_mod
+        with mock.patch.object(_mood_mod, "_default_mood_path",
+                               lambda: "/nonexistent/path/mood.json"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path",
+                               lambda: "/nonexistent/path/history.json"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", logs.append)
+
+        # Should have printed the reply and the bonus message without crashing
+        self.assertTrue(any("花" in l or "+" in l or "Avatar" in l for l in logs))
+
+
 if __name__ == "__main__":
     unittest.main()

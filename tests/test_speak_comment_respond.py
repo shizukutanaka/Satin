@@ -31,6 +31,7 @@ def _make_viewer(tts_queue=None):
     v.ticks = 0
     v.tts_queue = tts_queue
     v.talk_text = ""
+    v.pending_fact_key = None
     return v
 
 
@@ -229,11 +230,13 @@ class SpeakCommentMoodTests(unittest.TestCase):
             property(lambda self: follow_persona))
         patcher.start()
         self.addCleanup(patcher.stop)
-        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker):
-            with mock.patch.object(_mod, "_default_mood_path", lambda: None):
-                with mock.patch.object(_mod, "_default_mood_history_path", lambda: None):
-                    v = _make_viewer(queue.Queue())
-                    v.speak_comment("hello")
+        # Disable Q&A path so the test deterministically exercises persona.follow_up_question
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", lambda: None), \
+             mock.patch.object(_mod, "_default_mood_history_path", lambda: None), \
+             mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v = _make_viewer(queue.Queue())
+            v.speak_comment("hello")
         self.assertIn("WHATS_NEW", v.comment_text)
 
     def test_mood_save_failure_does_not_crash(self):
@@ -266,6 +269,7 @@ class SilentFailureObservabilityTests(unittest.TestCase):
         v.ticks = 0
         v.tts_queue = None
         v.talk_text = ""
+        v.pending_fact_key = None
         return v
 
     def test_mood_failure_is_logged_not_silent(self):
@@ -496,6 +500,199 @@ class SpeakCommentRitualHurtTests(unittest.TestCase):
             v.speak_comment("hello")
         self.assertEqual(tracker.interactions, 10)
         self.assertIn("10", v.comment_text)
+
+
+class GUIQAIntegrationTests(unittest.TestCase):
+    """Profile Q&A tracking in GUI speak_comment: answer recording and follow-up Q&A."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def test_pending_fact_key_records_answer_in_profile(self):
+        """When pending_fact_key is set, the comment is saved into profile.facts."""
+        from user_profile import UserProfile
+        prof = UserProfile()
+        v = _make_viewer()
+        v.pending_fact_key = "pet"
+
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_acknowledge_answer_gui",
+                               lambda key, val, lang="ja": f"ACK:{val}"), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("猫")
+
+        self.assertEqual(prof.facts.get("pet"), "猫")
+
+    def test_pending_fact_key_cleared_after_recording(self):
+        """pending_fact_key is reset to None regardless of success after one answer."""
+        from user_profile import UserProfile
+        prof = UserProfile()
+        v = _make_viewer()
+        v.pending_fact_key = "favorite_food"
+
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_acknowledge_answer_gui",
+                               lambda key, val, lang="ja": "ACK"), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("ラーメン")
+
+        self.assertIsNone(v.pending_fact_key)
+
+    def test_ack_msg_prepended_to_reply(self):
+        """Acknowledgement of recorded fact is prepended before the persona reply."""
+        from user_profile import UserProfile
+        prof = UserProfile()
+        v = _make_viewer()
+        v.pending_fact_key = "pet"
+
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_acknowledge_answer_gui",
+                               lambda key, val, lang="ja": "ACK_TEXT"), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("hello")  # keyword → REPLY_HELLO
+
+        self.assertTrue(v.comment_text.startswith("ACK_TEXT"),
+                        f"Expected ack first; got: {v.comment_text!r}")
+        self.assertIn("REPLY_HELLO", v.comment_text)
+
+    def test_no_crash_when_acknowledge_answer_is_none(self):
+        """If _acknowledge_answer_gui is None, pending_fact_key is still cleared."""
+        from user_profile import UserProfile
+        prof = UserProfile()
+        v = _make_viewer()
+        v.pending_fact_key = "hometown"
+
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_acknowledge_answer_gui", None), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("東京")  # must not raise
+
+        self.assertIsNone(v.pending_fact_key)
+
+    def test_no_crash_when_profile_returns_none(self):
+        """If _get_user_profile_gui() returns None, pending_fact_key is still cleared."""
+        v = _make_viewer()
+        v.pending_fact_key = "dream"
+
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: None), \
+             mock.patch.object(_mod, "_acknowledge_answer_gui",
+                               lambda key, val, lang="ja": "ACK"), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("宇宙飛行士")  # must not raise
+
+        self.assertIsNone(v.pending_fact_key)
+
+    def test_qa_followup_sets_pending_fact_key(self):
+        """On the Nth exchange, the Q&A path fires and pending_fact_key is set."""
+        from user_profile import UserProfile
+        from profile_questions import all_question_keys
+
+        prof = UserProfile()  # no facts answered yet
+
+        # Fake tracker: level=neutral, interactions already at threshold
+        class _FakeTracker:
+            level = "neutral"
+            affinity = 50.0
+            interactions = _mod._FOLLOW_UP_EVERY
+
+            def register(self, text):
+                return 0.0
+
+            def adjust(self, delta):
+                pass
+
+            def save(self, path):
+                pass
+
+            def snapshot_to_history(self, path):
+                pass
+
+        non_q_persona = Persona.from_dict({
+            "responses": {"ja": {"rules": [], "fallback": ["了解。"]}},
+            "default_lang": "ja",
+        })
+
+        v = _make_viewer()
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: non_q_persona)), \
+             mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod.random, "random", return_value=0.1):  # force Q&A path
+            v.speak_comment("なんか言って")
+
+        self.assertIsNotNone(v.pending_fact_key,
+                             "pending_fact_key should be set when Q&A fires")
+        self.assertIn(v.pending_fact_key, all_question_keys())
+
+    def test_qa_followup_skips_when_all_facts_known(self):
+        """Q&A does not ask again when all profile questions are already answered."""
+        from user_profile import UserProfile
+        from profile_questions import all_question_keys
+
+        prof = UserProfile()
+        # Populate all facts so no question is left
+        for key in all_question_keys():
+            prof.set_fact(key, "something")
+
+        class _FakeTracker:
+            level = "neutral"
+            affinity = 50.0
+            interactions = _mod._FOLLOW_UP_EVERY
+
+            def register(self, text):
+                return 0.0
+
+            def adjust(self, delta):
+                pass
+
+            def save(self, path):
+                pass
+
+            def snapshot_to_history(self, path):
+                pass
+
+        non_q_persona = Persona.from_dict({
+            "responses": {"ja": {"rules": [], "fallback": ["了解。"]}},
+            "default_lang": "ja",
+        })
+
+        v = _make_viewer()
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: non_q_persona)), \
+             mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod.random, "random", return_value=0.1):
+            v.speak_comment("なんか言って")
+
+        # No unanswered questions → pending_fact_key stays None
+        self.assertIsNone(v.pending_fact_key)
 
 
 if __name__ == "__main__":

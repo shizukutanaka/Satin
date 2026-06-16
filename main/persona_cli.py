@@ -726,10 +726,16 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
             output_fn(f"「{item}」はよく分からないな。/gift list で確認してね。")
         return
     bonus, reply = result
-    # 好感度ボーナスを適用
+    # 好感度ボーナスを適用し、即時保存（Ctrl+C 等でもボーナスが消えないよう）
     if mood is not None:
         try:
             mood.adjust(bonus)
+            try:
+                from mood import _default_mood_path, _default_mood_history_path
+                mood.save(_default_mood_path())
+                mood.snapshot_to_history(_default_mood_history_path())
+            except Exception:
+                pass
         except Exception:
             pass
     _say_fn = lambda text: output_fn(f"{avatar_name}: {text}")  # noqa: E731
