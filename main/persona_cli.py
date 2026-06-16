@@ -21,6 +21,7 @@
   /whoami             今記憶している呼び名・誕生日・好きなものを表示
   /mood               好感度レベルと今日のアバターの気分を表示
   /reset-mood         好感度をニュートラルにリセット
+  /recap              今日の会話サマリーと直近のやりとりを表示
   /stats              会話統計を表示
   /name               ペルソナ名を表示
   /quit               終了（/exit, /q も同じ）
@@ -89,6 +90,11 @@ try:
 except Exception:  # pragma: no cover - defensive
     _lookup_gift = None  # type: ignore
     _gift_catalog_text = None  # type: ignore
+
+try:
+    from daily_summary import summary_greeting as _summary_greeting
+except Exception:  # pragma: no cover - defensive
+    _summary_greeting = None  # type: ignore
 
 try:
     from daily_mood import (
@@ -186,7 +192,7 @@ def _help_text() -> str:
         "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | "
         "/like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | "
         "/gift <プレゼント> 贈る | /whoami 確認 | "
-        "/mood 好感度 | /reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
+        "/mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /stats 統計 | /name 名前 | /quit 終了"
     )
 
 
@@ -374,6 +380,9 @@ def run_chat(
             continue
         if text.lower() == "/stats":
             _print_stats(conv_log, exchanges, lang, output_fn)
+            continue
+        if text.lower() == "/recap":
+            _print_recap(conv_log, lang, output_fn)
             continue
         if text.lower().startswith("/search"):
             query = text[len("/search"):].strip()
@@ -600,7 +609,7 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
                 output_fn(f"連続ログイン: {streak}日連続！🔥")
     except Exception:  # pragma: no cover - defensive
         pass
-    # デイリームードを添える
+    # デイリームードを添える（好感度変調倍率も表示して効果を見える化）
     if _get_daily_mood is not None and _mood_label is not None and _mood_emoji is not None:
         try:
             salt = profile.name if profile is not None else ""
@@ -608,7 +617,17 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
             emoji = _mood_emoji(dmood)
             dlabel = _mood_label(dmood, lang)
             dmood_prefix = "Today's mood" if lang == "en" else "今日の気分"
-            output_fn(f"{dmood_prefix}: {emoji} {dlabel}")
+            mood_line = f"{dmood_prefix}: {emoji} {dlabel}"
+            if _mood_affinity_multiplier is not None:
+                mult = _mood_affinity_multiplier(dmood)
+                if mult != 1.0:
+                    pct = int(round((mult - 1.0) * 100))
+                    sign = "+" if pct > 0 else ""
+                    if lang == "en":
+                        mood_line += f" (affinity gain {sign}{pct}%)"
+                    else:
+                        mood_line += f"（好感度変化 {sign}{pct}%）"
+            output_fn(mood_line)
         except Exception:  # pragma: no cover - defensive
             pass
     # 低好感度のときは関係改善のヒントを出す
@@ -844,6 +863,40 @@ def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> No
             output_fn("覚えていること:")
         for value in facts.values():
             output_fn(f"  - {value}")
+
+
+def _print_recap(conv_log, lang: str, output_fn: Callable[[str], None]) -> None:
+    """今日の会話サマリーと直近のやりとりを表示する（/recap コマンド）。"""
+    is_en = lang.startswith("en")
+    has_output = False
+    # デイリーサマリーグリーティング（アバター口調）
+    if _summary_greeting is not None:
+        try:
+            greeting = _summary_greeting(lang=lang)
+            if greeting:
+                output_fn(greeting)
+                has_output = True
+        except Exception:
+            pass
+    # 直近 3 件のやりとりをそのまま表示（文脈を思い出せるように）
+    if conv_log is not None:
+        try:
+            recent = conv_log.recent(3)
+            if recent:
+                output_fn("── Recent exchanges ──" if is_en else "── 直近のやりとり ──")
+                from conversation_log import USER_EVENT_TYPES
+                for entry in recent:
+                    et = entry.get("event_type", "")
+                    text = entry.get("details", {}).get("text", "")
+                    if not text:
+                        continue
+                    label = ("You" if is_en else "あなた") if et in USER_EVENT_TYPES else "Satin"
+                    output_fn(f"  {label}: {text}")
+                has_output = True
+        except Exception:
+            pass
+    if not has_output:
+        output_fn("No conversations yet today." if is_en else "今日はまだ会話が記録されていません。")
 
 
 def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:

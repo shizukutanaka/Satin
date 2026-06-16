@@ -1076,5 +1076,164 @@ class RitualEventTests(unittest.TestCase):
         self.assertTrue(any("T:" in o for o in outputs))
 
 
+class MoodMultiplierDisplayTests(unittest.TestCase):
+    """The /mood command shows the daily mood affinity multiplier effect."""
+
+    def _run(self, inputs, mood):
+        import persona_cli as pc
+        from persona import Persona
+        out = []
+        it = iter(inputs + ["/quit"])
+        pc.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(it),
+            output_fn=out.append,
+            greet=False,
+            mood=mood,
+        )
+        return out
+
+    def test_mood_shows_multiplier_when_not_neutral(self):
+        """If daily mood has a non-1.0 multiplier, /mood output includes the % change."""
+        from mood import MoodTracker
+        from unittest import mock
+        import persona_cli as pc
+
+        m = MoodTracker(affinity=50, interactions=0)
+        # Force daily mood to "energetic" (multiplier=1.2)
+        with mock.patch.object(pc, "_get_daily_mood", lambda salt="": "energetic"), \
+             mock.patch.object(pc, "_mood_affinity_multiplier", lambda key: 1.2), \
+             mock.patch.object(pc, "_mood_label", lambda key, lang="ja": "energetic"), \
+             mock.patch.object(pc, "_mood_emoji", lambda key: "⚡"):
+            out = self._run(["/mood"], m)
+        # Should contain +20% somewhere
+        self.assertTrue(any("+20" in line for line in out),
+                        f"Expected +20% in output; got: {out}")
+
+    def test_mood_neutral_multiplier_not_shown(self):
+        """Multiplier of 1.0 (calm) should NOT add a percentage to the output."""
+        from mood import MoodTracker
+        from unittest import mock
+        import persona_cli as pc
+
+        m = MoodTracker(affinity=50, interactions=0)
+        with mock.patch.object(pc, "_get_daily_mood", lambda salt="": "calm"), \
+             mock.patch.object(pc, "_mood_affinity_multiplier", lambda key: 1.0), \
+             mock.patch.object(pc, "_mood_label", lambda key, lang="ja": "calm"), \
+             mock.patch.object(pc, "_mood_emoji", lambda key: "😌"):
+            out = self._run(["/mood"], m)
+        self.assertFalse(any("%" in line for line in out),
+                         f"Expected no % in output for neutral multiplier; got: {out}")
+
+    def test_mood_negative_multiplier_shown(self):
+        """Melancholy mood (0.8 → -20%) should appear with negative sign."""
+        from mood import MoodTracker
+        from unittest import mock
+        import persona_cli as pc
+
+        m = MoodTracker(affinity=50, interactions=0)
+        with mock.patch.object(pc, "_get_daily_mood", lambda salt="": "melancholy"), \
+             mock.patch.object(pc, "_mood_affinity_multiplier", lambda key: 0.8), \
+             mock.patch.object(pc, "_mood_label", lambda key, lang="ja": "melancholy"), \
+             mock.patch.object(pc, "_mood_emoji", lambda key: "🌧"):
+            out = self._run(["/mood"], m)
+        self.assertTrue(any("-20" in line for line in out),
+                        f"Expected -20% in output; got: {out}")
+
+
+class RecapCommandTests(unittest.TestCase):
+    """/recap shows today's conversation summary and recent exchanges."""
+
+    def _run(self, inputs, conv_log=None):
+        import persona_cli as pc
+        from persona import Persona
+        from mood import MoodTracker
+        out = []
+        it = iter(inputs + ["/quit"])
+        pc.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(it),
+            output_fn=out.append,
+            greet=False,
+            mood=MoodTracker(affinity=50),
+            conv_log=conv_log,
+        )
+        return out
+
+    def test_recap_no_crash_without_conv_log(self):
+        """/recap must not crash when conversation log is None."""
+        out = self._run(["/recap"], conv_log=None)
+        # Should produce at least one output line
+        self.assertTrue(len(out) > 0)
+
+    def test_recap_shows_summary_when_summary_greeting_available(self):
+        """/recap calls _summary_greeting and outputs its result."""
+        from unittest import mock
+        import persona_cli as pc
+
+        out = []
+        it = iter(["/recap", "/quit"])
+        with mock.patch.object(pc, "_summary_greeting",
+                               lambda lang="ja": "TODAY_SUMMARY_TEXT"):
+            pc.run_chat(
+                persona=__import__("persona").Persona.from_dict({"name": "T"}),
+                input_fn=lambda _: next(it),
+                output_fn=out.append,
+                greet=False,
+                mood=__import__("mood").MoodTracker(affinity=50),
+                conv_log=None,
+            )
+        self.assertTrue(any("TODAY_SUMMARY_TEXT" in line for line in out))
+
+    def test_recap_shows_no_data_message_when_empty(self):
+        """/recap prints a fallback when no data is available."""
+        from unittest import mock
+        import persona_cli as pc
+
+        out = []
+        it = iter(["/recap", "/quit"])
+        with mock.patch.object(pc, "_summary_greeting", lambda lang="ja": ""):
+            pc.run_chat(
+                persona=__import__("persona").Persona.from_dict({"name": "T"}),
+                input_fn=lambda _: next(it),
+                output_fn=out.append,
+                greet=False,
+                mood=__import__("mood").MoodTracker(affinity=50),
+                conv_log=None,
+            )
+        recap_output = [l for l in out if "今日" in l or "No conv" in l or "記録" in l]
+        self.assertTrue(len(recap_output) > 0,
+                        f"Expected fallback message; got: {out}")
+
+    def test_recap_shows_recent_exchanges_from_log(self):
+        """/recap displays the last 3 conversation entries from the log."""
+        from unittest import mock
+        import persona_cli as pc
+
+        class _FakeLog:
+            def recent(self, n):
+                return [
+                    {"event_type": "user_comment",
+                     "details": {"text": "こんにちは"}},
+                    {"event_type": "avatar_reply",
+                     "details": {"text": "やっほー！"}},
+                ]
+
+        out = []
+        it = iter(["/recap", "/quit"])
+        with mock.patch.object(pc, "_summary_greeting", lambda lang="ja": ""):
+            pc.run_chat(
+                persona=__import__("persona").Persona.from_dict({"name": "T"}),
+                input_fn=lambda _: next(it),
+                output_fn=out.append,
+                greet=False,
+                mood=__import__("mood").MoodTracker(affinity=50),
+                conv_log=_FakeLog(),
+            )
+        self.assertTrue(any("こんにちは" in l for l in out),
+                        f"Expected recent exchange in output; got: {out}")
+        self.assertTrue(any("やっほー" in l for l in out))
+
+
 if __name__ == "__main__":
     unittest.main()
