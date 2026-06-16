@@ -676,5 +676,181 @@ class InterestTalkTests(unittest.TestCase):
         self.assertGreater(len(text), 0)
 
 
+class FactRecallTalkTests(unittest.TestCase):
+    """_pick_talk_text() should recall stored user facts at neutral+ levels."""
+
+    class _FakeTracker:
+        def __init__(self, level="neutral"):
+            self.level = level
+
+    class _FakeProfile:
+        def __init__(self, interests=None, facts=None):
+            self.interests = interests or []
+            self.facts = facts if facts is not None else {}
+            self.name = ""
+
+    class _FakePersona:
+        lang = "ja"
+
+        def talk(self, *a, **kw):
+            return "GENERIC_TALK"
+
+        def rest(self, *a, **kw):
+            return "GENERIC_REST"
+
+        def greeting(self, *a, **kw):
+            return "GREETING"
+
+    def test_fact_recall_fires_at_neutral_with_facts(self):
+        """With facts stored and neutral level, recall fires when probability wins."""
+        profile = self._FakeProfile(facts={"favorite_food": "ラーメン"})
+        tracker = self._FakeTracker("neutral")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch.object(autonomous_behavior, "_recall_fact",
+                               lambda *a, **kw: "RECALLED"), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "RECALLED")
+
+    def test_fact_recall_not_fired_at_distant(self):
+        """Distant level should not trigger fact recall."""
+        profile = self._FakeProfile(facts={"favorite_food": "ラーメン"})
+        tracker = self._FakeTracker("distant")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "GENERIC_TALK")
+
+    def test_fact_recall_not_fired_when_facts_empty(self):
+        """Empty facts dict should not trigger recall."""
+        profile = self._FakeProfile(facts={})
+        tracker = self._FakeTracker("friendly")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "GENERIC_TALK")
+
+    def test_fact_recall_not_fired_at_high_random(self):
+        """High random value should skip fact recall (probability gate)."""
+        profile = self._FakeProfile(facts={"hometown": "東京"})
+        tracker = self._FakeTracker("close")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.99):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "GENERIC_TALK")
+
+    def test_fact_recall_empty_falls_through_to_persona(self):
+        """If recall_fact returns empty string, fall through to persona.talk()."""
+        profile = self._FakeProfile(facts={"favorite_food": "ラーメン"})
+        tracker = self._FakeTracker("neutral")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch.object(autonomous_behavior, "_recall_fact",
+                               lambda *a, **kw: ""), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "GENERIC_TALK")
+
+    def test_fact_recall_exception_falls_back_gracefully(self):
+        """Exception during recall must not crash _pick_talk_text."""
+        def _bad_recall(*a, **kw):
+            raise RuntimeError("recall boom")
+
+        profile = self._FakeProfile(facts={"favorite_food": "ラーメン"})
+        tracker = self._FakeTracker("neutral")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch.object(autonomous_behavior, "_recall_fact", _bad_recall), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertIsInstance(text, str)
+        self.assertGreater(len(text), 0)
+
+    def test_fact_recall_precedes_interest_talk(self):
+        """When both facts and interests exist, recall fires first (lower threshold wins)."""
+        profile = self._FakeProfile(interests=["音楽"], facts={"dream": "宇宙"})
+        tracker = self._FakeTracker("friendly")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch.object(autonomous_behavior, "_recall_fact",
+                               lambda *a, **kw: "RECALLED_DREAM"), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "RECALLED_DREAM")
+
+    def test_fact_recall_en_lang_passed(self):
+        """English persona causes English lang to be passed to recall_fact."""
+        class _EnPersona(self._FakePersona):
+            lang = "en"
+
+        received_lang = []
+
+        def _recall_capture(prof, lang="ja"):
+            received_lang.append(lang)
+            return "RECALLED_EN"
+
+        profile = self._FakeProfile(facts={"favorite_color": "blue"})
+        tracker = self._FakeTracker("close")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _EnPersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch.object(autonomous_behavior, "_recall_fact", _recall_capture), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = _Dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "RECALLED_EN")
+        self.assertEqual(received_lang, ["en"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -61,6 +61,11 @@ except Exception:  # pragma: no cover - defensive
     _profile_path = None
 
 try:
+    from profile_questions import recall_fact as _recall_fact
+except Exception:  # pragma: no cover - defensive
+    _recall_fact = None
+
+try:
     from special_days import (
         seasonal_greeting as _seasonal_greeting,
         birthday_greeting as _birthday_greeting,
@@ -280,20 +285,29 @@ class AutonomousBehaviorMixin:
             except Exception as e:
                 logger.debug("デイリームードキーの取得に失敗しました: %s", e)
 
-        # 趣味ベース発話（neutral+ レベルで 1/6 の確率）
+        # neutral 以上のレベルでユーザー記憶を参照した発話（事実想起 or 趣味言及）
         if level in self._INTEREST_TALK_LEVELS and _get_user_profile is not None:
             try:
                 prof = _get_user_profile()
+                _pi = self.persona
+                _lang_str = getattr(_pi, "lang", "ja") if _pi else "ja"
+                _lang_key = "en" if str(_lang_str).lower().startswith("en") else "ja"
+
+                # 事実想起発話（12% の確率）— 答えてもらった質問を話題に
+                if _recall_fact is not None and getattr(prof, "facts", {}):
+                    if random.random() < 0.12:
+                        recalled = _recall_fact(prof, lang=_lang_str)
+                        if recalled:
+                            return recalled
+
+                # 趣味ベース発話（16% の確率）
                 interests = getattr(prof, "interests", [])
                 if interests and random.random() < 0.16:
                     item = random.choice(interests)
-                    persona = self.persona
-                    lang_str = getattr(persona, "lang", "ja") if persona else "ja"
-                    lang_key = "en" if str(lang_str).lower().startswith("en") else "ja"
-                    templates = self._INTEREST_TALK_TEMPLATES[lang_key]
+                    templates = self._INTEREST_TALK_TEMPLATES[_lang_key]
                     return random.choice(templates).format(item=item)
             except Exception as e:
-                logger.debug("趣味ベース雑談の生成に失敗しました: %s", e)
+                logger.debug("趣味・事実ベース雑談の生成に失敗しました: %s", e)
 
         persona = self.persona
         if persona is not None:
