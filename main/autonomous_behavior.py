@@ -230,7 +230,7 @@ class AutonomousBehaviorMixin:
         """雑談台詞を返す。ペルソナ優先、無ければ self.talks にフォールバック。
 
         mood トラッカーが利用可能なら好感度レベルを persona.talk() に渡し、
-        関係性に応じた台詞を選択する。
+        関係性に応じた台詞を選択する。デイリームードも台詞選択に影響する。
         """
         level = None
         if _get_mood_tracker is not None:
@@ -238,9 +238,17 @@ class AutonomousBehaviorMixin:
                 level = _get_mood_tracker().level
             except Exception as e:
                 logger.debug("好感度レベルの取得に失敗しました: %s", e)
+        mood_key = None
+        if _get_daily_mood is not None:
+            try:
+                prof = _get_user_profile() if _get_user_profile is not None else None
+                salt = prof.name if prof is not None else ""
+                mood_key = _get_daily_mood(salt=salt)
+            except Exception as e:
+                logger.debug("デイリームードキーの取得に失敗しました: %s", e)
         persona = self.persona
         if persona is not None:
-            text = persona.talk(level=level)
+            text = persona.talk(level=level, mood_key=mood_key)
             if text:
                 return text
         talks = getattr(self, 'talks', None) or ['']

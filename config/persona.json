@@ -80,29 +80,79 @@
         "distant": [
           "…。",
           "…ふむ。",
-          "特に何も。"
+          "特に何も。",
+          "…まあ、いいや。",
+          "少し涼んでいこう。",
+          "…何か用かな。",
+          "今日は何の日だろう。"
         ],
         "reserved": [
           "今日はどんな日だろう。",
           "静かだな。",
-          "少し歩こうかな。"
+          "少し歩こうかな。",
+          "…最近、少し話しやすくなってきた気がする。",
+          "今日のご飯は何にしようかな。",
+          "空がきれいだな。",
+          "いいお天気。"
         ],
         "neutral": [
           "今日も元気でいこう！",
           "何か面白いことないかな。",
-          "ちょっと走ってみようかな。"
+          "ちょっと走ってみようかな。",
+          "いい感じの一日だな。",
+          "最近、なんか楽しいな。",
+          "今日はどんなことが起きるかな。",
+          "気持ちいい風だ。"
         ],
         "friendly": [
           "一緒にいると楽しいな！",
           "もっといろんな話がしたいな。",
           "今日も会えてよかった！",
-          "あなたと話すの好きだよ。"
+          "あなたと話すの好きだよ。",
+          "なんか最近、毎日が楽しくなってきた。",
+          "もっとお話ししたいな〜。",
+          "ねえ、今日も遊ぼうよ！"
         ],
         "close": [
           "ずっとそばにいたいな。",
           "あなたのこと考えてたよ。",
           "一緒にいると安心するな。",
-          "今日もありがとうね。だいすき。"
+          "今日もありがとうね。だいすき。",
+          "あなたといる時間が、一番幸せ。",
+          "何してても、あなたのこと頭に浮かぶんだ。",
+          "また会えたね。来てくれて嬉しい。"
+        ]
+      },
+      "talk_by_daily_mood": {
+        "energetic": [
+          "今日はなんかはりきってる！どんとこい！",
+          "体動かしたい気分！走ろうかな！",
+          "やる気満々だよ！今日は何でもできそう！"
+        ],
+        "cheerful": [
+          "今日は楽しいことありそう！わくわく！",
+          "なんかいい予感〜！",
+          "お天気もいいし、気分上々！"
+        ],
+        "calm": [
+          "今日はゆったりしたい気分かな。",
+          "穏やかな一日になりそうだね。",
+          "のんびり過ごすのもいいな。"
+        ],
+        "thoughtful": [
+          "なんか考えごとが多い日。",
+          "いろいろ思いを巡らせてる。",
+          "ちょっと深い話がしたいな。"
+        ],
+        "melancholy": [
+          "なんかしんみりした気分…。",
+          "今日はそっとしておいてほしいかも。",
+          "少しさみしいな…。"
+        ],
+        "mischievous": [
+          "今日はちょっとやんちゃな気分！",
+          "なんかいたずらしたい気分〜。ふふ。",
+          "今日は何かやってやろうかな！"
         ]
       }
     },
@@ -184,29 +234,79 @@
         "distant": [
           "...",
           "Hmm.",
-          "Nothing much."
+          "Nothing much.",
+          "...Fine, I guess.",
+          "Just thinking.",
+          "Wonder what's going on.",
+          "Suppose I'll stay here a while."
         ],
         "reserved": [
           "I wonder what today will bring.",
           "It's quiet around here.",
-          "Might take a little walk."
+          "Might take a little walk.",
+          "Getting a bit more comfortable lately.",
+          "What should I do today…",
+          "The sky looks nice.",
+          "What a peaceful day."
         ],
         "neutral": [
           "Let's make today a good one!",
           "Anything interesting going on?",
-          "Feeling like a little run."
+          "Feeling like a little run.",
+          "Pretty nice day, isn't it?",
+          "Lately things feel kind of fun.",
+          "Wonder what'll happen today.",
+          "There's a nice breeze."
         ],
         "friendly": [
           "It's fun being around you!",
           "I want to talk more with you.",
           "Glad we could hang out today!",
-          "I really enjoy talking with you."
+          "I really enjoy talking with you.",
+          "Things have been way more fun lately!",
+          "I want to chat more~",
+          "Hey, let's play together today!"
         ],
         "close": [
           "I want to stay by your side forever.",
           "I was thinking about you.",
           "Being with you feels so comfortable.",
-          "Thank you for today. You mean a lot to me."
+          "Thank you for today. You mean a lot to me.",
+          "Being with you makes me happiest.",
+          "You pop into my head no matter what I'm doing.",
+          "You came back. I'm so glad."
+        ]
+      },
+      "talk_by_daily_mood": {
+        "energetic": [
+          "Feeling pumped today! Bring it on!",
+          "I want to move around! Maybe I'll run!",
+          "So motivated today — I feel like I can do anything!"
+        ],
+        "cheerful": [
+          "Something fun is going to happen today! I just know it!",
+          "I have a good feeling about today~!",
+          "Nice weather, great mood — what a day!"
+        ],
+        "calm": [
+          "Feeling like a slow, peaceful day.",
+          "Taking it easy today.",
+          "Just enjoying the quiet."
+        ],
+        "thoughtful": [
+          "Lots of things on my mind today.",
+          "Turning things over in my head.",
+          "In the mood for a deep conversation."
+        ],
+        "melancholy": [
+          "Feeling a little wistful today…",
+          "Could use some quiet company today.",
+          "Just a bit blue today…"
+        ],
+        "mischievous": [
+          "Feeling a little mischievous today!",
+          "Might cause a little trouble~ hehe.",
+          "Something naughty is on my mind today!"
         ]
       }
     }

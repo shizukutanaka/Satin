@@ -228,13 +228,28 @@ class Persona:
         self._last[category_key] = choice
         return choice
 
-    def talk(self, lang: Optional[str] = None, level: Optional[str] = None) -> str:
+    def talk(
+        self,
+        lang: Optional[str] = None,
+        level: Optional[str] = None,
+        mood_key: Optional[str] = None,
+    ) -> str:
         """雑談台詞を 1 つ返す。
 
-        level が指定され ``talk_by_affinity[level]`` が定義されていれば
-        そのレベル専用の台詞を優先する（好感度が高いほど親しみやすい発話）。
+        優先順位（高い順）:
+        1. mood_key が指定され ``talk_by_daily_mood[mood_key]`` があれば
+           それを 1/3 の確率で採用（毎回同じにならないよう確率制御）。
+        2. level が指定され ``talk_by_affinity[level]`` があれば採用。
+        3. 汎用 ``talk`` リスト。
         """
+        import random as _random
         block = self._resolve_lang_block(lang)
+        # デイリームード台詞（1/3 の確率で差し込む）
+        if mood_key:
+            by_mood = block.get("talk_by_daily_mood") or {}
+            mood_opts = list(by_mood.get(mood_key, []))
+            if mood_opts and _random.random() < 0.33:
+                return self._pick(f"talk_mood:{mood_key}:{lang or self.lang}", mood_opts)
         if level:
             by_affinity = block.get("talk_by_affinity") or {}
             level_opts = list(by_affinity.get(level, []))
