@@ -330,6 +330,9 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l.startswith("whoami"):
             self._cmd_whoami_gui(lang)
             return True
+        if cmd_l.startswith("stats"):
+            self._cmd_stats_gui(lang)
+            return True
         return False  # 未知のコマンドは通常の respond() へ
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
@@ -487,12 +490,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             return
         try:
             tracker = get_mood_tracker()
-            level = tracker.level
+            level_label = tracker.label(lang="en" if lang == "en" else "ja")
             affinity = int(tracker.affinity)
             if lang == "en":
-                reply = f"Affinity: {level} ({affinity} pts)"
+                reply = f"Affinity: {level_label} ({affinity} pts)"
             else:
-                reply = f"好感度: {level}（{affinity}pt）"
+                reply = f"好感度: {level_label}（{affinity}pt）"
         except Exception as e:
             logger.debug("/mood 情報取得に失敗（GUI）: %s", e)
             reply = ("(Couldn't get mood info)" if lang == "en"
@@ -527,6 +530,34 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         except Exception as e:
             logger.debug("/whoami プロファイル取得に失敗（GUI）: %s", e)
             reply = "(情報の取得に失敗)" if lang != "en" else "(Couldn't get profile)"
+        self._speak_reply(reply)
+
+    def _cmd_stats_gui(self, lang: str) -> None:
+        """GUI の /stats コマンドを処理する（会話統計を表示）。"""
+        parts = []
+        if get_mood_tracker is not None:
+            try:
+                tracker = get_mood_tracker()
+                if lang == "en":
+                    parts.append(f"Total interactions: {tracker.interactions}")
+                    parts.append(f"Affinity: {int(tracker.affinity)} pts ({tracker.label('en')})")
+                else:
+                    parts.append(f"会話回数: {tracker.interactions}回")
+                    parts.append(f"好感度: {int(tracker.affinity)}pt（{tracker.label('ja')}）")
+            except Exception as e:
+                logger.debug("/stats 好感度取得に失敗（GUI）: %s", e)
+        if get_conversation_log is not None:
+            try:
+                log = get_conversation_log()
+                count = len(log.entries) if hasattr(log, "entries") else 0
+                if lang == "en":
+                    parts.append(f"Logged exchanges: {count}")
+                else:
+                    parts.append(f"記録済み会話: {count}件")
+            except Exception as e:
+                logger.debug("/stats 会話ログ取得に失敗（GUI）: %s", e)
+        reply = "\n".join(parts) if parts else (
+            "(統計情報は利用できません)" if lang != "en" else "(Stats unavailable)")
         self._speak_reply(reply)
 
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:

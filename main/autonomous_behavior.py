@@ -49,9 +49,13 @@ except Exception:  # pragma: no cover - defensive
     _check_daily_login = None  # type: ignore
 
 try:
-    from daily_summary import yesterday_greeting as _yesterday_greeting
+    from daily_summary import (
+        yesterday_greeting as _yesterday_greeting,
+        summary_greeting as _summary_greeting,
+    )
 except Exception:  # pragma: no cover - defensive
     _yesterday_greeting = None
+    _summary_greeting = None
 
 try:
     from user_profile import get_user_profile as _get_user_profile, \
@@ -210,6 +214,17 @@ class AutonomousBehaviorMixin:
                             greeting = (greeting + " " + yday).strip() if greeting else yday
                     except Exception as e:
                         logger.debug("昨日のサマリー取得に失敗しました: %s", e)
+            # 昼〜夜（12〜22時）は本日の会話サマリーをあいさつに添える
+            if _summary_greeting is not None:
+                import datetime as _dt
+                hour = _dt.datetime.now().hour
+                if 12 <= hour < 22:
+                    try:
+                        summary = _summary_greeting(lang=lang)
+                        if summary:
+                            greeting = (greeting + " " + summary).strip() if greeting else summary
+                    except Exception as e:
+                        logger.debug("本日サマリーの取得に失敗しました: %s", e)
             if greeting:
                 self.talk_text = greeting
                 self._on_talk_start(greeting)

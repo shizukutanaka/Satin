@@ -934,26 +934,55 @@ class GUILikeForgetMoodBirthdayTests(unittest.TestCase):
         class _FakeTracker:
             level = "friendly"
             affinity = 60.0
+            def label(self, lang="ja"):
+                return "友好的" if lang != "en" else "friendly"
 
         v = _make_viewer()
         with mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()):
             v.speak_comment("/mood")
 
-        self.assertIn("friendly", v.comment_text)
+        self.assertGreater(len(v.comment_text), 0)
 
     def test_mood_no_tracker_no_crash(self):
         v = _make_viewer()  # get_mood_tracker is None from setUp
         v.speak_comment("/mood")
         self.assertGreater(len(v.comment_text), 0)
 
-    def test_mood_sets_mode_comment(self):
+    def test_mood_shows_localized_label_ja(self):
+        """JA label (e.g. '友好的') should appear, not raw 'friendly'."""
         class _FakeTracker:
-            level = "neutral"
-            affinity = 30.0
+            level = "friendly"
+            affinity = 60.0
+            def label(self, lang="ja"):
+                return "友好的" if lang != "en" else "friendly"
 
         v = _make_viewer()
         with mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()):
             v.speak_comment("/mood")
+        self.assertIn("友好的", v.comment_text)
+
+    # --- /stats ---
+
+    def test_stats_shows_interactions(self):
+        class _FakeTracker:
+            level = "neutral"
+            affinity = 50.0
+            interactions = 42
+            def label(self, lang="ja"): return "中立的"
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()):
+            v.speak_comment("/stats")
+        self.assertIn("42", v.comment_text)
+
+    def test_stats_no_tracker_no_crash(self):
+        v = _make_viewer()
+        v.speak_comment("/stats")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_stats_sets_mode_comment(self):
+        v = _make_viewer()
+        v.speak_comment("/stats")
         self.assertEqual(v.mode, "comment")
 
     # --- /birthday ---

@@ -211,11 +211,15 @@ class PersonaIntegrationTests(unittest.TestCase):
         self._patcher.start()
         self._mood_patcher = mock.patch.object(autonomous_behavior, "_get_mood_tracker", None)
         self._mood_patcher.start()
-        # Suppress yesterday_greeting so morning-hour tests don't append summary text
+        # Suppress yesterday_greeting and summary_greeting so tests don't append summary text
         self._summary_patcher = mock.patch.object(
             autonomous_behavior, "_yesterday_greeting", lambda **kw: ""
         )
         self._summary_patcher.start()
+        self._today_summary_patcher = mock.patch.object(
+            autonomous_behavior, "_summary_greeting", lambda **kw: ""
+        )
+        self._today_summary_patcher.start()
         # Suppress date-dependent special-day greetings so equality tests are
         # deterministic regardless of the calendar date the suite runs on.
         self._season_patcher = mock.patch.object(
@@ -239,6 +243,7 @@ class PersonaIntegrationTests(unittest.TestCase):
         self._patcher.stop()
         self._mood_patcher.stop()
         self._summary_patcher.stop()
+        self._today_summary_patcher.stop()
         self._season_patcher.stop()
         self._bday_patcher.stop()
         self._daily_mood_patcher.stop()
@@ -340,12 +345,14 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
                                    lambda: _FakeTracker()):
                 with mock.patch.object(autonomous_behavior, "_yesterday_greeting",
                                        lambda **kw: ""):
-                    with mock.patch.object(autonomous_behavior, "_mood_description",
-                                           lambda *a, **kw: ""):
-                        with mock.patch.object(autonomous_behavior, "_check_daily_login",
+                    with mock.patch.object(autonomous_behavior, "_summary_greeting",
+                                           lambda **kw: ""):
+                        with mock.patch.object(autonomous_behavior, "_mood_description",
                                                lambda *a, **kw: ""):
-                            d = _StartStopDummy()
-                            d.start_autonomous()
+                            with mock.patch.object(autonomous_behavior, "_check_daily_login",
+                                                   lambda *a, **kw: ""):
+                                d = _StartStopDummy()
+                                d.start_autonomous()
 
         self.assertEqual(captured_levels, ["close"])
         self.assertEqual(d.talk_text, "GREETING_close")
@@ -850,6 +857,97 @@ class FactRecallTalkTests(unittest.TestCase):
             text = d._pick_talk_text()
         self.assertEqual(text, "RECALLED_EN")
         self.assertEqual(received_lang, ["en"])
+
+
+class SummaryGreetingTests(unittest.TestCase):
+    """summary_greeting() is appended to startup greeting during afternoon hours (12-22h)."""
+
+    def _fake_persona(self):
+        class _FP:
+            lang = "ja"
+            def greeting(self, *a, **kw): return "GREETING"
+            def talk(self, *a, **kw): return "TALK"
+            def rest(self, *a, **kw): return "REST"
+        return _FP()
+
+    def test_summary_greeting_appended_at_afternoon(self):
+        """summary_greeting() is called and appended during 12-22h."""
+        captured = []
+
+        class _GDummy(_StartStopDummy):
+            def _on_talk_start(self, text):
+                captured.append(text)
+
+        class _FakeDatetime:
+            @staticmethod
+            def now():
+                class _T:
+                    hour = 15
+                return _T()
+
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._fake_persona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_summary_greeting", lambda **kw: "SUMMARY_TODAY"), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", lambda **kw: "calm"), \
+             mock.patch.object(autonomous_behavior, "_mood_description", lambda *a, **kw: ""), \
+             mock.patch("datetime.datetime", _FakeDatetime):
+            d = _GDummy()
+            d.start_autonomous()
+
+        self.assertTrue(any("SUMMARY_TODAY" in t for t in captured))
+
+    def test_summary_greeting_not_appended_in_morning(self):
+        """summary_greeting() is NOT called during 0-12h (morning/night)."""
+        captured = []
+
+        class _GDummy(_StartStopDummy):
+            def _on_talk_start(self, text):
+                captured.append(text)
+
+        class _FakeDatetime:
+            @staticmethod
+            def now():
+                class _T:
+                    hour = 8
+                return _T()
+
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._fake_persona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_summary_greeting", lambda **kw: "SUMMARY_TODAY"), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", lambda **kw: "calm"), \
+             mock.patch.object(autonomous_behavior, "_mood_description", lambda *a, **kw: ""), \
+             mock.patch("datetime.datetime", _FakeDatetime):
+            d = _GDummy()
+            d.start_autonomous()
+
+        self.assertFalse(any("SUMMARY_TODAY" in t for t in captured))
+
+    def test_summary_greeting_failure_does_not_break_start(self):
+        """If summary_greeting raises, start_autonomous still completes."""
+        def _boom(**kw):
+            raise RuntimeError("summary boom")
+
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._fake_persona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_summary_greeting", _boom), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", lambda **kw: "calm"), \
+             mock.patch.object(autonomous_behavior, "_mood_description", lambda *a, **kw: ""):
+            d = _StartStopDummy()
+            d.start_autonomous()  # must not raise
+
+        self.assertTrue(d.is_autonomous)
 
 
 if __name__ == "__main__":
