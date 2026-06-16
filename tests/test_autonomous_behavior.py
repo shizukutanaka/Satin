@@ -226,6 +226,14 @@ class PersonaIntegrationTests(unittest.TestCase):
             autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""
         )
         self._bday_patcher.start()
+        self._daily_mood_patcher = mock.patch.object(
+            autonomous_behavior, "_get_daily_mood", lambda **kw: "calm"
+        )
+        self._daily_mood_patcher.start()
+        self._daily_desc_patcher = mock.patch.object(
+            autonomous_behavior, "_mood_description", lambda *a, **kw: ""
+        )
+        self._daily_desc_patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
@@ -233,6 +241,8 @@ class PersonaIntegrationTests(unittest.TestCase):
         self._summary_patcher.stop()
         self._season_patcher.stop()
         self._bday_patcher.stop()
+        self._daily_mood_patcher.stop()
+        self._daily_desc_patcher.stop()
 
     def test_start_sets_greeting_from_persona(self):
         d = _StartStopDummy()
@@ -330,8 +340,10 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
                                    lambda: _FakeTracker()):
                 with mock.patch.object(autonomous_behavior, "_yesterday_greeting",
                                        lambda **kw: ""):
-                    d = _StartStopDummy()
-                    d.start_autonomous()
+                    with mock.patch.object(autonomous_behavior, "_mood_description",
+                                           lambda *a, **kw: ""):
+                        d = _StartStopDummy()
+                        d.start_autonomous()
 
         self.assertEqual(captured_levels, ["close"])
         self.assertEqual(d.talk_text, "GREETING_close")
@@ -494,6 +506,34 @@ class SpecialDaysIntegrationTests(unittest.TestCase):
              mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""), \
              mock.patch.object(autonomous_behavior, "_seasonal_greeting",
                                lambda **kw: (_ for _ in ()).throw(RuntimeError("boom"))):
+            d = _StartStopDummy()
+            d.start_autonomous()  # must not raise
+        self.assertTrue(d.is_autonomous)
+
+    def test_daily_mood_description_appended_to_greeting(self):
+        captured = []
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", lambda **kw: "cheerful"), \
+             mock.patch.object(autonomous_behavior, "_mood_description",
+                               lambda *a, **kw: "DAILY_DESC"):
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+        self.assertTrue(any("DAILY_DESC" in t for t in captured))
+
+    def test_daily_mood_failure_does_not_break_start(self):
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""), \
+             mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood",
+                               lambda **kw: (_ for _ in ()).throw(RuntimeError("daily_boom"))):
             d = _StartStopDummy()
             d.start_autonomous()  # must not raise
         self.assertTrue(d.is_autonomous)

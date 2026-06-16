@@ -69,6 +69,17 @@ except Exception:  # pragma: no cover - defensive
     _birthday_greeting = None
     _BIRTHDAY_BONUS = 0.0
 
+try:
+    from daily_mood import (
+        get_daily_mood as _get_daily_mood,
+        mood_description as _mood_description,
+        mood_affinity_multiplier as _mood_affinity_multiplier,
+    )
+except Exception:  # pragma: no cover - defensive
+    _get_daily_mood = None
+    _mood_description = None
+    _mood_affinity_multiplier = None
+
 
 class AutonomousBehaviorMixin:
     REST_TEXTS = ['ふう…ちょっと休憩。', 'すこし止まります。']
@@ -157,6 +168,17 @@ class AutonomousBehaviorMixin:
                         greeting = (greeting + " " + season).strip() if greeting else season
                 except Exception as e:
                     logger.debug("季節あいさつの生成に失敗しました: %s", e)
+            # デイリームード（その日の気質を一言で添える）
+            if _get_daily_mood is not None and _mood_description is not None:
+                try:
+                    prof = _get_user_profile() if _get_user_profile is not None else None
+                    salt = prof.name if prof is not None else ""
+                    dmood = _get_daily_mood(salt=salt)
+                    desc = _mood_description(dmood, lang=lang)
+                    if desc:
+                        greeting = (greeting + " " + desc).strip() if greeting else desc
+                except Exception as e:
+                    logger.debug("デイリームードの生成に失敗しました: %s", e)
             # 朝（6〜10時）は昨日のアクティビティサマリーをあいさつに添える
             if _yesterday_greeting is not None:
                 import datetime as _dt
