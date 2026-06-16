@@ -314,6 +314,37 @@ class MoodIntegrationTests(unittest.TestCase):
         self.assertEqual(m.affinity, 50)
         self.assertEqual(m.interactions, 0)
 
+    def test_mood_shows_interaction_count(self):
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50, interactions=7)
+        out = self._run(["/mood"], m)
+        self.assertTrue(any("7" in line and ("回" in line or "Conversation" in line)
+                            for line in out))
+
+    def test_mood_shows_next_milestone(self):
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50, interactions=7)
+        out = self._run(["/mood"], m)
+        # next interaction milestone after 7 is 10
+        self.assertTrue(any("10" in line for line in out))
+
+    def test_mood_shows_days_known(self):
+        import time
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50, interactions=5)
+        m._first_interaction_time = time.time() - 5 * 86400
+        out = self._run(["/mood"], m)
+        self.assertTrue(any("5" in line and ("日" in line or "day" in line.lower())
+                            for line in out))
+
+    def test_mood_no_stats_when_zero_interactions(self):
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50, interactions=0)
+        out = self._run(["/mood"], m)
+        # Should not show a conversation count line for a fresh tracker
+        self.assertFalse(any("会話回数" in line or "Conversations:" in line
+                             for line in out))
+
     def test_reset_mood_command_resets_to_neutral(self):
         from mood import MoodTracker, AFFINITY_START
         m = MoodTracker(affinity=90, interactions=10)

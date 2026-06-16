@@ -437,6 +437,18 @@ def _absence_message(mood, name: str, lang: str) -> str:  # name is kept for API
     return ""
 
 
+def _next_interaction_milestone(interactions: int) -> Optional[int]:
+    """次に到達する会話回数の節目を返す。全節目を超えていれば None。"""
+    try:
+        from mood import _INTERACTION_MILESTONES_SORTED
+    except Exception:  # pragma: no cover - defensive
+        return None
+    for m in _INTERACTION_MILESTONES_SORTED:
+        if interactions < m:
+            return m
+    return None
+
+
 def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
                 profile=None) -> None:
     """現在の好感度レベルとデイリームードを表示する。"""
@@ -451,6 +463,33 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
         return
     prefix = "Affinity" if lang == "en" else "好感度"
     output_fn(f"{prefix}: {label} ({score}/100)")
+    # 関係性の統計（会話回数・出会ってからの日数）を添える
+    try:
+        interactions = int(getattr(mood, "interactions", 0) or 0)
+        if interactions > 0:
+            next_ms = _next_interaction_milestone(interactions)
+            if lang == "en":
+                line = f"Conversations: {interactions}"
+                if next_ms:
+                    line += f" (next milestone at {next_ms})"
+                output_fn(line)
+            else:
+                line = f"会話回数: {interactions}回"
+                if next_ms:
+                    line += f"（次の節目は{next_ms}回）"
+                output_fn(line)
+        # 出会ってからの日数
+        import time as _time
+        first_ts = getattr(mood, "_first_interaction_time", 0.0) or 0.0
+        if first_ts > 0:
+            days = int((_time.time() - first_ts) / 86400.0)
+            if lang == "en":
+                unit = "day" if days == 1 else "days"
+                output_fn(f"We've known each other for {days} {unit}.")
+            else:
+                output_fn(f"出会ってから{days}日目だよ。")
+    except Exception:  # pragma: no cover - defensive
+        pass
     # デイリームードを添える
     if _get_daily_mood is not None and _mood_label is not None and _mood_emoji is not None:
         try:
