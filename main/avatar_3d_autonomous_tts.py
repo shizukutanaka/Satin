@@ -151,6 +151,8 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
     def speak_comment(self, comment):
         # ペルソナが応答を返せばそれを表示・読み上げ、無ければ入力をそのまま
         # 読み上げる（後方互換のオウム返し）。respond の失敗で TTS は壊さない。
+        if not isinstance(comment, str) or not comment.strip():
+            return  # 空・空白のみの入力は無音で無視する
         reply = comment
         # 好感度レベルを取得して関係性に応じた応答を選ばせる
         level = None

@@ -667,7 +667,8 @@
       "follow_up_by_affinity": {
         "distant": [
           "…何か好きなものはあったりしますか？",
-          "…特に趣味とかはありますか？"
+          "…特に趣味とかはありますか？",
+          "…最近、どんなことしてましたか？"
         ],
         "reserved": [
           "えっと…好きな食べ物とかありますか？",
@@ -1201,7 +1202,8 @@
       "follow_up_by_affinity": {
         "distant": [
           "Do you have any… hobbies?",
-          "Is there anything you enjoy?"
+          "Is there anything you enjoy?",
+          "…What have you been up to lately?"
         ],
         "reserved": [
           "Um… do you have any favorite foods?",

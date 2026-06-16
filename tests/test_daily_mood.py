@@ -157,5 +157,52 @@ class AffinityMultiplierTests(unittest.TestCase):
             self.assertLessEqual(m, 2.0, key)
 
 
+class EdgeCaseTests(unittest.TestCase):
+    """Edge-case inputs to daily_mood functions."""
+
+    def test_empty_lang_falls_back_gracefully(self):
+        """Empty language string should not raise; falls back to some default."""
+        key = get_daily_mood(date(2026, 1, 1))
+        label = mood_label(key, "")
+        self.assertIsInstance(label, str)
+
+    def test_invalid_lang_code_returns_string(self):
+        """Unknown lang code should not raise."""
+        key = get_daily_mood(date(2026, 1, 1))
+        for lang in ["zz", "xx-YY", "123"]:
+            result = mood_label(key, lang)
+            self.assertIsInstance(result, str, f"lang={lang!r}")
+
+    def test_non_string_salt_converted(self):
+        """Passing a numeric salt should produce the same result as its string form."""
+        d = date(2026, 3, 15)
+        result_num = get_daily_mood(d, 42)  # type: ignore[arg-type]
+        result_str = get_daily_mood(d, "42")
+        self.assertEqual(result_num, result_str)
+
+    def test_empty_string_salt_deterministic(self):
+        """Empty salt is deterministic across calls."""
+        d = date(2026, 7, 4)
+        self.assertEqual(get_daily_mood(d, ""), get_daily_mood(d, ""))
+
+    def test_none_date_uses_today(self):
+        """Calling get_daily_mood() with no args (today) returns a valid key."""
+        key = get_daily_mood()
+        self.assertIn(key, _KNOWN_KEYS)
+
+    def test_description_empty_lang_no_crash(self):
+        key = get_daily_mood(date(2026, 1, 1))
+        desc = mood_description(key, "")
+        self.assertIsInstance(desc, str)
+
+    def test_emoji_unknown_key_returns_string(self):
+        result = mood_emoji("totally_unknown_key_xyz")
+        self.assertIsInstance(result, str)
+
+    def test_mood_label_unknown_key_returns_string(self):
+        result = mood_label("nonexistent_key_abc", "ja")
+        self.assertIsInstance(result, str)
+
+
 if __name__ == "__main__":
     unittest.main()

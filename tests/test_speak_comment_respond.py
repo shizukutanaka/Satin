@@ -1222,5 +1222,43 @@ class InterestMentionWiringTests(unittest.TestCase):
         self.assertIsNone(v.pending_fact_key)
 
 
+class EmptyInputGuardTests(unittest.TestCase):
+    """speak_comment silently ignores empty / whitespace-only input."""
+
+    def test_empty_string_returns_immediately(self):
+        v = _make_viewer()
+        v.comment_text = "previous"
+        v.mode = "idle"
+        v.speak_comment("")
+        # comment_text must not change
+        self.assertEqual(v.comment_text, "previous")
+        self.assertEqual(v.mode, "idle")
+
+    def test_whitespace_only_returns_immediately(self):
+        v = _make_viewer()
+        v.comment_text = "unchanged"
+        v.speak_comment("   ")
+        self.assertEqual(v.comment_text, "unchanged")
+
+    def test_none_returns_immediately(self):
+        v = _make_viewer()
+        v.comment_text = "unchanged"
+        v.speak_comment(None)
+        self.assertEqual(v.comment_text, "unchanged")
+
+    def test_newline_only_returns_immediately(self):
+        v = _make_viewer()
+        v.comment_text = "unchanged"
+        v.speak_comment("\n\t\r")
+        self.assertEqual(v.comment_text, "unchanged")
+
+    def test_tts_queue_not_touched_for_empty(self):
+        """Empty input must not enqueue anything to TTS."""
+        q = queue.Queue()
+        v = _make_viewer(tts_queue=q)
+        v.speak_comment("   ")
+        self.assertTrue(q.empty())
+
+
 if __name__ == "__main__":
     unittest.main()
