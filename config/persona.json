@@ -374,13 +374,23 @@
             "さようなら",
             "ばいばい",
             "またね",
-            "おやすみ",
             "バイバイ"
           ],
           "replies": [
             "またね！いつでも来てね。",
             "ばいばい、気をつけてね。",
-            "おやすみ！ゆっくりしてね。"
+            "また来てくれるの待ってるよ！"
+          ]
+        },
+        {
+          "keywords": [
+            "おやすみ",
+            "おやすみなさい"
+          ],
+          "replies": [
+            "おやすみ！ゆっくり休んでね。明日も会えるの楽しみにしてるよ。",
+            "おやすみなさい。いい夢見てね…また明日。",
+            "おやすみ！今日も一緒にいてくれてありがとう。また来てね。"
           ]
         },
         {
@@ -740,6 +750,17 @@
             ]
           },
           {
+            "keywords": [
+              "おやすみ",
+              "おやすみなさい"
+            ],
+            "replies": [
+              "おやすみ…ずっと一緒にいたいけど、いい夢見てね。また明日。",
+              "おやすみなさい。あなたの夢に出られたらいいな…大好きだよ。",
+              "おやすみ！今日もありがとう。あなたのこと考えながら待ってるね。"
+            ]
+          },
+          {
             "fallback": [
               "{user}、もっと話して！全部聞きたいな。",
               "そっか{user}、うんうん。あなたの話いつも楽しい。",
@@ -810,13 +831,25 @@
             "goodbye",
             "bye bye",
             "see you",
-            "good night",
             "later"
           ],
           "replies": [
             "See you! Come back anytime.",
             "Bye, take care!",
-            "Good night! Rest well."
+            "See you next time!"
+          ]
+        },
+        {
+          "keywords": [
+            "good night",
+            "goodnight",
+            "going to sleep",
+            "heading to bed"
+          ],
+          "replies": [
+            "Good night! Rest well. I'll be looking forward to seeing you tomorrow.",
+            "Sweet dreams… see you tomorrow!",
+            "Good night! Thanks for spending time with me today. Sleep well!"
           ]
         },
         {
@@ -1176,6 +1209,17 @@
             "replies": [
               "Already? Come back soon, okay? I'll miss you.",
               "Bye! Hurry back, I'll be waiting."
+            ]
+          },
+          {
+            "keywords": [
+              "good night",
+              "goodnight"
+            ],
+            "replies": [
+              "Good night… I wish you could stay, but sweet dreams. See you tomorrow.",
+              "Good night. I hope I show up in your dreams… I love you.",
+              "Good night! Thank you for today. I'll be waiting, thinking of you."
             ]
           },
           {

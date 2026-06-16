@@ -370,6 +370,48 @@ class RespondWithLevelTests(unittest.TestCase):
                             "close and distant fallbacks should produce different text")
 
 
+class GoodnightRitualTests(unittest.TestCase):
+    """Bundled config has a dedicated, warm goodnight response distinct from generic bye."""
+
+    def _repo_cfg(self):
+        return os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "persona.json",
+        )
+
+    def test_goodnight_ja_responds(self):
+        p = Persona.load(config_path=self._repo_cfg(), lang="ja")
+        reply = p.respond("おやすみ")
+        self.assertTrue(reply)
+        # Goodnight reply should mention sleep/tomorrow warmth, not be empty echo
+        self.assertNotEqual(reply, "おやすみ")
+
+    def test_goodnight_en_responds(self):
+        p = Persona.load(config_path=self._repo_cfg(), lang="en")
+        reply = p.respond("good night")
+        self.assertTrue(reply)
+        # A goodnight reply conveys night/sleep/dream/tomorrow warmth
+        self.assertTrue(
+            any(w in reply.lower() for w in ("night", "sleep", "dream", "tomorrow")),
+            f"unexpected goodnight reply: {reply}",
+        )
+
+    def test_goodnight_distinct_from_goodbye_ja(self):
+        """おやすみ and さようなら should map to different reply pools."""
+        p = Persona.load(config_path=self._repo_cfg(), lang="ja")
+        # Collect possible replies by sampling many times
+        gn = {p.respond("おやすみ") for _ in range(30)}
+        p2 = Persona.load(config_path=self._repo_cfg(), lang="ja")
+        bye = {p2.respond("さようなら") for _ in range(30)}
+        # The two pools should not be identical
+        self.assertTrue(gn.isdisjoint(bye) or gn != bye)
+
+    def test_goodnight_close_level_ja(self):
+        p = Persona.load(config_path=self._repo_cfg(), lang="ja")
+        reply = p.respond("おやすみ", level="close")
+        self.assertTrue(reply)
+
+
 class PerLevelFallbackTests(unittest.TestCase):
     """respond() picks per-level fallback before global fallback."""
 

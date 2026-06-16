@@ -11,7 +11,8 @@
       "すごい", "すごい!", "最高", "さいこう", "一番",
       "おもしろい", "面白い", "笑える", "わらえる",
       "がんばって", "頑張って", "応援", "おうえん",
-      "優しい", "やさしい", "いつも", "ずっと"
+      "優しい", "やさしい", "いつも", "ずっと",
+      "おやすみ", "おやすみなさい"
     ],
     "en": [
       "thank", "thanks", "grateful", "appreciate",
@@ -20,7 +21,8 @@
       "nice", "great", "awesome", "amazing", "fantastic",
       "good job", "well done", "perfect", "beautiful",
       "fun", "funny", "interesting", "enjoy",
-      "cheer", "support", "always", "forever"
+      "cheer", "support", "always", "forever",
+      "good night", "sleep well", "sweet dreams"
     ]
   },
   "negative": {

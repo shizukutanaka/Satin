@@ -464,6 +464,24 @@ class MoodConfigLoadTests(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertEqual(result["positive_delta"], 5.0)
 
+    def test_bundled_mood_config_treats_goodnight_as_positive(self):
+        """Shipped mood_config.json should give affinity for おやすみ / good night."""
+        import json
+        repo_cfg = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "mood_config.json",
+        )
+        with open(repo_cfg, encoding="utf-8") as f:
+            cfg = json.load(f)
+        tracker = MoodTracker.load(None, mood_config=cfg)
+        before = tracker.affinity
+        tracker.register("おやすみ")
+        self.assertGreater(tracker.affinity, before)
+        tracker2 = MoodTracker.load(None, mood_config=cfg)
+        before2 = tracker2.affinity
+        tracker2.register("good night")
+        self.assertGreater(tracker2.affinity, before2)
+
     def test_get_mood_tracker_auto_loads_mood_config(self):
         """get_mood_tracker() with no args should use mood_config.json keywords."""
         import json
