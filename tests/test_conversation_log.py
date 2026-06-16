@@ -293,7 +293,8 @@ class SpeakCommentWiringTests(unittest.TestCase):
 
         with mock.patch.object(_mod, "get_conversation_log", lambda: test_log), \
              mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
-                               property(lambda self: respond_persona)):
+                               property(lambda self: respond_persona)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: None):
             v = object.__new__(_mod.AutonomousAvatarViewer)
             v.comment_text = ""
             v.mode = "idle"

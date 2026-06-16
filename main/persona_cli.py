@@ -361,11 +361,15 @@ def run_chat(
             continue
         if text.lower().startswith("/callme"):
             new_name = text[len("/callme"):].strip()
-            _set_user_name(profile, new_name, name, lang, output_fn)
+            reply = _set_user_name(profile, new_name, name, lang, output_fn)
+            if conv_log is not None and reply:
+                conv_log.log_exchange(text, reply)
             continue
         if text.lower().startswith("/birthday"):
             new_bday = text[len("/birthday"):].strip()
-            _set_birthday(profile, new_bday, name, lang, output_fn)
+            reply = _set_birthday(profile, new_bday, name, lang, output_fn)
+            if conv_log is not None and reply:
+                conv_log.log_exchange(text, reply)
             continue
         if text.lower().startswith("/gift"):
             item = text[len("/gift"):].strip()
@@ -694,57 +698,60 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
 
 
 def _set_user_name(profile, new_name: str, avatar_name: str, lang: str,
-                   output_fn: Callable[[str], None]) -> None:
-    """ユーザーの呼び名を設定して永続化し、アバターが確認の返事をする。"""
+                   output_fn: Callable[[str], None]) -> str:
+    """ユーザーの呼び名を設定して永続化し、アバターが確認の返事をする。返事テキストを返す（ログ用）。"""
     if profile is None:
         output_fn("(プロファイルは利用できません)")
-        return
+        return ""
     if not new_name:
         output_fn("使用方法: /callme <呼んでほしい名前>")
-        return
+        return ""
     try:
         saved = profile.set_name(new_name)
         if _profile_path is not None:
             profile.save(_profile_path())
     except Exception:  # pragma: no cover - defensive
         output_fn("(呼び名の保存に失敗しました)")
-        return
+        return ""
     if not saved:
         output_fn("(その名前は使えません)")
-        return
+        return ""
     if lang == "en":
-        output_fn(f"{avatar_name}: Got it — I'll call you {saved} from now on!")
+        reply = f"Got it — I'll call you {saved} from now on!"
     else:
-        output_fn(f"{avatar_name}: わかった、これからは{saved}って呼ぶね！")
+        reply = f"わかった、これからは{saved}って呼ぶね！"
+    output_fn(f"{avatar_name}: {reply}")
+    return reply
 
 
 def _set_birthday(profile, new_bday: str, avatar_name: str, lang: str,
-                  output_fn: Callable[[str], None]) -> None:
-    """ユーザーの誕生日（MM-DD）を設定して永続化し、アバターが確認の返事をする。"""
+                  output_fn: Callable[[str], None]) -> str:
+    """ユーザーの誕生日（MM-DD）を設定して永続化し、アバターが確認の返事をする。返事テキストを返す（ログ用）。"""
     if profile is None:
         output_fn("(プロファイルは利用できません)")
-        return
+        return ""
     if not new_bday:
         output_fn("使用方法: /birthday MM-DD （例: /birthday 06-15）")
-        return
+        return ""
     try:
         saved = profile.set_birthday(new_bday)
         if saved and _profile_path is not None:
             profile.save(_profile_path())
     except Exception:  # pragma: no cover - defensive
         output_fn("(誕生日の保存に失敗しました)")
-        return
+        return ""
     if not saved:
         if lang == "en":
             output_fn("Please use MM-DD, e.g. /birthday 06-15.")
         else:
             output_fn("MM-DD 形式で教えてね。例: /birthday 06-15")
-        return
+        return ""
     if lang == "en":
-        output_fn(f"{avatar_name}: Got it — your birthday is {saved}. "
-                  f"I won't forget it!")
+        reply = f"Got it — your birthday is {saved}. I won't forget it!"
     else:
-        output_fn(f"{avatar_name}: 覚えた、誕生日は{saved}だね。忘れないよ！")
+        reply = f"覚えた、誕生日は{saved}だね。忘れないよ！"
+    output_fn(f"{avatar_name}: {reply}")
+    return reply
 
 
 def _give_gift(item: str, mood, avatar_name: str, lang: str,

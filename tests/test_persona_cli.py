@@ -1257,6 +1257,75 @@ class RecapCommandTests(unittest.TestCase):
         self.assertTrue(any("やっほー" in l for l in out))
 
 
+class CallemeBirthdayLoggingTests(unittest.TestCase):
+    """/callme and /birthday commands log their exchange to conv_log."""
+
+    def _run(self, inputs, profile=None, conv_log=None):
+        from conversation_log import ConversationLog
+        from user_profile import UserProfile
+        import tempfile, os
+        d = _Driver(inputs)
+        tmp = tempfile.mkdtemp()
+        try:
+            log = conv_log or ConversationLog(os.path.join(tmp, "c.jsonl"))
+            prof = profile or UserProfile()
+            import persona_cli as pc
+            pc.run_chat(
+                persona=_persona(), conv_log=log, profile=prof,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+        return d.out, log
+
+    def _avatar_texts(self, log):
+        from conversation_log import EVENT_AVATAR_REPLY
+        return [e.get("details", {}).get("text", e.get("text", ""))
+                for e in log.recent(20)
+                if e.get("event_type") == EVENT_AVATAR_REPLY]
+
+    def test_callme_logs_name_confirmation(self):
+        """After /callme Taro, the log has an avatar reply mentioning Taro."""
+        from conversation_log import ConversationLog
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            self._run(["/callme Taro"], conv_log=log)
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("Taro" in t for t in avatar_texts),
+                            f"Expected Taro in log; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_birthday_logs_date_confirmation(self):
+        """After /birthday 06-15, the log has an avatar reply mentioning 06-15."""
+        from conversation_log import ConversationLog
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            self._run(["/birthday 06-15"], conv_log=log)
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("06-15" in t for t in avatar_texts),
+                            f"Expected 06-15 in log; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_callme_without_arg_does_not_log(self):
+        """/callme with no arg shows usage and does not log an avatar reply."""
+        from conversation_log import ConversationLog
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            self._run(["/callme"], conv_log=log)
+            avatar_texts = self._avatar_texts(log)
+            self.assertEqual(avatar_texts, [])
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+
 class LikeForgetLoggingTests(unittest.TestCase):
     """/like and /forget commands log their exchange to conv_log for /recap and /search."""
 

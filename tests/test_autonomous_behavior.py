@@ -287,7 +287,9 @@ class PersonaIntegrationTests(unittest.TestCase):
         with mock.patch.object(autonomous_behavior, "get_persona",
                                lambda *a, **k: _LevelCapture()), \
              mock.patch.object(autonomous_behavior, "_get_mood_tracker",
-                               lambda: _FakeTracker()):
+                               lambda: _FakeTracker()), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: None):
             d = _Dummy()
             text = d._pick_talk_text()
 

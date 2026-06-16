@@ -21,6 +21,7 @@ import avatar_3d_autonomous_tts as _mod  # noqa: E402
 import persona as _persona_mod  # noqa: E402
 from persona import Persona  # noqa: E402
 import mood as _mood_mod  # noqa: E402
+import user_profile as _profile_mod  # noqa: E402
 
 
 def _make_viewer(tts_queue=None):
@@ -48,17 +49,23 @@ _RESPONSE_PERSONA = Persona.from_dict({
 
 class SpeakCommentTests(unittest.TestCase):
     def setUp(self):
-        # 会話ログと好感度を無効化して CWD にファイルを作らない
+        # 会話ログ・好感度・ユーザープロファイルを無効化して CWD にファイルを作らない
         self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
         self._log_patcher.start()
         self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
         self._mood_patcher.start()
+        # Interest mention relies on user profile singleton; reset to prevent cross-test leak
+        _profile_mod.reset_user_profile()
+        self._profile_patcher = mock.patch.object(_mod, "_get_user_profile_gui", lambda: None)
+        self._profile_patcher.start()
 
     def tearDown(self):
+        self._profile_patcher.stop()
         self._log_patcher.stop()
         self._mood_patcher.stop()
         _persona_mod.reset_persona()
         _mood_mod.reset_mood_tracker()
+        _profile_mod.reset_user_profile()
 
     def test_matching_keyword_replies_not_echoes(self):
         """A keyword hit makes the avatar speak the reply, not the user's words."""
@@ -139,11 +146,17 @@ class SpeakCommentMoodTests(unittest.TestCase):
         self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
         self._log_patcher.start()
         _mood_mod.reset_mood_tracker()
+        # Prevent interest mention from firing due to profile singleton leaking from other tests
+        _profile_mod.reset_user_profile()
+        self._profile_patcher = mock.patch.object(_mod, "_get_user_profile_gui", lambda: None)
+        self._profile_patcher.start()
 
     def tearDown(self):
+        self._profile_patcher.stop()
         self._log_patcher.stop()
         _mood_mod.reset_mood_tracker()
         _persona_mod.reset_persona()
+        _profile_mod.reset_user_profile()
 
     def _viewer_with_persona(self):
         v = _make_viewer(queue.Queue())
