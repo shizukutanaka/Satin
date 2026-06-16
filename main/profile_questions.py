@@ -91,6 +91,123 @@ _QUESTIONS: List[Dict] = [
             "recall": "I remember your dream of {answer}. I hope you're getting closer to it.",
         },
     },
+    {
+        "key": "favorite_music",
+        "ja": {
+            "question": "どんな音楽が好き？",
+            "ack": "{answer}が好きなんだね！一緒に聴きたいな。",
+            "recall": "{answer}が好きって言ってたよね。最近も聴いてる？",
+        },
+        "en": {
+            "question": "What kind of music do you like?",
+            "ack": "You like {answer}! I'd love to listen together sometime.",
+            "recall": "You said you love {answer}. Still listening to it lately?",
+        },
+    },
+    {
+        "key": "favorite_season",
+        "ja": {
+            "question": "好きな季節はどれ？",
+            "ack": "{answer}が好きなんだ！あなたらしい気がする。",
+            "recall": "{answer}が好きって言ってたよね。今の季節はどう？",
+        },
+        "en": {
+            "question": "What's your favorite season?",
+            "ack": "{answer}, huh? That somehow feels like you.",
+            "recall": "You said {answer} is your favorite season. How's the weather treating you?",
+        },
+    },
+    {
+        "key": "childhood_memory",
+        "ja": {
+            "question": "子どもの頃の思い出で、好きなのある？",
+            "ack": "{answer}か…素敵な思い出だね。大切にしてね。",
+            "recall": "子どもの頃の{answer}のこと、思い出したよ。今でも懐かしく思う？",
+        },
+        "en": {
+            "question": "Do you have a favorite childhood memory?",
+            "ack": "{answer}… that sounds like a wonderful memory. Treasure it.",
+            "recall": "I thought of you when I remembered you mentioned {answer} from childhood.",
+        },
+    },
+    {
+        "key": "pet",
+        "ja": {
+            "question": "ペットは飼ってる？",
+            "ack": "{answer}か！かわいいね、大事にしてあげてね。",
+            "recall": "{answer}のこと、気になってるんだ。最近どんな様子？",
+        },
+        "en": {
+            "question": "Do you have any pets?",
+            "ack": "{answer}! Aww, take good care of them.",
+            "recall": "I've been wondering about your {answer}. How are they doing?",
+        },
+    },
+    {
+        "key": "sport",
+        "ja": {
+            "question": "スポーツとか、体を動かすことは好き？",
+            "ack": "{answer}するんだ！かっこいいな。",
+            "recall": "{answer}してるって言ってたね。最近やれてる？",
+        },
+        "en": {
+            "question": "Do you play any sports or like to exercise?",
+            "ack": "You do {answer}! That's awesome.",
+            "recall": "You mentioned {answer}. Have you been keeping it up?",
+        },
+    },
+    {
+        "key": "travel_destination",
+        "ja": {
+            "question": "いつか行ってみたい場所ってある？",
+            "ack": "{answer}か！一緒に行けたら楽しそうだな。",
+            "recall": "{answer}に行ってみたいって言ってたよね。まだ夢の場所？",
+        },
+        "en": {
+            "question": "Is there a place you've always wanted to visit?",
+            "ack": "{answer}! That sounds amazing — I'd love to go with you someday.",
+            "recall": "You said you want to visit {answer}. Still on your bucket list?",
+        },
+    },
+    {
+        "key": "morning_routine",
+        "ja": {
+            "question": "朝起きてまず何する？",
+            "ack": "{answer}から始まるんだね。いい朝の過ごし方だな。",
+            "recall": "朝は{answer}するって言ってたよね。今朝もやった？",
+        },
+        "en": {
+            "question": "What's the first thing you do in the morning?",
+            "ack": "You start with {answer}? That's a great morning ritual.",
+            "recall": "You said you do {answer} every morning. Did you today?",
+        },
+    },
+    {
+        "key": "favorite_movie",
+        "ja": {
+            "question": "好きな映画ってある？",
+            "ack": "{answer}か！観てみたいな。どんなところが好きなの？",
+            "recall": "{answer}が好きって言ってたよね。また観返したりする？",
+        },
+        "en": {
+            "question": "Do you have a favorite movie?",
+            "ack": "{answer}! I'd love to watch that. What do you like about it?",
+            "recall": "You mentioned {answer} is your favorite. Do you rewatch it sometimes?",
+        },
+    },
+    {
+        "key": "stress_relief",
+        "ja": {
+            "question": "ストレスが溜まったとき、どうやって発散する？",
+            "ack": "{answer}か…それは気持ちよさそうだね。大事にしてね。",
+            "recall": "ストレスは{answer}で発散するって言ってたね。最近お疲れじゃない？",
+        },
+        "en": {
+            "question": "How do you unwind when you're stressed?",
+            "ack": "{answer}… that sounds really soothing. Take good care of yourself.",
+            "recall": "You said {answer} helps when you're stressed. Have you needed it lately?",
+        },
+    },
 ]
 
 _QUESTION_BY_KEY: Dict[str, Dict] = {q["key"]: q for q in _QUESTIONS}
