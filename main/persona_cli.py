@@ -137,7 +137,9 @@ def respond_to(
 def _help_text() -> str:
     return (
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
-        "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | /whoami 確認 | "
+        "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | "
+        "/like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | "
+        "/gift <プレゼント> 贈る | /whoami 確認 | "
         "/mood 好感度 | /reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了"
     )
 
