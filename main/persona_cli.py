@@ -328,6 +328,8 @@ def run_chat(
     # 一問一答（getting-to-know-you）: アバターが質問を出すと、その答え待ち状態の
     # facts キーをここに保持する。次のユーザー発話（コマンド以外）を回答として記憶する。
     pending_fact_key: Optional[str] = None
+    # /reset-mood の二段階確認フラグ（誤操作による好感度全消しを防ぐ）
+    _reset_mood_pending: bool = False
     while True:
         try:
             raw = input_fn("You: ")
@@ -341,6 +343,10 @@ def run_chat(
         text = raw.strip()
         if not text:
             continue
+
+        # /reset-mood の確認待ちが他のコマンド/テキストでキャンセルされた場合
+        if _reset_mood_pending and text.lower() not in _MOOD_RESET_COMMANDS:
+            _reset_mood_pending = False
 
         # コマンド処理
         if text.lower() in _QUIT_COMMANDS:
@@ -383,7 +389,17 @@ def run_chat(
             _print_mood(mood, lang, output_fn, profile=profile)
             continue
         if text.lower() in _MOOD_RESET_COMMANDS:
-            _reset_mood(mood, lang, output_fn)
+            if not _reset_mood_pending:
+                if lang == "en":
+                    output_fn(f"{name}: This will reset our relationship to neutral. "
+                              "Type /reset-mood again to confirm.")
+                else:
+                    output_fn(f"{name}: 好感度をニュートラルにリセットします。"
+                              "本当によければ、もう一度 /reset-mood を入力してください。")
+                _reset_mood_pending = True
+            else:
+                _reset_mood(mood, lang, output_fn)
+                _reset_mood_pending = False
             continue
         if text.lower() == "/stats":
             _print_stats(conv_log, exchanges, lang, output_fn)

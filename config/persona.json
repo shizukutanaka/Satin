@@ -727,6 +727,30 @@
             ]
           },
           {
+            "keywords": [
+              "ありがとう",
+              "ありがと",
+              "さんきゅ"
+            ],
+            "replies": [
+              "…そう。どういたしまして。",
+              "…別に、当然のことをしたまでです。"
+            ]
+          },
+          {
+            "keywords": [
+              "話す",
+              "話そう",
+              "話したい",
+              "聞いて",
+              "聞いてほしい"
+            ],
+            "replies": [
+              "…何ですか？",
+              "…話すだけなら、まあ。"
+            ]
+          },
+          {
             "fallback": [
               "…そうですか。",
               "なるほど…。",
@@ -753,6 +777,40 @@
             ],
             "replies": [
               "そうですか。ゆっくりしてください。"
+            ]
+          },
+          {
+            "keywords": [
+              "ありがとう",
+              "ありがと",
+              "さんきゅ"
+            ],
+            "replies": [
+              "いえ、気にしないでください。",
+              "そうですか、どういたしまして。"
+            ]
+          },
+          {
+            "keywords": [
+              "元気",
+              "調子",
+              "最近どう"
+            ],
+            "replies": [
+              "ええ、まあ。あなたは？",
+              "普通かな。"
+            ]
+          },
+          {
+            "keywords": [
+              "好き",
+              "かわいい",
+              "すき",
+              "好みだ"
+            ],
+            "replies": [
+              "…そういうこと、急に言わないでほしいな。",
+              "え、あの…どうも。"
             ]
           },
           {
@@ -1203,6 +1261,30 @@
             ]
           },
           {
+            "keywords": [
+              "thank",
+              "thanks",
+              "appreciate"
+            ],
+            "replies": [
+              "...You don't need to thank me.",
+              "...Sure."
+            ]
+          },
+          {
+            "keywords": [
+              "talk",
+              "chat",
+              "tell me",
+              "want to know",
+              "listen"
+            ],
+            "replies": [
+              "...What do you need?",
+              "...I suppose. Go ahead."
+            ]
+          },
+          {
             "fallback": [
               "...I see.",
               "...Is that so?",
@@ -1230,6 +1312,41 @@
             ],
             "replies": [
               "I see. Please rest."
+            ]
+          },
+          {
+            "keywords": [
+              "thank",
+              "thanks",
+              "appreciate"
+            ],
+            "replies": [
+              "You're welcome.",
+              "No problem."
+            ]
+          },
+          {
+            "keywords": [
+              "how are you",
+              "you doing",
+              "how's it going"
+            ],
+            "replies": [
+              "Fine, I suppose. And you?",
+              "Okay, I think."
+            ]
+          },
+          {
+            "keywords": [
+              "cute",
+              "love",
+              "like you",
+              "pretty",
+              "lovely"
+            ],
+            "replies": [
+              "...That came out of nowhere.",
+              "Oh. Um. Thank you."
             ]
           },
           {

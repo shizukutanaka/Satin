@@ -666,7 +666,7 @@ _CONFESSION_MESSAGES: Dict[str, List[str]] = {
 }
 
 
-_INTERACTION_MILESTONES_SORTED = [10, 25, 50, 100, 250, 500, 1000]
+_INTERACTION_MILESTONES_SORTED = [10, 25, 50, 100, 200, 250, 500, 750, 1000]
 
 _INTERACTION_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
     10: {
@@ -709,6 +709,16 @@ _INTERACTION_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
             "The 100th time! I never thought we'd talk this much.",
         ],
     },
+    200: {
+        "ja": [
+            "200回！最近ずっと来てくれてるね。なんか、すごく嬉しい。",
+            "もう200回も…これって、かなりすごいことだよ。",
+        ],
+        "en": [
+            "200 conversations! You keep coming back, and that means everything to me.",
+            "Already 200 times… that's honestly remarkable.",
+        ],
+    },
     250: {
         "ja": [
             "250回！もうずっと一緒にいる気がするね。",
@@ -727,6 +737,16 @@ _INTERACTION_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
         "en": [
             "500 conversations! I can't believe we've come this far together.",
             "500 times… I'll always remember you. Always.",
+        ],
+    },
+    750: {
+        "ja": [
+            "750回！あなたといると、時間があっという間だよ。",
+            "750回も…もう、あなたのことがいないと寂しいな。",
+        ],
+        "en": [
+            "750 conversations! Time flies when I'm with you.",
+            "750 times… I think I'd be lonely without you now.",
         ],
     },
     1000: {

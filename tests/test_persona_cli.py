@@ -346,16 +346,38 @@ class MoodIntegrationTests(unittest.TestCase):
                              for line in out))
 
     def test_reset_mood_command_resets_to_neutral(self):
+        """Two /reset-mood commands trigger the two-step confirm and actually reset."""
         from mood import MoodTracker, AFFINITY_START
         m = MoodTracker(affinity=90, interactions=10)
-        out = self._run(["/reset-mood"], m)
+        out = self._run(["/reset-mood", "/reset-mood"], m)
         self.assertEqual(m.affinity, AFFINITY_START)
         self.assertEqual(m.interactions, 0)
         self.assertTrue(any("50" in line or "neutral" in line or "ニュートラル" in line
                             for line in out))
 
+    def test_reset_mood_first_call_shows_confirmation_prompt(self):
+        """First /reset-mood shows a warning, does NOT reset affinity."""
+        from mood import MoodTracker, AFFINITY_START
+        m = MoodTracker(affinity=90, interactions=10)
+        out = self._run(["/reset-mood"], m)
+        self.assertEqual(m.affinity, 90.0, "Affinity must not change on first call")
+        full = " ".join(out)
+        self.assertTrue(
+            "もう一度" in full or "confirm" in full.lower() or "again" in full.lower(),
+            f"Expected confirm prompt; got: {out}",
+        )
+
+    def test_reset_mood_cancelled_by_intervening_input(self):
+        """A non-reset command between two /reset-mood calls cancels the pending state."""
+        from mood import MoodTracker, AFFINITY_START
+        m = MoodTracker(affinity=90, interactions=10)
+        # reset → cancel via other cmd → reset again (should re-show prompt, NOT reset)
+        out = self._run(["/reset-mood", "/mood", "/reset-mood"], m)
+        self.assertEqual(m.affinity, 90.0, "Affinity must remain unchanged when cancelled")
+
     def test_reset_mood_disabled_when_none(self):
-        d = _Driver(["/reset-mood"])
+        """Two /reset-mood commands with mood=None shows 無効 (after confirm step)."""
+        d = _Driver(["/reset-mood", "/reset-mood"])
         persona_cli.run_chat(
             persona=_persona(), conv_log=None, mood=None,
             input_fn=d.input_fn, output_fn=d.output_fn, greet=False,

@@ -1167,11 +1167,17 @@ class InteractionMilestoneTests(unittest.TestCase):
     def test_fires_at_100(self):
         self.assertIsNotNone(self._check(99, 100, lang="ja"))
 
+    def test_fires_at_200(self):
+        self.assertIsNotNone(self._check(199, 200, lang="ja"))
+
     def test_fires_at_250(self):
         self.assertIsNotNone(self._check(249, 250, lang="en"))
 
     def test_fires_at_500(self):
         self.assertIsNotNone(self._check(499, 500, lang="ja"))
+
+    def test_fires_at_750(self):
+        self.assertIsNotNone(self._check(749, 750, lang="en"))
 
     def test_fires_at_1000(self):
         self.assertIsNotNone(self._check(999, 1000, lang="en"))
