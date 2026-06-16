@@ -717,6 +717,48 @@ class UserProfileIntegrationTests(unittest.TestCase):
         )
         self.assertTrue(any("アニメ" in line for line in d.out))
 
+    def test_whoami_shows_remembered_facts(self):
+        prof = self._profile()
+        prof.set_fact("favorite_food", "ラーメン")
+        d = _Driver(["/whoami"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("ラーメン" in line for line in d.out))
+
+    def test_qa_loop_remembers_answer(self):
+        """When the avatar asks a getting-to-know-you question, the next
+        non-command input is stored as a fact."""
+        from mood import MoodTracker
+        prof = self._profile()
+        mood = MoodTracker(affinity=50)  # neutral level
+        # 4 messages to reach the follow-up cadence, then the answer on turn 5.
+        d = _Driver(["a", "b", "c", "d", "ラーメンが好き"])
+        # Force the 50% question gate to always fire.
+        with mock.patch("random.random", return_value=0.0):
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=None, profile=prof, mood=mood,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+        # At least one fact should have been captured from the answer.
+        self.assertTrue(prof.facts, "expected a fact to be remembered")
+        self.assertIn("ラーメンが好き", prof.facts.values())
+
+    def test_no_question_at_distant_level(self):
+        """Getting-to-know-you questions should not fire at distant level."""
+        from mood import MoodTracker
+        prof = self._profile()
+        mood = MoodTracker(affinity=5)  # distant level
+        d = _Driver(["a", "b", "c", "d", "answer"])
+        with mock.patch("random.random", return_value=0.0):
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=None, profile=prof, mood=mood,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+        # No profile question was asked, so "answer" must not be stored as a fact.
+        self.assertEqual(prof.facts, {})
+
 
 class MainEntryTests(unittest.TestCase):
     def _eof_input(self):

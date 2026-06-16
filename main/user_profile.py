@@ -35,6 +35,9 @@ _MAX_NAME_LEN = 40
 _MAX_INTERESTS = 10
 # 1件あたりの趣味テキストの最大文字数
 _MAX_INTEREST_LEN = 30
+# 「一問一答」で覚える事実の上限件数と 1 件あたりの最大文字数
+_MAX_FACTS = 20
+_MAX_FACT_LEN = 60
 
 # 名前が未設定のときの中立的な呼びかけ（{user} プレースホルダのフォールバック）
 _NEUTRAL_ADDRESS = {"ja": "きみ", "en": "you"}
@@ -89,12 +92,30 @@ def _sanitize_interest(text: Optional[str]) -> str:
     return s
 
 
+def _sanitize_fact(text: Optional[str], max_len: int = _MAX_FACT_LEN) -> str:
+    """一問一答の回答テキストを安全な 1 行文字列へ整える。
+
+    前後空白除去・制御文字畳み込みのうえ、長すぎる場合は切り詰める
+    （趣味と違い回答は捨てずに切り詰めて保持する）。空なら空文字。
+    """
+    if not text:
+        return ""
+    s = str(text).replace("\r", " ").replace("\n", " ").strip()
+    s = "".join(ch if ch.isprintable() else " " for ch in s).strip()
+    if not s:
+        return ""
+    if len(s) > max_len:
+        s = s[:max_len].strip()
+    return s
+
+
 class UserProfile:
     """ユーザーの呼び名と任意メモを保持・永続化するクラス。"""
 
     def __init__(self, name: str = "", note: str = "",
                  birthday: str = "", last_birthday_year: int = 0,
-                 interests: Optional[List[str]] = None):
+                 interests: Optional[List[str]] = None,
+                 facts: Optional[Dict[str, str]] = None):
         self.name = _sanitize_name(name)
         self.note = _sanitize_name(note)
         # 誕生日（MM-DD、毎年巡る）と、最後に祝った年（重複祝い防止）
@@ -107,6 +128,16 @@ class UserProfile:
             if s and s not in self.interests:
                 self.interests.append(s)
         self.interests = self.interests[:_MAX_INTERESTS]
+        # 一問一答で覚えた事実（key → 回答テキスト。最大 _MAX_FACTS 件）
+        self.facts: Dict[str, str] = {}
+        if isinstance(facts, dict):
+            for key, value in facts.items():
+                if len(self.facts) >= _MAX_FACTS:
+                    break
+                k = _sanitize_interest(key)  # キーも 1 行・短文に正規化
+                v = _sanitize_fact(value)
+                if k and v:
+                    self.facts[k] = v
 
     # ---- 状態参照 -------------------------------------------------------- #
     def has_name(self) -> bool:
@@ -117,6 +148,13 @@ class UserProfile:
 
     def has_interests(self) -> bool:
         return bool(self.interests)
+
+    def has_fact(self, key: str) -> bool:
+        return bool(self.facts.get(_sanitize_interest(key)))
+
+    def get_fact(self, key: str) -> str:
+        """覚えた事実を返す。未知なら空文字。"""
+        return self.facts.get(_sanitize_interest(key), "")
 
     def address(self, lang: str = "ja") -> str:
         """呼びかけに使う文字列を返す。名前未設定なら中立的な代名詞。"""
@@ -160,6 +198,28 @@ class UserProfile:
             return True
         return False
 
+    def set_fact(self, key: str, value: str) -> str:
+        """一問一答で得た事実を保存する。整形後の値を返す（無効なら空文字）。
+
+        既知キーの上書きは常に許可する。新規キーは上限 _MAX_FACTS まで。
+        """
+        k = _sanitize_interest(key)
+        v = _sanitize_fact(value)
+        if not k or not v:
+            return ""
+        if k not in self.facts and len(self.facts) >= _MAX_FACTS:
+            return ""
+        self.facts[k] = v
+        return v
+
+    def remove_fact(self, key: str) -> bool:
+        """覚えた事実を削除する。見つかれば True。"""
+        k = _sanitize_interest(key)
+        if k in self.facts:
+            del self.facts[k]
+            return True
+        return False
+
     def clear(self) -> None:
         """プロファイルを空にする（メモリ上のみ。削除は呼び出し側で）。"""
         self.name = ""
@@ -167,6 +227,7 @@ class UserProfile:
         self.birthday = ""
         self._last_birthday_year = 0
         self.interests = []
+        self.facts = {}
 
     # ---- 永続化 ---------------------------------------------------------- #
     def to_dict(self) -> Dict:
@@ -176,6 +237,7 @@ class UserProfile:
             "birthday": self.birthday,
             "last_birthday_year": self._last_birthday_year,
             "interests": list(self.interests),
+            "facts": dict(self.facts),
         }
 
     def save(self, path: str) -> bool:
@@ -200,12 +262,15 @@ class UserProfile:
             data = {}
         raw_interests = data.get("interests", [])
         interests = raw_interests if isinstance(raw_interests, list) else []
+        raw_facts = data.get("facts", {})
+        facts = raw_facts if isinstance(raw_facts, dict) else {}
         return cls(
             name=data.get("name", ""),
             note=data.get("note", ""),
             birthday=data.get("birthday", ""),
             last_birthday_year=data.get("last_birthday_year", 0),
             interests=interests,
+            facts=facts,
         )
 
     @classmethod

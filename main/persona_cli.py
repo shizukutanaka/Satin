@@ -103,6 +103,17 @@ except Exception:  # pragma: no cover - defensive
     _mood_emoji = None  # type: ignore
     _mood_affinity_multiplier = None  # type: ignore
 
+try:
+    from profile_questions import (
+        next_unanswered_question as _next_unanswered_question,
+        acknowledge_answer as _acknowledge_answer,
+        recall_fact as _recall_fact,
+    )
+except Exception:  # pragma: no cover - defensive
+    _next_unanswered_question = None  # type: ignore
+    _acknowledge_answer = None  # type: ignore
+    _recall_fact = None  # type: ignore
+
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
 _HISTORY_DEFAULT = 10
@@ -266,6 +277,9 @@ def run_chat(
     output_fn(_help_text())
 
     exchanges = 0
+    # 一問一答（getting-to-know-you）: アバターが質問を出すと、その答え待ち状態の
+    # facts キーをここに保持する。次のユーザー発話（コマンド以外）を回答として記憶する。
+    pending_fact_key: Optional[str] = None
     while True:
         try:
             raw = input_fn("You: ")
@@ -331,6 +345,20 @@ def run_chat(
             _print_search(conv_log, query, output_fn)
             continue
 
+        # 一問一答の回答待ちなら、このコマンド以外の発話を答えとして記憶する。
+        # 確認文 (ack) を後段の reply に前置する（会話は通常どおり続ける）。
+        ack_msg = ""
+        if pending_fact_key and profile is not None and _acknowledge_answer is not None:
+            try:
+                saved = profile.set_fact(pending_fact_key, text)
+                if saved:
+                    ack_msg = _acknowledge_answer(pending_fact_key, saved, lang=lang)
+                    if _profile_path is not None:
+                        profile.save(_profile_path())
+            except Exception:  # pragma: no cover - defensive
+                pass
+            pending_fact_key = None
+
         # 好感度を更新（指定時のみ）
         milestone_msg = ""
         if mood is not None:
@@ -389,21 +417,34 @@ def run_chat(
         reply = respond_to(text, persona, conv_log, level=level)
         if milestone_msg:
             reply = (reply + " " + milestone_msg).strip() if reply else milestone_msg
+        # 一問一答の回答を覚えたら、その確認をすぐ前置きして「ちゃんと聞いてる」を示す
+        if ack_msg:
+            reply = (ack_msg + " " + reply).strip() if reply else ack_msg
         exchanges += 1
         # 数回ごとにアバターから話題を振る（受け身すぎないように）。
         # ただし返答が既に疑問文で終わっていれば二重質問を避ける。
         if _FOLLOW_UP_EVERY > 0 and exchanges % _FOLLOW_UP_EVERY == 0 \
                 and not reply.rstrip().endswith(("？", "?")):
             try:
-                # 8 交換ごと（_FOLLOW_UP_EVERY の 2 倍）かつ趣味が記憶されていれば
-                # 趣味を引用した思い出し質問を優先する（level >= neutral のとき）
                 question = ""
                 recall_levels = {"neutral", "friendly", "close"}
-                if (exchanges % (_FOLLOW_UP_EVERY * 2) == 0
-                        and profile is not None
-                        and getattr(profile, "interests", [])
-                        and level in recall_levels):
-                    question = _interest_recall(profile, lang)
+                # getting-to-know-you: neutral 以上かつ未回答の質問があれば、半々の確率で
+                # アバターから質問して回答待ち状態にする（Q&A ループの起点）。
+                if (level in recall_levels and profile is not None
+                        and pending_fact_key is None
+                        and _next_unanswered_question is not None):
+                    import random as _rnd
+                    if _rnd.random() < 0.5:
+                        qpair = _next_unanswered_question(profile, lang)
+                        if qpair:
+                            pending_fact_key, question = qpair
+                # 8 交換ごと: 覚えた事実→趣味の順で思い出し話題を振る
+                if (not question and exchanges % (_FOLLOW_UP_EVERY * 2) == 0
+                        and profile is not None and level in recall_levels):
+                    if _recall_fact is not None:
+                        question = _recall_fact(profile, lang)
+                    if not question and getattr(profile, "interests", []):
+                        question = _interest_recall(profile, lang)
                 if not question:
                     question = persona.follow_up_question(level=level)
             except Exception:  # pragma: no cover - defensive
@@ -714,7 +755,7 @@ def _remove_interest(profile, thing: str, avatar_name: str, lang: str,
 
 
 def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> None:
-    """現在記憶している呼び名・誕生日・趣味を表示する。"""
+    """現在記憶している呼び名・誕生日・趣味・一問一答の事実を表示する。"""
     if profile is None:
         output_fn("(プロファイルは利用できません)")
         return
@@ -741,6 +782,14 @@ def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> No
             output_fn(f"Things you like: {joined}")
         else:
             output_fn(f"好きなもの: {joined}")
+    facts = getattr(profile, "facts", {})
+    if facts:
+        if lang == "en":
+            output_fn("Things I remember about you:")
+        else:
+            output_fn("覚えていること:")
+        for value in facts.values():
+            output_fn(f"  - {value}")
 
 
 def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:

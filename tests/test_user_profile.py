@@ -232,6 +232,89 @@ class InterestTests(unittest.TestCase):
         self.assertEqual(p.interests.count("音楽"), 1)
 
 
+class FactTests(unittest.TestCase):
+    def test_starts_empty(self):
+        self.assertEqual(UserProfile().facts, {})
+
+    def test_set_and_get_fact(self):
+        p = UserProfile()
+        saved = p.set_fact("favorite_food", "ラーメン")
+        self.assertEqual(saved, "ラーメン")
+        self.assertEqual(p.get_fact("favorite_food"), "ラーメン")
+        self.assertTrue(p.has_fact("favorite_food"))
+
+    def test_get_unknown_fact_empty(self):
+        self.assertEqual(UserProfile().get_fact("nope"), "")
+        self.assertFalse(UserProfile().has_fact("nope"))
+
+    def test_set_fact_overwrites_existing(self):
+        p = UserProfile()
+        p.set_fact("favorite_color", "青")
+        p.set_fact("favorite_color", "赤")
+        self.assertEqual(p.get_fact("favorite_color"), "赤")
+
+    def test_set_fact_empty_value_rejected(self):
+        p = UserProfile()
+        self.assertEqual(p.set_fact("k", ""), "")
+        self.assertEqual(p.facts, {})
+
+    def test_set_fact_empty_key_rejected(self):
+        p = UserProfile()
+        self.assertEqual(p.set_fact("", "value"), "")
+
+    def test_long_answer_truncated_not_dropped(self):
+        p = UserProfile()
+        long_answer = "あ" * 200
+        saved = p.set_fact("dream", long_answer)
+        self.assertTrue(saved)
+        self.assertLessEqual(len(p.get_fact("dream")), 60)
+
+    def test_max_facts_enforced_for_new_keys(self):
+        p = UserProfile()
+        for i in range(25):
+            p.set_fact(f"key{i}", f"value{i}")
+        self.assertLessEqual(len(p.facts), 20)
+
+    def test_existing_key_updatable_at_capacity(self):
+        p = UserProfile()
+        for i in range(20):
+            p.set_fact(f"key{i}", "v")
+        # At capacity; updating an existing key still works
+        self.assertEqual(p.set_fact("key0", "updated"), "updated")
+        self.assertEqual(p.get_fact("key0"), "updated")
+
+    def test_remove_fact(self):
+        p = UserProfile()
+        p.set_fact("hometown", "東京")
+        self.assertTrue(p.remove_fact("hometown"))
+        self.assertFalse(p.has_fact("hometown"))
+
+    def test_remove_nonexistent_fact(self):
+        self.assertFalse(UserProfile().remove_fact("nope"))
+
+    def test_facts_roundtrip(self):
+        p = UserProfile(name="Taro")
+        p.set_fact("favorite_food", "寿司")
+        p.set_fact("hometown", "大阪")
+        restored = UserProfile.from_dict(p.to_dict())
+        self.assertEqual(restored.facts, {"favorite_food": "寿司", "hometown": "大阪"})
+
+    def test_init_with_facts(self):
+        p = UserProfile(facts={"dream": "宇宙飛行士"})
+        self.assertEqual(p.get_fact("dream"), "宇宙飛行士")
+
+    def test_init_ignores_non_dict_facts(self):
+        # from_dict guards against corrupt data
+        p = UserProfile.from_dict({"name": "X", "facts": "not a dict"})
+        self.assertEqual(p.facts, {})
+
+    def test_clear_removes_facts(self):
+        p = UserProfile()
+        p.set_fact("favorite_color", "緑")
+        p.clear()
+        self.assertEqual(p.facts, {})
+
+
 class SingletonTests(unittest.TestCase):
     def setUp(self):
         user_profile.reset_user_profile()
