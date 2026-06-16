@@ -17,6 +17,7 @@
   /birthday MM-DD      誕生日を覚えさせる（当日に祝ってくれる）
   /like <好きなもの>    好きなものを覚えさせる（例: /like アニメ）
   /forget <好きなもの>  覚えた好きなものを忘れさせる
+  /gift <プレゼント>    アバターにプレゼントを贈る（/gift list でカタログ表示）
   /whoami             今記憶している呼び名・誕生日・好きなものを表示
   /mood               好感度レベルと今日のアバターの気分を表示
   /reset-mood         好感度をニュートラルにリセット
@@ -76,6 +77,12 @@ except Exception:  # pragma: no cover - defensive
     _seasonal_greeting = None  # type: ignore
     _birthday_greeting = None  # type: ignore
     _BIRTHDAY_BONUS = 0.0
+
+try:
+    from gifts import lookup_gift as _lookup_gift, gift_catalog_text as _gift_catalog_text
+except Exception:  # pragma: no cover - defensive
+    _lookup_gift = None  # type: ignore
+    _gift_catalog_text = None  # type: ignore
 
 try:
     from daily_mood import (
@@ -275,6 +282,10 @@ def run_chat(
         if text.lower().startswith("/birthday"):
             new_bday = text[len("/birthday"):].strip()
             _set_birthday(profile, new_bday, name, lang, output_fn)
+            continue
+        if text.lower().startswith("/gift"):
+            item = text[len("/gift"):].strip()
+            _give_gift(item, mood, name, lang, output_fn)
             continue
         if text.lower().startswith("/like"):
             thing = text[len("/like"):].strip()
@@ -516,6 +527,45 @@ def _set_birthday(profile, new_bday: str, avatar_name: str, lang: str,
                   f"I won't forget it!")
     else:
         output_fn(f"{avatar_name}: 覚えた、誕生日は{saved}だね。忘れないよ！")
+
+
+def _give_gift(item: str, mood, avatar_name: str, lang: str,
+               output_fn: Callable[[str], None]) -> None:
+    """ユーザーがアバターにプレゼントを贈り、好感度ボーナスと反応台詞を返す。"""
+    if not item or item.lower() == "list":
+        if _gift_catalog_text is not None:
+            cat = _gift_catalog_text(lang)
+            if lang == "en":
+                output_fn("Available gifts (bonus):")
+            else:
+                output_fn("贈れるプレゼント一覧（ボーナス）:")
+            output_fn(cat)
+        else:
+            output_fn("使用方法: /gift <プレゼント>")
+        return
+    if _lookup_gift is None:
+        output_fn("(プレゼント機能は利用できません)")
+        return
+    result = _lookup_gift(item, lang=lang)
+    if result is None:
+        if lang == "en":
+            output_fn(f"Hmm, I'm not sure about {item}. Try /gift list to see options.")
+        else:
+            output_fn(f"「{item}」はよく分からないな。/gift list で確認してね。")
+        return
+    bonus, reply = result
+    # 好感度ボーナスを適用
+    if mood is not None:
+        try:
+            mood.adjust(bonus)
+        except Exception:
+            pass
+    _say_fn = lambda text: output_fn(f"{avatar_name}: {text}")  # noqa: E731
+    _say_fn(reply)
+    if lang == "en":
+        output_fn(f"(+{int(bonus)} affinity)")
+    else:
+        output_fn(f"（好感度 +{int(bonus)}）")
 
 
 def _add_interest(profile, thing: str, avatar_name: str, lang: str,
