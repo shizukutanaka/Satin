@@ -226,11 +226,29 @@ class AutonomousBehaviorMixin:
         rest_texts = getattr(self, 'REST_TEXTS', None) or ['']
         return random.choice(rest_texts)
 
+    # 趣味に言及した自律発話テンプレート（ペルソナ台詞の代わりに差し込む）
+    _INTEREST_TALK_TEMPLATES = {
+        "ja": [
+            "{item}って最近気になってるんだけど。",
+            "そういえば{item}のこと、ちょっと考えてたんだ。",
+            "{item}って好きだったよね？最近どう？",
+        ],
+        "en": [
+            "I keep thinking about {item} lately.",
+            "Hey, weren't you into {item}? I was curious!",
+            "{item} — I thought of you when I saw it.",
+        ],
+    }
+    # 趣味に言及する好感度レベルの下限（distant には言及しない）
+    _INTEREST_TALK_LEVELS = {"neutral", "friendly", "close"}
+
     def _pick_talk_text(self) -> str:
         """雑談台詞を返す。ペルソナ優先、無ければ self.talks にフォールバック。
 
         mood トラッカーが利用可能なら好感度レベルを persona.talk() に渡し、
         関係性に応じた台詞を選択する。デイリームードも台詞選択に影響する。
+        記憶した趣味があれば 1/6 の確率で趣味に言及した一言を差し込む
+        （neutral 以上のレベルのみ）。
         """
         level = None
         if _get_mood_tracker is not None:
@@ -246,6 +264,22 @@ class AutonomousBehaviorMixin:
                 mood_key = _get_daily_mood(salt=salt)
             except Exception as e:
                 logger.debug("デイリームードキーの取得に失敗しました: %s", e)
+
+        # 趣味ベース発話（neutral+ レベルで 1/6 の確率）
+        if level in self._INTEREST_TALK_LEVELS and _get_user_profile is not None:
+            try:
+                prof = _get_user_profile()
+                interests = getattr(prof, "interests", [])
+                if interests and random.random() < 0.16:
+                    item = random.choice(interests)
+                    persona = self.persona
+                    lang_str = getattr(persona, "lang", "ja") if persona else "ja"
+                    lang_key = "en" if str(lang_str).lower().startswith("en") else "ja"
+                    templates = self._INTEREST_TALK_TEMPLATES[lang_key]
+                    return random.choice(templates).format(item=item)
+            except Exception as e:
+                logger.debug("趣味ベース雑談の生成に失敗しました: %s", e)
+
         persona = self.persona
         if persona is not None:
             text = persona.talk(level=level, mood_key=mood_key)

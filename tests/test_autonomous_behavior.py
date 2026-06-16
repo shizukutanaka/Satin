@@ -539,5 +539,139 @@ class SpecialDaysIntegrationTests(unittest.TestCase):
         self.assertTrue(d.is_autonomous)
 
 
+class InterestTalkTests(unittest.TestCase):
+    """_pick_talk_text() should reference registered interests at neutral+ levels."""
+
+    class _FakeTracker:
+        def __init__(self, level="neutral"):
+            self.level = level
+
+    class _FakeProfile:
+        def __init__(self, interests=None):
+            self.interests = interests or []
+            self.name = ""
+
+    class _FakePersona:
+        lang = "ja"
+
+        def talk(self, *a, **kw):
+            return "GENERIC_TALK"
+
+        def rest(self, *a, **kw):
+            return "GENERIC_REST"
+
+        def greeting(self, *a, **kw):
+            return "GREETING"
+
+    def _make_dummy(self):
+        d = _Dummy()
+        return d
+
+    def test_interest_talk_fires_at_neutral_with_interests(self):
+        """With interests registered and neutral level, _pick_talk_text may reference one."""
+        profile = self._FakeProfile(interests=["アニメ"])
+        tracker = self._FakeTracker("neutral")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = self._make_dummy()
+            text = d._pick_talk_text()
+        self.assertIn("アニメ", text)
+
+    def test_interest_talk_not_fired_at_distant(self):
+        """Distant level should not trigger interest-based talk."""
+        profile = self._FakeProfile(interests=["ゲーム"])
+        tracker = self._FakeTracker("distant")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = self._make_dummy()
+            text = d._pick_talk_text()
+        # Should fall back to persona talk, not interest
+        self.assertEqual(text, "GENERIC_TALK")
+        self.assertNotIn("ゲーム", text)
+
+    def test_interest_talk_not_fired_when_no_interests(self):
+        """Empty interests list should not trigger interest talk."""
+        profile = self._FakeProfile(interests=[])
+        tracker = self._FakeTracker("friendly")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = self._make_dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "GENERIC_TALK")
+
+    def test_interest_talk_not_fired_at_high_random(self):
+        """High random value should skip interest talk (probability gate)."""
+        profile = self._FakeProfile(interests=["音楽"])
+        tracker = self._FakeTracker("close")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.99):
+            d = self._make_dummy()
+            text = d._pick_talk_text()
+        self.assertEqual(text, "GENERIC_TALK")
+
+    def test_interest_talk_en_template(self):
+        """English persona uses English templates."""
+        class _EnPersona(self._FakePersona):
+            lang = "en"
+
+            def talk(self, *a, **kw):
+                return "EN_TALK"
+
+        profile = self._FakeProfile(interests=["anime"])
+        tracker = self._FakeTracker("friendly")
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: _EnPersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: tracker), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               lambda: profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None), \
+             mock.patch("autonomous_behavior.random.random", return_value=0.0):
+            d = self._make_dummy()
+            text = d._pick_talk_text()
+        self.assertIn("anime", text)
+
+    def test_interest_exception_falls_back_gracefully(self):
+        """Exception during interest lookup must not crash pick_talk_text."""
+        def _bad_profile():
+            raise RuntimeError("profile boom")
+
+        with mock.patch.object(autonomous_behavior, "get_persona",
+                               lambda *a, **k: self._FakePersona()), \
+             mock.patch.object(autonomous_behavior, "_get_mood_tracker",
+                               lambda: self._FakeTracker("neutral")), \
+             mock.patch.object(autonomous_behavior, "_get_user_profile",
+                               _bad_profile), \
+             mock.patch.object(autonomous_behavior, "_get_daily_mood", None):
+            d = self._make_dummy()
+            text = d._pick_talk_text()
+        self.assertIsInstance(text, str)
+        self.assertGreater(len(text), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
