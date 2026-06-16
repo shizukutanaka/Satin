@@ -695,5 +695,160 @@ class GUIQAIntegrationTests(unittest.TestCase):
         self.assertIsNone(v.pending_fact_key)
 
 
+class GUISlashCommandTests(unittest.TestCase):
+    """Tests for GUI /gift and /callme slash-command dispatch in speak_comment()."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    # --- /gift tests ---
+
+    def test_gift_flower_at_neutral_gives_reply_and_bonus(self):
+        """Gift at sufficient level → avatar reply + bonus shown, mood adjusted."""
+        class _Tracker:
+            level = "neutral"
+            affinity = 30.0
+            def adjust(self, d): self.affinity += d
+            def save(self, p): pass
+            def snapshot_to_history(self, p): pass
+
+        tracker = _Tracker()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None):
+            v.speak_comment("/gift 花")
+
+        self.assertIn("+", v.comment_text)
+        self.assertGreater(tracker.affinity, 30.0)
+
+    def test_gift_music_declined_at_reserved(self):
+        """Music requires neutral; at reserved affinity must not increase."""
+        class _Tracker:
+            level = "reserved"
+            affinity = 10.0
+            def adjust(self, d): self.affinity += d
+            def save(self, p): pass
+            def snapshot_to_history(self, p): pass
+
+        tracker = _Tracker()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None):
+            v.speak_comment("/gift 音楽")
+
+        self.assertEqual(tracker.affinity, 10.0, "Affinity must not change on gift decline")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_gift_unknown_item_shows_error(self):
+        v = _make_viewer()
+        v.speak_comment("/gift xyz_unknown_thing_xyzzy")
+        self.assertGreater(len(v.comment_text), 0)
+        self.assertNotIn("+", v.comment_text)
+
+    def test_gift_list_shows_catalog(self):
+        v = _make_viewer()
+        v.speak_comment("/gift list")
+        self.assertIn("+", v.comment_text)
+
+    def test_gift_empty_shows_catalog(self):
+        v = _make_viewer()
+        v.speak_comment("/gift")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_gift_clears_pending_fact_key(self):
+        v = _make_viewer()
+        v.pending_fact_key = "favorite_food"
+        v.speak_comment("/gift 花")
+        self.assertIsNone(v.pending_fact_key)
+
+    def test_gift_no_mood_tracker_no_crash(self):
+        """Without mood tracker level=None bypasses gate; no crash."""
+        v = _make_viewer()
+        v.speak_comment("/gift 音楽")  # get_mood_tracker is None (patched in setUp)
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_gift_sets_mode_and_ticks(self):
+        v = _make_viewer()
+        v.speak_comment("/gift 花")
+        self.assertEqual(v.mode, "comment")
+        self.assertEqual(v.ticks, 0)
+
+    def test_gift_pushes_to_tts_queue(self):
+        q = queue.Queue()
+        v = _make_viewer(tts_queue=q)
+        v.speak_comment("/gift 花")
+        self.assertFalse(q.empty())
+
+    # --- /callme tests ---
+
+    def test_callme_sets_profile_name(self):
+        class _FakeProfile:
+            name = None
+            def save(self, p): pass
+
+        prof = _FakeProfile()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/callme Haruki")
+
+        self.assertEqual(prof.name, "Haruki")
+
+    def test_callme_reply_contains_name(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/callme Sakura")
+        self.assertIn("Sakura", v.comment_text)
+
+    def test_callme_empty_shows_usage(self):
+        v = _make_viewer()
+        v.speak_comment("/callme")
+        self.assertGreater(len(v.comment_text), 0)
+        self.assertNotIn("って呼べば", v.comment_text)  # not the confirmation
+
+    def test_callme_clears_pending_fact_key(self):
+        v = _make_viewer()
+        v.pending_fact_key = "favorite_color"
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/callme Alice")
+        self.assertIsNone(v.pending_fact_key)
+
+    def test_callme_sets_mode_and_ticks(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/callme Yuki")
+        self.assertEqual(v.mode, "comment")
+        self.assertEqual(v.ticks, 0)
+
+    def test_callme_en_reply(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: Persona.from_dict(
+                                   {"default_lang": "en"}, lang="en"))):
+            v.speak_comment("/callme Alice")
+        self.assertIn("Alice", v.comment_text)
+
+    def test_unknown_slash_command_falls_through_to_respond(self):
+        """Unrecognized slash commands still go through persona.respond()."""
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)):
+            v = _make_viewer()
+            v.speak_comment("/help")
+            # Should get a fallback reply, not a crash or empty string
+            self.assertGreater(len(v.comment_text), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

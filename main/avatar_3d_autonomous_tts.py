@@ -63,6 +63,15 @@ except Exception:  # pragma: no cover - defensive
     _acknowledge_answer_gui = None
 
 try:
+    from gifts import (  # noqa: E402
+        lookup_gift as _lookup_gift_gui,
+        gift_catalog_text as _gift_catalog_text_gui,
+    )
+except Exception:  # pragma: no cover - defensive
+    _lookup_gift_gui = None
+    _gift_catalog_text_gui = None
+
+try:
     from break_reminder import maybe_start_break_reminder  # noqa: E402
 except Exception:  # pragma: no cover - defensive
     maybe_start_break_reminder = None
@@ -139,6 +148,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 logger.debug("好感度レベルの取得に失敗（応答は継続）: %s", e)
         persona = self.persona
         lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
+
+        # ---------- スラッシュコマンド (/gift, /callme) ----------
+        if isinstance(comment, str) and comment.lstrip().startswith("/"):
+            if self._handle_slash_command_gui(comment.lstrip()[1:], lang, level):
+                self.pending_fact_key = None  # コマンドで Q&A フローを中断
+                return
 
         # 一問一答の回答待ちなら今回の発話を答えとして記録する（失敗しても会話は続ける）。
         ack_msg = ""
@@ -262,6 +277,98 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self.ticks = 0
         if self.tts_queue:
             self.tts_queue.put(reply)
+
+    def _speak_reply(self, reply: str) -> None:
+        """コメント表示と TTS 投入の共通処理。"""
+        self.comment_text = reply
+        self.mode = 'comment'
+        self.ticks = 0
+        if self.tts_queue:
+            self.tts_queue.put(reply)
+
+    def _handle_slash_command_gui(self, cmd_text: str, lang: str, level) -> bool:
+        """GUI スラッシュコマンドを処理する。認識したコマンドなら True を返す。"""
+        cmd_l = cmd_text.lower()
+        if cmd_l.startswith("gift"):
+            self._cmd_gift_gui(cmd_text[4:].strip(), lang, level)
+            return True
+        if cmd_l.startswith("callme"):
+            self._cmd_callme_gui(cmd_text[6:].strip(), lang)
+            return True
+        return False  # 未知のコマンドは通常の respond() へ
+
+    def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
+        """GUI の /gift <item> コマンドを処理する。"""
+        if not item or item.lower() == "list":
+            if _gift_catalog_text_gui is not None:
+                cat = _gift_catalog_text_gui(lang)
+                hdr = "Available gifts (bonus):\n" if lang == "en" else "贈れるプレゼント一覧（ボーナス）:\n"
+                self._speak_reply(hdr + cat)
+            else:
+                self._speak_reply("/gift <プレゼント>  例: /gift 花")
+            return
+
+        if _lookup_gift_gui is None:
+            self._speak_reply("(プレゼント機能は利用できません)")
+            return
+
+        result = _lookup_gift_gui(item, lang=lang, level=level)
+        if result is None:
+            if lang == "en":
+                reply = f"Hmm, I'm not sure about {item}. Try /gift list."
+            else:
+                reply = f"「{item}」はよく分からないな。/gift list で確認してね。"
+            self._speak_reply(reply)
+            return
+
+        bonus, avatar_reply = result
+        if bonus > 0.0 and get_mood_tracker is not None:
+            try:
+                tracker = get_mood_tracker()
+                tracker.adjust(bonus)
+                if _default_mood_path is not None:
+                    tracker.save(_default_mood_path())
+                if _default_mood_history_path is not None:
+                    tracker.snapshot_to_history(_default_mood_history_path())
+            except Exception as e:
+                logger.debug("プレゼントの好感度ボーナス適用に失敗（GUI）: %s", e)
+
+        if bonus > 0.0:
+            avatar_reply = (f"{avatar_reply} (+{int(bonus)} affinity)" if lang == "en"
+                            else f"{avatar_reply}（好感度 +{int(bonus)}）")
+
+        if get_conversation_log is not None:
+            try:
+                get_conversation_log().log_exchange(f"/gift {item}", avatar_reply)
+            except Exception:
+                pass
+        self._speak_reply(avatar_reply)
+
+    def _cmd_callme_gui(self, name: str, lang: str) -> None:
+        """GUI の /callme <name> コマンドを処理する。"""
+        if not name:
+            self._speak_reply("使い方: /callme <呼んでほしい名前>" if lang != "en"
+                              else "Usage: /callme <your name>")
+            return
+
+        if _get_user_profile_gui is not None:
+            try:
+                prof = _get_user_profile_gui()
+                if prof is not None:
+                    prof.name = name
+                    if _default_profile_path_gui is not None:
+                        prof.save(_default_profile_path_gui())
+            except Exception as e:
+                logger.debug("/callme プロフィール保存に失敗（GUI）: %s", e)
+
+        reply = (f"{name}? That's a lovely name! I'll remember it." if lang == "en"
+                 else f"{name}って呼べばいいんだね！覚えたよ。")
+        if get_conversation_log is not None:
+            try:
+                get_conversation_log().log_exchange(f"/callme {name}", reply)
+            except Exception:
+                pass
+        self._speak_reply(reply)
 
     def _on_talk_start(self, text):
         if self.tts_queue:
