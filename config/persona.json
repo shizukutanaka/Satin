@@ -553,14 +553,14 @@
           "今日ご飯は何食べた？"
         ],
         "friendly": [
-          "ねえ、最近ハマってることある？",
+          "ねえ{user}、最近ハマってることある？",
           "何か新しいことやってみたいとかある？",
-          "一番好きなものってなに？"
+          "一番好きなものってなに、{user}？"
         ],
         "close": [
-          "ねえ、悩んでることとかない？なんでも聞くよ。",
-          "最近どんな夢見た？",
-          "あなたのこと、もっと知りたい。好きなものとか教えて？"
+          "{user}、悩んでることとかない？なんでも聞くよ。",
+          "最近どんな夢見た、{user}？",
+          "{user}のこと、もっと知りたい。好きなものとか教えて？"
         ]
       },
       "respond_by_affinity": {
@@ -741,9 +741,9 @@
           },
           {
             "fallback": [
-              "もっと話して！全部聞きたいな。",
-              "そっか…うんうん。あなたの話いつも楽しい。",
-              "なんか、あなたといると時間があっという間だよ。"
+              "{user}、もっと話して！全部聞きたいな。",
+              "そっか{user}、うんうん。あなたの話いつも楽しい。",
+              "なんか、{user}といると時間があっという間だよ。"
             ]
           }
         ]
@@ -986,14 +986,14 @@
           "What did you have for dinner today?"
         ],
         "friendly": [
-          "Hey, what have you been into lately?",
+          "Hey {user}, what have you been into lately?",
           "Is there anything new you've been wanting to try?",
-          "What's your absolute favorite thing?"
+          "What's your absolute favorite thing, {user}?"
         ],
         "close": [
-          "Hey, is anything on your mind? You can tell me anything.",
-          "What have you been dreaming about lately?",
-          "Tell me more about yourself… I want to know everything about you."
+          "{user}, is anything on your mind? You can tell me anything.",
+          "What have you been dreaming about lately, {user}?",
+          "Tell me more about yourself, {user}… I want to know everything about you."
         ]
       },
       "respond_by_affinity": {
@@ -1180,9 +1180,9 @@
           },
           {
             "fallback": [
-              "I want to hear everything!",
-              "You always tell such interesting things…",
-              "Time flies when I'm talking with you."
+              "{user}, I want to hear everything!",
+              "You always tell such interesting things, {user}…",
+              "Time flies when I'm talking with you, {user}."
             ]
           }
         ]
