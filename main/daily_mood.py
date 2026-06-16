@@ -54,6 +54,18 @@ _MOODS = [
 
 _KEY_INDEX = {m["key"]: i for i, m in enumerate(_MOODS)}
 
+# デイリームードが好感度 delta に与える乗数。
+# 明るい日は受け取り上手（1.2）、センチメンタルな日はちょっと反応しにくい（0.8）。
+# neutral / default は 1.0。
+_AFFINITY_MULTIPLIER: dict = {
+    "energetic":   1.2,
+    "cheerful":    1.2,
+    "calm":        1.0,
+    "thoughtful":  0.9,
+    "melancholy":  0.8,
+    "mischievous": 1.1,
+}
+
 
 def get_daily_mood(today: Optional[_date] = None, salt: str = "") -> str:
     """今日のムードキーを返す（同一日 + salt では常に同じ値）。
@@ -97,6 +109,15 @@ def mood_emoji(key: str) -> str:
     if idx is None:
         return ""
     return _MOODS[idx]["emoji"]
+
+
+def mood_affinity_multiplier(key: str) -> float:
+    """ムードキーに対応する好感度 delta 乗数を返す（デフォルト 1.0）。
+
+    MoodTracker.register() の結果にこの値を掛けることで、
+    明るい日は好感度が上がりやすく、センチメンタルな日は反応が鈍くなる。
+    """
+    return _AFFINITY_MULTIPLIER.get(key, 1.0)
 
 
 def all_mood_keys() -> list:

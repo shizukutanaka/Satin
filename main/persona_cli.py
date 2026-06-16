@@ -81,12 +81,14 @@ try:
         mood_label as _mood_label,
         mood_description as _mood_description,
         mood_emoji as _mood_emoji,
+        mood_affinity_multiplier as _mood_affinity_multiplier,
     )
 except Exception:  # pragma: no cover - defensive
     _get_daily_mood = None  # type: ignore
     _mood_label = None  # type: ignore
     _mood_description = None  # type: ignore
     _mood_emoji = None  # type: ignore
+    _mood_affinity_multiplier = None  # type: ignore
 
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
@@ -297,7 +299,18 @@ def run_chat(
         if mood is not None:
             try:
                 before_affinity = mood.affinity
-                mood.register(text)
+                raw_delta = mood.register(text)
+                # デイリームードによる好感度感度変調（明るい日は上がりやすい）
+                if raw_delta != 0 and _get_daily_mood is not None and _mood_affinity_multiplier is not None:
+                    try:
+                        salt = profile.name if profile is not None else ""
+                        dmood = _get_daily_mood(salt=salt)
+                        multiplier = _mood_affinity_multiplier(dmood)
+                        if multiplier != 1.0:
+                            extra = raw_delta * (multiplier - 1.0)
+                            mood.adjust(extra)
+                    except Exception:
+                        pass
                 after_affinity = mood.affinity
                 # 告白イベント（friendly→close の初回のみ）
                 if _check_confession_event is not None:

@@ -15,6 +15,7 @@ sys.path.insert(0, _MAIN)
 from daily_mood import (  # noqa: E402
     all_mood_keys,
     get_daily_mood,
+    mood_affinity_multiplier,
     mood_description,
     mood_emoji,
     mood_label,
@@ -121,6 +122,39 @@ class DistributionTests(unittest.TestCase):
         for i in range(100):
             seen.add(get_daily_mood(start + timedelta(days=i)))
         self.assertEqual(seen, _KNOWN_KEYS)
+
+
+class AffinityMultiplierTests(unittest.TestCase):
+    def test_energetic_is_above_one(self):
+        self.assertGreater(mood_affinity_multiplier("energetic"), 1.0)
+
+    def test_cheerful_is_above_one(self):
+        self.assertGreater(mood_affinity_multiplier("cheerful"), 1.0)
+
+    def test_calm_is_one(self):
+        self.assertEqual(mood_affinity_multiplier("calm"), 1.0)
+
+    def test_melancholy_is_below_one(self):
+        self.assertLess(mood_affinity_multiplier("melancholy"), 1.0)
+
+    def test_thoughtful_is_below_one(self):
+        self.assertLess(mood_affinity_multiplier("thoughtful"), 1.0)
+
+    def test_mischievous_is_above_one(self):
+        self.assertGreater(mood_affinity_multiplier("mischievous"), 1.0)
+
+    def test_unknown_key_returns_one(self):
+        self.assertEqual(mood_affinity_multiplier("phantom"), 1.0)
+
+    def test_all_multipliers_positive(self):
+        for key in _KNOWN_KEYS:
+            self.assertGreater(mood_affinity_multiplier(key), 0.0, key)
+
+    def test_all_multipliers_reasonable_range(self):
+        for key in _KNOWN_KEYS:
+            m = mood_affinity_multiplier(key)
+            self.assertGreaterEqual(m, 0.5, key)
+            self.assertLessEqual(m, 2.0, key)
 
 
 if __name__ == "__main__":
