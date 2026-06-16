@@ -1257,5 +1257,113 @@ class RecapCommandTests(unittest.TestCase):
         self.assertTrue(any("やっほー" in l for l in out))
 
 
+class LikeForgetLoggingTests(unittest.TestCase):
+    """/like and /forget commands log their exchange to conv_log for /recap and /search."""
+
+    def _run(self, inputs, profile=None, conv_log=None):
+        from conversation_log import ConversationLog
+        import tempfile, os
+        d = _Driver(inputs)
+        tmp = tempfile.mkdtemp()
+        try:
+            log = conv_log or ConversationLog(os.path.join(tmp, "c.jsonl"))
+            import persona_cli as pc
+            pc.run_chat(
+                persona=_persona(), conv_log=log, profile=profile,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+        return d.out, log
+
+    def _profile(self):
+        from user_profile import UserProfile
+        return UserProfile()
+
+    def _avatar_texts(self, log):
+        from conversation_log import EVENT_AVATAR_REPLY
+        return [e.get("details", {}).get("text", e.get("text", ""))
+                for e in log.recent(20)
+                if e.get("event_type") == EVENT_AVATAR_REPLY]
+
+    def test_like_logs_to_conversation(self):
+        """After /like アニメ, the conversation log has an avatar reply about アニメ."""
+        from conversation_log import ConversationLog
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            self._run(["/like アニメ"], profile=self._profile(), conv_log=log)
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("アニメ" in t for t in avatar_texts),
+                            f"Expected アニメ in log; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_forget_logs_to_conversation(self):
+        """After /forget ゲーム, the conversation log has an avatar reply about ゲーム."""
+        from conversation_log import ConversationLog
+        from user_profile import UserProfile
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        try:
+            prof = UserProfile()
+            prof.add_interest("ゲーム")
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            self._run(["/forget ゲーム"], profile=prof, conv_log=log)
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("ゲーム" in t for t in avatar_texts),
+                            f"Expected ゲーム in log; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_like_without_arg_does_not_log(self):
+        """/like with no argument shows usage; nothing meaningful logged."""
+        from conversation_log import ConversationLog
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            self._run(["/like"], profile=self._profile(), conv_log=log)
+            avatar_texts = self._avatar_texts(log)
+            # No avatar reply logged for bare /like
+            self.assertEqual(avatar_texts, [])
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_like_appears_in_recap(self):
+        """Interest added via /like shows up when /recap is called."""
+        from conversation_log import ConversationLog
+        from user_profile import UserProfile
+        import tempfile, os, unittest.mock as mock
+        import persona_cli as pc
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            prof = UserProfile()
+            out1 = []
+            it = iter(["/like 音楽", "/quit"])
+            with mock.patch.object(pc, "_summary_greeting", lambda lang="ja": ""):
+                pc.run_chat(
+                    persona=_persona(), conv_log=log, profile=prof,
+                    input_fn=lambda _: next(it),
+                    output_fn=out1.append, greet=False,
+                    mood=__import__("mood").MoodTracker(affinity=50),
+                )
+            out2 = []
+            it2 = iter(["/recap", "/quit"])
+            with mock.patch.object(pc, "_summary_greeting", lambda lang="ja": ""):
+                pc.run_chat(
+                    persona=_persona(), conv_log=log, profile=prof,
+                    input_fn=lambda _: next(it2),
+                    output_fn=out2.append, greet=False,
+                    mood=__import__("mood").MoodTracker(affinity=50),
+                )
+            self.assertTrue(any("音楽" in l for l in out2),
+                            f"Expected 音楽 in /recap output; got: {out2}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

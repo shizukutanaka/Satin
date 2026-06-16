@@ -373,11 +373,15 @@ def run_chat(
             continue
         if text.lower().startswith("/like"):
             thing = text[len("/like"):].strip()
-            _add_interest(profile, thing, name, lang, output_fn)
+            reply = _add_interest(profile, thing, name, lang, output_fn)
+            if conv_log is not None and reply:
+                conv_log.log_exchange(text, reply)
             continue
         if text.lower().startswith("/forget"):
             thing = text[len("/forget"):].strip()
-            _remove_interest(profile, thing, name, lang, output_fn)
+            reply = _remove_interest(profile, thing, name, lang, output_fn)
+            if conv_log is not None and reply:
+                conv_log.log_exchange(text, reply)
             continue
         if text.lower() == "/whoami":
             _print_user_name(profile, lang, output_fn)
@@ -821,65 +825,70 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
 
 
 def _add_interest(profile, thing: str, avatar_name: str, lang: str,
-                  output_fn: Callable[[str], None]) -> None:
-    """ユーザーの趣味を追加して永続化する。"""
+                  output_fn: Callable[[str], None]) -> str:
+    """ユーザーの趣味を追加して永続化する。アバターの返事テキストを返す（ログ用）。"""
     if profile is None:
         output_fn("(プロファイルは利用できません)")
-        return
+        return ""
     if not thing:
         if lang == "en":
             output_fn("Usage: /like <thing you enjoy>  e.g. /like anime")
         else:
             output_fn("使用方法: /like <好きなもの>  例: /like アニメ")
-        return
+        return ""
     try:
         saved = profile.add_interest(thing)
         if saved and _profile_path is not None:
             profile.save(_profile_path())
     except Exception:  # pragma: no cover - defensive
         output_fn("(保存に失敗しました)")
-        return
+        return ""
     if not saved:
         if lang == "en":
             output_fn(f"Couldn't save that — maybe the list is full (max 10)?")
         else:
             output_fn(f"うまく保存できなかったよ（上限10件かも？）")
-        return
+        return ""
     if lang == "en":
-        output_fn(f"{avatar_name}: Oh, you like {saved}? I'll remember that!")
+        reply = f"Oh, you like {saved}? I'll remember that!"
     else:
-        output_fn(f"{avatar_name}: {saved}が好きなんだね！覚えておくよ。")
+        reply = f"{saved}が好きなんだね！覚えておくよ。"
+    output_fn(f"{avatar_name}: {reply}")
+    return reply
 
 
 def _remove_interest(profile, thing: str, avatar_name: str, lang: str,
-                     output_fn: Callable[[str], None]) -> None:
-    """ユーザーの趣味を削除して永続化する。"""
+                     output_fn: Callable[[str], None]) -> str:
+    """ユーザーの趣味を削除して永続化する。アバターの返事テキストを返す（ログ用）。"""
     if profile is None:
         output_fn("(プロファイルは利用できません)")
-        return
+        return ""
     if not thing:
         if lang == "en":
             output_fn("Usage: /forget <thing>  — removes it from memory")
         else:
             output_fn("使用方法: /forget <覚えさせたもの>")
-        return
+        return ""
     try:
         removed = profile.remove_interest(thing)
         if removed and _profile_path is not None:
             profile.save(_profile_path())
     except Exception:  # pragma: no cover - defensive
         output_fn("(削除に失敗しました)")
-        return
+        return ""
     if removed:
         if lang == "en":
-            output_fn(f"{avatar_name}: Got it, I'll forget about {thing}.")
+            reply = f"Got it, I'll forget about {thing}."
         else:
-            output_fn(f"{avatar_name}: わかった、{thing}のこと忘れておくね。")
+            reply = f"わかった、{thing}のこと忘れておくね。"
+        output_fn(f"{avatar_name}: {reply}")
+        return reply
     else:
         if lang == "en":
             output_fn(f"I don't have '{thing}' in my memory.")
         else:
             output_fn(f"「{thing}」は覚えてないよ。")
+        return ""
 
 
 def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> None:
