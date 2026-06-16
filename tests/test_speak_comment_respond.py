@@ -368,5 +368,76 @@ class MakeReminderSpeakTests(unittest.TestCase):
         self.assertEqual(v.comment_text, "break time")
 
 
+class SpeakCommentRitualHurtTests(unittest.TestCase):
+    """Hurt event and ritual bonus wiring in speak_comment()."""
+
+    def _make_viewer_with_tracker(self, affinity=50.0, interactions=1, negative_delta=6.0):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=affinity, interactions=interactions,
+                              negative_delta=negative_delta)
+        q = queue.Queue()
+        v = _make_viewer(tts_queue=q)
+        return v, tracker, q
+
+    def test_rude_comment_triggers_hurt_reply(self):
+        """Multiple negative keywords → large delta → hurt reaction overrides normal reply."""
+        v, tracker, q = self._make_viewer_with_tracker(affinity=80.0)
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None), \
+             mock.patch.object(_mod._mod if hasattr(_mod, "_mod") else _mod,
+                               "get_persona", None, create=True):
+            # Patch the persona property on the viewer to return our test persona
+            with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                                   new_callable=lambda: property(lambda self: _RESPONSE_PERSONA)):
+                v.speak_comment("hate ugly shut up stupid")  # many negative words
+        from mood import _HURT_MESSAGES
+        hurt_words_en = _HURT_MESSAGES.get("en", [])
+        self.assertTrue(
+            any(hw in v.comment_text for hw in hurt_words_en),
+            f"Expected hurt message; got: {v.comment_text!r}"
+        )
+
+    def test_goodnight_bonus_applied_in_gui(self):
+        """おやすみ in GUI speak_comment should give the goodnight bonus."""
+        from persona_cli import _GOODNIGHT_BONUS
+        v, tracker, q = self._make_viewer_with_tracker(affinity=50.0)
+        before = tracker.affinity
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               new_callable=lambda: property(lambda self: _RESPONSE_PERSONA)):
+            v.speak_comment("おやすみ")
+        # "おやすみ" has no positive/negative keywords → raw_delta == 0,
+        # only the ritual bonus changes affinity
+        self.assertAlmostEqual(tracker.affinity, before + _GOODNIGHT_BONUS, places=4)
+
+    def test_apology_bonus_applied_in_gui(self):
+        """ごめん in GUI speak_comment should give the apology bonus."""
+        from persona_cli import _APOLOGY_BONUS
+        v, tracker, q = self._make_viewer_with_tracker(affinity=50.0)
+        before = tracker.affinity
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               new_callable=lambda: property(lambda self: _RESPONSE_PERSONA)):
+            v.speak_comment("ごめん")
+        self.assertAlmostEqual(tracker.affinity, before + _APOLOGY_BONUS, places=4)
+
+    def test_interaction_milestone_appended_in_gui(self):
+        """10th interaction milestone message is appended to the reply."""
+        v, tracker, q = self._make_viewer_with_tracker(affinity=50.0, interactions=9)
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "_default_mood_history_path", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               new_callable=lambda: property(lambda self: _RESPONSE_PERSONA)):
+            v.speak_comment("hello")
+        self.assertEqual(tracker.interactions, 10)
+        self.assertIn("10", v.comment_text)
+
+
 if __name__ == "__main__":
     unittest.main()

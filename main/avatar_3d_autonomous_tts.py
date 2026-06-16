@@ -24,12 +24,23 @@ try:
     from mood import (  # noqa: E402
         get_mood_tracker, _default_mood_path, _default_mood_history_path,
         check_level_milestone,
+        check_confession_event as _check_confession_event,
+        check_interaction_milestone as _check_interaction_milestone,
+        check_hurt_event as _check_hurt_event,
     )
 except Exception:  # pragma: no cover - defensive
     get_mood_tracker = None
     _default_mood_path = None
     _default_mood_history_path = None
     check_level_milestone = None
+    _check_confession_event = None
+    _check_interaction_milestone = None
+    _check_hurt_event = None
+
+try:
+    from persona_cli import _detect_ritual_event as _detect_ritual_event_gui
+except Exception:  # pragma: no cover - defensive
+    _detect_ritual_event_gui = None
 
 try:
     from break_reminder import maybe_start_break_reminder  # noqa: E402
@@ -120,14 +131,40 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             try:
                 tracker = get_mood_tracker()
                 before_affinity = tracker.affinity
-                tracker.register(comment)
-                if check_level_milestone is not None:
-                    lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
-                    milestone = check_level_milestone(
-                        before_affinity, tracker.affinity, lang=lang
+                before_interactions = tracker.interactions
+                lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
+                raw_delta = tracker.register(comment)
+                # 謝罪・おやすみルーティン: 小さな好感度ボーナス
+                if _detect_ritual_event_gui is not None:
+                    ritual = _detect_ritual_event_gui(comment)
+                    if ritual is not None:
+                        tracker.adjust(ritual[1])
+                # 傷つきイベント: 通常応答を感情反応で上書き
+                if _check_hurt_event is not None:
+                    hurt = _check_hurt_event(raw_delta, lang=lang)
+                    if hurt:
+                        reply = hurt
+                after_affinity = tracker.affinity
+                # 告白イベント（friendly→close 初回のみ）
+                milestone_msg = ""
+                if _check_confession_event is not None:
+                    confession = _check_confession_event(tracker, before_affinity, after_affinity, lang=lang)
+                    if confession:
+                        milestone_msg = confession
+                # 関係ステージ変化
+                if not milestone_msg and check_level_milestone is not None:
+                    ms = check_level_milestone(before_affinity, after_affinity, lang=lang)
+                    if ms and ms.get("message"):
+                        milestone_msg = ms["message"]
+                # 会話回数マイルストーン
+                if not milestone_msg and _check_interaction_milestone is not None:
+                    inter_ms = _check_interaction_milestone(
+                        before_interactions, tracker.interactions, lang=lang
                     )
-                    if milestone and milestone.get("message"):
-                        reply = (reply + " " + milestone["message"]).strip()
+                    if inter_ms:
+                        milestone_msg = inter_ms
+                if milestone_msg:
+                    reply = (reply + " " + milestone_msg).strip()
                 if _default_mood_path is not None:
                     tracker.save(_default_mood_path())
                 if _default_mood_history_path is not None:
