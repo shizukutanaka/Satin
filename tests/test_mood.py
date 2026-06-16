@@ -908,6 +908,48 @@ class AbsenceMessageTests(unittest.TestCase):
         msg = absence_message(t, lang="en")
         self.assertIn("3 days", msg)
 
+    def test_distant_level_gives_neutral_reply_ja(self):
+        import time
+        from mood import absence_message
+        t = MoodTracker(affinity=10.0, interactions=5)
+        t._last_interaction_time = time.time() - 25 * 3600
+        msg = absence_message(t, lang="ja")
+        self.assertGreater(len(msg), 0)
+        self.assertNotIn("会いたかった", msg)  # distant should not express longing
+
+    def test_close_level_gives_emotional_reply_ja(self):
+        import time
+        from mood import absence_message
+        t = MoodTracker(affinity=90.0, interactions=5)
+        t._last_interaction_time = time.time() - 25 * 3600
+        msg = absence_message(t, lang="ja")
+        self.assertGreater(len(msg), 0)
+        # Close-level message should convey strong feeling
+        self.assertTrue(
+            any(w in msg for w in ["寂し", "待ってた", "会いたかった"]),
+            f"Expected emotional wording for close level; got: {msg!r}"
+        )
+
+    def test_close_level_multi_day_en(self):
+        import time
+        from mood import absence_message
+        t = MoodTracker(affinity=90.0, interactions=5)
+        t._last_interaction_time = time.time() - 72 * 3600  # 3 days
+        msg = absence_message(t, lang="en")
+        self.assertGreater(len(msg), 0)
+        self.assertTrue(
+            any(w in msg for w in ["waited", "glad", "missed"]),
+            f"Expected emotional wording for close level; got: {msg!r}"
+        )
+
+    def test_reserved_level_gives_brief_reply_ja(self):
+        import time
+        from mood import absence_message
+        t = MoodTracker(affinity=30.0, interactions=5)
+        t._last_interaction_time = time.time() - 25 * 3600
+        msg = absence_message(t, lang="ja")
+        self.assertGreater(len(msg), 0)
+
 
 class FirstInteractionTimeTests(unittest.TestCase):
     """register() records the relationship start; it round-trips through to_dict."""

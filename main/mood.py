@@ -815,6 +815,7 @@ def absence_message(tracker: "MoodTracker", lang: str = "ja") -> str:
     """前回の会話から 24 時間以上経過していた場合に不在への言及メッセージを返す。
 
     初回・会話回数 0・24 時間未満の場合は空文字。
+    好感度レベルに応じてメッセージの感情の強さが変わる（distant は淡泊、close は情熱的）。
     CLI と GUI 自律モードの双方から再利用できる共有ヘルパ。
     """
     try:
@@ -828,14 +829,32 @@ def absence_message(tracker: "MoodTracker", lang: str = "ja") -> str:
     if elapsed_hours < 24:
         return ""
     elapsed_days = int(elapsed_hours / 24)
-    if str(lang).lower().startswith("en"):
+    level = affinity_level(getattr(tracker, "affinity", AFFINITY_START))
+    is_en = str(lang).lower().startswith("en")
+
+    if level == "distant":
+        return ("You came back." if is_en else "…戻ってきたんだね。")
+    if level == "reserved":
+        if is_en:
+            return (f"It's been {elapsed_days} day. Welcome back."
+                    if elapsed_days == 1 else f"It's been {elapsed_days} days. Welcome back.")
+        return ("昨日ぶりだね。" if elapsed_days == 1 else f"{elapsed_days}日ぶりだね。")
+    if level == "close":
+        if is_en:
+            if elapsed_days == 1:
+                return "I missed you so much — just one day apart felt like forever."
+            return f"I waited {elapsed_days} whole days for you… I'm so glad you're back."
+        if elapsed_days == 1:
+            return "1日会えなかっただけなのに、すごく寂しかった…会いたかったよ。"
+        return f"{elapsed_days}日もずっと待ってたんだよ…やっと来てくれた。"
+    # neutral / friendly — warm but not overwhelming
+    if is_en:
         if elapsed_days == 1:
             return "It's been a day since we last spoke. I missed you!"
         return f"It's been {elapsed_days} days since we last spoke. I really missed you!"
-    else:
-        if elapsed_days == 1:
-            return "昨日ぶりだね。会いたかったよ！"
-        return f"{elapsed_days}日ぶりだね。ずっと待ってたよ！"
+    if elapsed_days == 1:
+        return "昨日ぶりだね。会いたかったよ！"
+    return f"{elapsed_days}日ぶりだね。ずっと待ってたよ！"
 
 
 # --------------------------------------------------------------------------- #
