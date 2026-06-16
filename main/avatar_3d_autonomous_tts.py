@@ -256,6 +256,22 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                         reply = (reply + " " + question).strip()
             except Exception as e:
                 logger.debug("聞き返し質問の生成に失敗しました: %s", e)
+        # ユーザーの趣味への言及（興味を持ち続けている演出）。
+        # 既に質問で終わっている場合・Q&A 待機中は追加しない。15% の確率で発動。
+        if (persona is not None
+                and self.pending_fact_key is None
+                and not reply.rstrip().endswith(("？", "?"))
+                and _get_user_profile_gui is not None
+                and random.random() < 0.15):
+            try:
+                prof = _get_user_profile_gui()
+                if prof is not None and prof.interests:
+                    interest = random.choice(prof.interests)
+                    mention = persona.interest_mention(interest, lang=lang)
+                    if mention:
+                        reply = (reply + " " + mention).strip()
+            except Exception as e:
+                logger.debug("趣味への言及生成に失敗しました: %s", e)
         # 会話履歴を記録（失敗しても UI/TTS を壊さない）
         if get_conversation_log is not None:
             try:
@@ -294,6 +310,18 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             return True
         if cmd_l.startswith("callme"):
             self._cmd_callme_gui(cmd_text[6:].strip(), lang)
+            return True
+        if cmd_l.startswith("like"):
+            self._cmd_like_gui(cmd_text[4:].strip(), lang)
+            return True
+        if cmd_l.startswith("forget"):
+            self._cmd_forget_gui(cmd_text[6:].strip(), lang)
+            return True
+        if cmd_l.startswith("mood"):
+            self._cmd_mood_gui(lang)
+            return True
+        if cmd_l.startswith("birthday"):
+            self._cmd_birthday_gui(cmd_text[8:].strip(), lang)
             return True
         return False  # 未知のコマンドは通常の respond() へ
 
@@ -368,6 +396,104 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 get_conversation_log().log_exchange(f"/callme {name}", reply)
             except Exception:
                 pass
+        self._speak_reply(reply)
+
+    def _cmd_like_gui(self, thing: str, lang: str) -> None:
+        """GUI の /like <thing> コマンドを処理する。"""
+        if not thing:
+            self._speak_reply("使い方: /like <好きなもの>  例: /like アニメ" if lang != "en"
+                              else "Usage: /like <thing you enjoy>  e.g. /like anime")
+            return
+
+        saved = ""
+        if _get_user_profile_gui is not None:
+            try:
+                prof = _get_user_profile_gui()
+                if prof is not None:
+                    saved = prof.add_interest(thing)
+                    if saved and _default_profile_path_gui is not None:
+                        prof.save(_default_profile_path_gui())
+            except Exception as e:
+                logger.debug("/like プロフィール保存に失敗（GUI）: %s", e)
+
+        if saved:
+            reply = (f"Oh, you like {saved}? I'll remember that!" if lang == "en"
+                     else f"{saved}が好きなんだね！覚えておくよ。")
+        else:
+            reply = ("Couldn't save that (list may be full)." if lang == "en"
+                     else "うまく覚えられなかったよ（リストがいっぱいかも）。")
+        self._speak_reply(reply)
+
+    def _cmd_forget_gui(self, thing: str, lang: str) -> None:
+        """GUI の /forget <thing> コマンドを処理する。"""
+        if not thing:
+            self._speak_reply("使い方: /forget <好きなもの>" if lang != "en"
+                              else "Usage: /forget <thing>")
+            return
+
+        removed = False
+        if _get_user_profile_gui is not None:
+            try:
+                prof = _get_user_profile_gui()
+                if prof is not None:
+                    removed = prof.remove_interest(thing)
+                    if removed and _default_profile_path_gui is not None:
+                        prof.save(_default_profile_path_gui())
+            except Exception as e:
+                logger.debug("/forget プロフィール保存に失敗（GUI）: %s", e)
+
+        if removed:
+            reply = (f"Got it, I'll forget about {thing}." if lang == "en"
+                     else f"{thing}のこと、忘れたよ。")
+        else:
+            reply = (f"I don't think I had {thing} on my list." if lang == "en"
+                     else f"{thing}はリストにないみたい。")
+        self._speak_reply(reply)
+
+    def _cmd_mood_gui(self, lang: str) -> None:
+        """GUI の /mood コマンドを処理する。"""
+        if get_mood_tracker is None:
+            self._speak_reply("(好感度情報は利用できません)" if lang != "en"
+                              else "(Affinity info unavailable)")
+            return
+        try:
+            tracker = get_mood_tracker()
+            level = tracker.level
+            affinity = int(tracker.affinity)
+            if lang == "en":
+                reply = f"Affinity: {level} ({affinity} pts)"
+            else:
+                reply = f"好感度: {level}（{affinity}pt）"
+        except Exception as e:
+            logger.debug("/mood 情報取得に失敗（GUI）: %s", e)
+            reply = ("(Couldn't get mood info)" if lang == "en"
+                     else "(好感度情報の取得に失敗)")
+        self._speak_reply(reply)
+
+    def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:
+        """GUI の /birthday MM-DD コマンドを処理する。"""
+        if not date_str:
+            self._speak_reply("使い方: /birthday MM-DD  例: /birthday 03-14" if lang != "en"
+                              else "Usage: /birthday MM-DD  e.g. /birthday 03-14")
+            return
+
+        saved = ""
+        if _get_user_profile_gui is not None:
+            try:
+                prof = _get_user_profile_gui()
+                if prof is not None:
+                    saved = prof.set_birthday(date_str)
+                    if saved and _default_profile_path_gui is not None:
+                        prof.save(_default_profile_path_gui())
+            except Exception as e:
+                logger.debug("/birthday プロフィール保存に失敗（GUI）: %s", e)
+
+        if saved:
+            reply = (f"Got it! Your birthday is {saved}. I won't forget!" if lang == "en"
+                     else f"覚えた、誕生日は{saved}だね。忘れないよ！")
+        else:
+            reply = ("Hmm, that date doesn't look right. Try MM-DD format." if lang == "en"
+                     else "日付の形式が違うみたい。MM-DD の形で教えてね。")
         self._speak_reply(reply)
 
     def _on_talk_start(self, text):

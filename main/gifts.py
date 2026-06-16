@@ -234,16 +234,30 @@ def all_gift_keys() -> List[str]:
     return [g["key"] for g in _GIFTS]
 
 
+_LEVEL_LABEL_JA = {
+    "distant": "遠い",
+    "reserved": "控えめ",
+    "neutral": "普通",
+    "friendly": "友好的",
+    "close": "親密",
+}
+
+
 def gift_catalog_text(lang: str = "ja") -> str:
-    """プレゼントカタログを表示用テキストとして返す。"""
+    """プレゼントカタログを表示用テキストとして返す。min_level がある場合は必要な仲良し度も表示。"""
     lang_key = "en" if str(lang).lower().startswith("en") else "ja"
     lines = []
     for g in _GIFTS:
         aliases = g[lang_key]["aliases"]
         bonus = int(g["affinity"])
         main = aliases[0]
-        if lang_key == "en":
-            lines.append(f"  {main} (+{bonus})")
+        min_level = g.get("min_level")
+        if min_level:
+            if lang_key == "en":
+                lines.append(f"  {main} (+{bonus}, requires: {min_level}+)")
+            else:
+                lvl_label = _LEVEL_LABEL_JA.get(min_level, min_level)
+                lines.append(f"  {main} (+{bonus}, {lvl_label}以上)")
         else:
             lines.append(f"  {main} (+{bonus})")
     return "\n".join(lines)

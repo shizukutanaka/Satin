@@ -192,6 +192,24 @@ _DEFAULT_RESPONSES: Dict[str, Dict] = {
 }
 
 
+# テンプレート: ユーザーの既知の趣味・好きなものに言及するときに使う短文。
+# {interest} プレースホルダに趣味名を代入して使う。
+_DEFAULT_INTEREST_MENTIONS: Dict[str, List[str]] = {
+    "ja": [
+        "そういえば、{interest}って最近どう？",
+        "{interest}が好きって言ってたね！なんか新しいのあった？",
+        "最近{interest}楽しんでる？",
+        "{interest}の話、もっと聞かせて！",
+    ],
+    "en": [
+        "By the way, how's {interest} going?",
+        "You mentioned you like {interest}! Anything new?",
+        "Still into {interest} lately?",
+        "Tell me more about your interest in {interest}!",
+    ],
+}
+
+
 def _time_of_day(hour: int) -> str:
     """時刻(0-23)を morning / afternoon / evening / night に区分する。"""
     if 5 <= hour < 11:
@@ -448,6 +466,36 @@ class Persona:
         if questions:
             return self._pick(f"follow_up:{lang or self.lang}", questions)
         return ""
+
+    def interest_mention(
+        self,
+        interest: str,
+        lang: Optional[str] = None,
+    ) -> str:
+        """ユーザーの既知の趣味 interest に言及する短文を返す。
+
+        {interest} プレースホルダを interest で置換して返す。
+        responses ブロックに ``interest_mentions`` リストが定義されていれば
+        それを優先し、無ければ ``_DEFAULT_INTEREST_MENTIONS`` を使う。
+        """
+        if not interest:
+            return ""
+        lang_key = (lang or self.lang).lower()
+        # 言語フォールバック: 要求言語 → en → 任意
+        block = self._resolve_responses_block(lang)
+        templates = list(block.get("interest_mentions") or [])
+        if not templates:
+            # 地域コード "en-us" → "en"
+            short = lang_key.split("-")[0]
+            templates = list(
+                _DEFAULT_INTEREST_MENTIONS.get(short)
+                or _DEFAULT_INTEREST_MENTIONS.get("en")
+                or []
+            )
+        if not templates:
+            return ""
+        tmpl = self._pick(f"interest_mention:{lang_key}", templates)
+        return tmpl.replace("{interest}", interest)
 
     # ---- 構築 ------------------------------------------------------------ #
     @classmethod

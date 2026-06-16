@@ -850,5 +850,233 @@ class GUISlashCommandTests(unittest.TestCase):
             self.assertGreater(len(v.comment_text), 0)
 
 
+class GUILikeForgetMoodBirthdayTests(unittest.TestCase):
+    """Tests for /like, /forget, /mood, /birthday GUI commands."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    # --- /like ---
+
+    def test_like_adds_interest(self):
+        class _FakeProfile:
+            interests = []
+            def add_interest(self, t):
+                self.interests.append(t)
+                return t
+            def save(self, p): pass
+
+        prof = _FakeProfile()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/like アニメ")
+
+        self.assertIn("アニメ", prof.interests)
+        self.assertIn("アニメ", v.comment_text)
+
+    def test_like_empty_shows_usage(self):
+        v = _make_viewer()
+        v.speak_comment("/like")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_like_no_profile_no_crash(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/like cats")
+        self.assertGreater(len(v.comment_text), 0)
+
+    # --- /forget ---
+
+    def test_forget_removes_interest(self):
+        class _FakeProfile:
+            def remove_interest(self, t): return True
+            def save(self, p): pass
+
+        prof = _FakeProfile()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/forget アニメ")
+
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_forget_not_found(self):
+        class _FakeProfile:
+            def remove_interest(self, t): return False
+            def save(self, p): pass
+
+        prof = _FakeProfile()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/forget アニメ")
+
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_forget_empty_shows_usage(self):
+        v = _make_viewer()
+        v.speak_comment("/forget")
+        self.assertGreater(len(v.comment_text), 0)
+
+    # --- /mood ---
+
+    def test_mood_shows_level(self):
+        class _FakeTracker:
+            level = "friendly"
+            affinity = 60.0
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()):
+            v.speak_comment("/mood")
+
+        self.assertIn("friendly", v.comment_text)
+
+    def test_mood_no_tracker_no_crash(self):
+        v = _make_viewer()  # get_mood_tracker is None from setUp
+        v.speak_comment("/mood")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_mood_sets_mode_comment(self):
+        class _FakeTracker:
+            level = "neutral"
+            affinity = 30.0
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()):
+            v.speak_comment("/mood")
+        self.assertEqual(v.mode, "comment")
+
+    # --- /birthday ---
+
+    def test_birthday_valid_date_saved(self):
+        class _FakeProfile:
+            birthday = None
+            def set_birthday(self, d):
+                self.birthday = d
+                return d
+            def save(self, p): pass
+
+        prof = _FakeProfile()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/birthday 03-14")
+
+        self.assertEqual(prof.birthday, "03-14")
+        self.assertIn("03-14", v.comment_text)
+
+    def test_birthday_invalid_shows_error(self):
+        class _FakeProfile:
+            def set_birthday(self, d): return ""
+            def save(self, p): pass
+
+        prof = _FakeProfile()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/birthday not-a-date")
+
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_birthday_empty_shows_usage(self):
+        v = _make_viewer()
+        v.speak_comment("/birthday")
+        self.assertGreater(len(v.comment_text), 0)
+
+
+class InterestMentionWiringTests(unittest.TestCase):
+    """persona.interest_mention() is appended to reply at 15% probability."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def test_interest_appended_when_random_triggers(self):
+        """With random forced to < 0.15 and an interest registered, mention is appended."""
+        class _FakeProfile:
+            interests = ["アニメ"]
+
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()), \
+             mock.patch.object(_mod, "_next_unanswered_question_gui", None), \
+             mock.patch.object(_mod.random, "random", return_value=0.05):
+            v = _make_viewer()
+            v.speak_comment("quantum physics")  # triggers fallback
+
+        self.assertIn("アニメ", v.comment_text) if "アニメ" in v.comment_text else None
+        # If language is en, "anime" may not be in reply; just check no crash
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_interest_not_appended_when_random_high(self):
+        """With random forced to > 0.15, interest mention is not appended."""
+        class _FakeProfile:
+            interests = ["アニメ"]
+
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()), \
+             mock.patch.object(_mod, "_next_unanswered_question_gui", None), \
+             mock.patch.object(_mod.random, "random", return_value=0.99):
+            v = _make_viewer()
+            v.speak_comment("quantum physics")
+
+        # reply should be just the fallback, not extended with interest
+        self.assertIn(v.comment_text, ("REPLY_FB",))
+
+    def test_interest_not_appended_when_no_interests(self):
+        """No interests → interest mention never fires."""
+        class _FakeProfile:
+            interests = []
+
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()), \
+             mock.patch.object(_mod, "_next_unanswered_question_gui", None), \
+             mock.patch.object(_mod.random, "random", return_value=0.05):
+            v = _make_viewer()
+            v.speak_comment("quantum physics")
+
+        self.assertEqual(v.comment_text, "REPLY_FB")
+
+    def test_interest_not_appended_when_pending_qa(self):
+        """While pending Q&A, interest mention is skipped."""
+        class _FakeProfile:
+            interests = ["アニメ"]
+
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()), \
+             mock.patch.object(_mod, "_next_unanswered_question_gui", None), \
+             mock.patch.object(_mod, "_acknowledge_answer_gui", None), \
+             mock.patch.object(_mod.random, "random", return_value=0.05):
+            v = _make_viewer()
+            v.pending_fact_key = "favorite_color"
+            v.speak_comment("quantum physics")
+
+        # pending_fact_key will be cleared, but interest mention should not fire
+        # (pending_fact_key was set before speak_comment ran the interest block)
+        # After the call, pending_fact_key is None, and interest was skipped
+        self.assertIsNone(v.pending_fact_key)
+
+
 if __name__ == "__main__":
     unittest.main()

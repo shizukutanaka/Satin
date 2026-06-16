@@ -748,5 +748,92 @@ class SingletonTests(unittest.TestCase):
         self.assertIsNot(a, b)
 
 
+class InterestMentionTests(unittest.TestCase):
+    """Persona.interest_mention() returns a filled template referencing the interest."""
+
+    def test_returns_nonempty_string(self):
+        p = Persona()
+        result = p.interest_mention("アニメ", lang="ja")
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+    def test_interest_name_in_output(self):
+        p = Persona()
+        result = p.interest_mention("アニメ", lang="ja")
+        self.assertIn("アニメ", result)
+
+    def test_en_interest_name_in_output(self):
+        p = Persona()
+        result = p.interest_mention("anime", lang="en")
+        self.assertIn("anime", result)
+
+    def test_empty_interest_returns_empty(self):
+        p = Persona()
+        self.assertEqual(p.interest_mention("", lang="ja"), "")
+
+    def test_lang_fallback_returns_something(self):
+        """Unsupported lang falls back to en templates."""
+        p = Persona()
+        result = p.interest_mention("music", lang="fr")
+        self.assertGreater(len(result), 0)
+        self.assertIn("music", result)
+
+    def test_no_repeat_on_consecutive_calls(self):
+        """With 4 templates, two consecutive calls should not always return the same."""
+        p = Persona()
+        results = {p.interest_mention("anime", lang="en") for _ in range(20)}
+        self.assertGreater(len(results), 1)
+
+    def test_custom_interest_mentions_in_config(self):
+        """responses block can supply custom interest_mentions templates."""
+        p = Persona.from_dict({
+            "responses": {
+                "en": {
+                    "interest_mentions": ["You love {interest}, right?"],
+                    "rules": [],
+                    "fallback": [],
+                }
+            },
+            "default_lang": "en",
+        }, lang="en")
+        result = p.interest_mention("cats", lang="en")
+        self.assertEqual(result, "You love cats, right?")
+
+    def test_bundled_persona_returns_nonempty(self):
+        """Bundled config/persona.json works end-to-end with interest_mention."""
+        p = get_persona()
+        result = p.interest_mention("音楽")
+        self.assertGreater(len(result), 0)
+        self.assertIn("音楽", result)
+        reset_persona()
+
+
+class GiftCatalogMinLevelTests(unittest.TestCase):
+    """gift_catalog_text() must show min_level info for gated items."""
+
+    def test_ja_catalog_shows_level_for_music(self):
+        from gifts import gift_catalog_text
+        text = gift_catalog_text("ja")
+        self.assertIn("普通", text)  # music requires neutral → 普通
+
+    def test_en_catalog_shows_requires_for_music(self):
+        from gifts import gift_catalog_text
+        text = gift_catalog_text("en")
+        self.assertIn("requires", text)
+
+    def test_ja_catalog_shows_level_for_letter(self):
+        from gifts import gift_catalog_text
+        text = gift_catalog_text("ja")
+        self.assertIn("友好的", text)  # letter requires friendly → 友好的
+
+    def test_ungated_items_have_no_level_suffix(self):
+        """flowers and cake have no min_level so no 'requires' text."""
+        from gifts import gift_catalog_text
+        text = gift_catalog_text("en")
+        lines = [l for l in text.splitlines() if "flower" in l.lower() or "cake" in l.lower()]
+        for line in lines:
+            self.assertNotIn("requires", line)
+
+
 if __name__ == "__main__":
     unittest.main()
