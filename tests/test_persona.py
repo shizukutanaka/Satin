@@ -807,6 +807,14 @@ class InterestMentionTests(unittest.TestCase):
         self.assertIn("音楽", result)
         reset_persona()
 
+    def test_bundled_persona_en_interest_mention(self):
+        """Bundled config/persona.json's en interest_mentions are used."""
+        p = get_persona()
+        result = p.interest_mention("anime", lang="en")
+        self.assertGreater(len(result), 0)
+        self.assertIn("anime", result)
+        reset_persona()
+
 
 class GiftCatalogMinLevelTests(unittest.TestCase):
     """gift_catalog_text() must show min_level info for gated items."""

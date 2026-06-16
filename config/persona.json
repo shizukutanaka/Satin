@@ -657,6 +657,13 @@
         "今、いちばん気になってることは何？",
         "今日はこれから何をするの？"
       ],
+      "interest_mentions": [
+        "そういえば、{interest}って最近どう？",
+        "{interest}が好きって言ってたね！なんか新しいのあった？",
+        "最近{interest}楽しんでる？",
+        "{interest}の話、もっと聞かせて！",
+        "{interest}のこと、もっと知りたいな。"
+      ],
       "follow_up_by_affinity": {
         "distant": [
           "…何か好きなものはあったりしますか？",
@@ -1125,6 +1132,13 @@
         "Tell me a bit about you, too.",
         "What's on your mind the most right now?",
         "So {user}, what are you up to next?"
+      ],
+      "interest_mentions": [
+        "By the way, how's {interest} going?",
+        "You mentioned you like {interest}! Anything new?",
+        "Still into {interest} lately?",
+        "Tell me more about your interest in {interest}!",
+        "I've been curious about your {interest} hobby!"
       ],
       "follow_up_by_affinity": {
         "distant": [

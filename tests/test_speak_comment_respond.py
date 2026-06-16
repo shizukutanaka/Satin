@@ -994,6 +994,78 @@ class GUILikeForgetMoodBirthdayTests(unittest.TestCase):
         self.assertGreater(len(v.comment_text), 0)
 
 
+class GUIWhoamiTests(unittest.TestCase):
+    """Tests for /whoami GUI command."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def test_whoami_shows_name_when_set(self):
+        class _FakeProfile:
+            name = "Haruki"
+            birthday = ""
+            interests = []
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()):
+            v.speak_comment("/whoami")
+        self.assertIn("Haruki", v.comment_text)
+
+    def test_whoami_shows_birthday_when_set(self):
+        class _FakeProfile:
+            name = ""
+            birthday = "03-14"
+            interests = []
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()):
+            v.speak_comment("/whoami")
+        self.assertIn("03-14", v.comment_text)
+
+    def test_whoami_shows_interests(self):
+        class _FakeProfile:
+            name = ""
+            birthday = ""
+            interests = ["アニメ", "音楽"]
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()):
+            v.speak_comment("/whoami")
+        self.assertIn("アニメ", v.comment_text)
+
+    def test_whoami_empty_profile_shows_unknown_message(self):
+        class _FakeProfile:
+            name = ""
+            birthday = ""
+            interests = []
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()):
+            v.speak_comment("/whoami")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_whoami_no_profile_no_crash(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/whoami")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_whoami_sets_mode_comment(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/whoami")
+        self.assertEqual(v.mode, "comment")
+
+
 class InterestMentionWiringTests(unittest.TestCase):
     """persona.interest_mention() is appended to reply at 15% probability."""
 

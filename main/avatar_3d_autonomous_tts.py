@@ -323,6 +323,9 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l.startswith("birthday"):
             self._cmd_birthday_gui(cmd_text[8:].strip(), lang)
             return True
+        if cmd_l.startswith("whoami"):
+            self._cmd_whoami_gui(lang)
+            return True
         return False  # 未知のコマンドは通常の respond() へ
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
@@ -470,6 +473,36 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                      else "(好感度情報の取得に失敗)")
         self._speak_reply(reply)
 
+    def _cmd_whoami_gui(self, lang: str) -> None:
+        """GUI の /whoami コマンドを処理する（プロファイル概要を表示）。"""
+        if _get_user_profile_gui is None:
+            self._speak_reply("(プロファイルは利用できません)" if lang != "en"
+                              else "(Profile unavailable)")
+            return
+        try:
+            prof = _get_user_profile_gui()
+            if prof is None:
+                self._speak_reply("(プロファイルは利用できません)" if lang != "en"
+                                  else "(Profile unavailable)")
+                return
+            parts = []
+            if prof.name:
+                parts.append(f"名前: {prof.name}" if lang != "en" else f"Name: {prof.name}")
+            if prof.birthday:
+                parts.append(f"誕生日: {prof.birthday}" if lang != "en"
+                             else f"Birthday: {prof.birthday}")
+            if prof.interests:
+                joined = "、".join(prof.interests) if lang != "en" else ", ".join(prof.interests)
+                parts.append(f"好きなもの: {joined}" if lang != "en"
+                             else f"Interests: {joined}")
+            reply = "\n".join(parts) if parts else (
+                "まだ何も知らないよ。教えてね！" if lang != "en"
+                else "I don't know anything about you yet. Tell me!")
+        except Exception as e:
+            logger.debug("/whoami プロファイル取得に失敗（GUI）: %s", e)
+            reply = "(情報の取得に失敗)" if lang != "en" else "(Couldn't get profile)"
+        self._speak_reply(reply)
+
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:
         """GUI の /birthday MM-DD コマンドを処理する。"""
         if not date_str:
@@ -526,7 +559,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
 class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("自律モード＋コメント読み上げ 3Dアバター")
+        try:
+            from persona import get_persona as _gp
+            _title_name = _gp().name
+        except Exception:
+            _title_name = "Satin"
+        self.setWindowTitle(f"{_title_name} — 3D コンパニオン")
         self.tts_queue = queue.Queue()
         self.tts_thread = TTSThread(self.tts_queue)
         self.tts_thread.start()
