@@ -873,5 +873,120 @@ class InteractionMilestoneIntegrationTests(unittest.TestCase):
             self.assertNotIn(count, full)
 
 
+class RitualEventTests(unittest.TestCase):
+    """_detect_ritual_event() and its integration into run_chat()."""
+
+    def test_detect_apology_ja(self):
+        result = persona_cli._detect_ritual_event("ごめんね")
+        self.assertIsNotNone(result)
+        event_name, bonus = result
+        self.assertIn("apology", event_name)
+        self.assertEqual(bonus, persona_cli._APOLOGY_BONUS)
+
+    def test_detect_apology_en(self):
+        result = persona_cli._detect_ritual_event("I'm so sorry")
+        self.assertIsNotNone(result)
+        event_name, bonus = result
+        self.assertIn("apology", event_name)
+        self.assertEqual(bonus, persona_cli._APOLOGY_BONUS)
+
+    def test_detect_goodnight_ja(self):
+        result = persona_cli._detect_ritual_event("おやすみ！")
+        self.assertIsNotNone(result)
+        event_name, bonus = result
+        self.assertIn("goodnight", event_name)
+        self.assertEqual(bonus, persona_cli._GOODNIGHT_BONUS)
+
+    def test_detect_goodnight_en(self):
+        result = persona_cli._detect_ritual_event("good night!")
+        self.assertIsNotNone(result)
+        event_name, bonus = result
+        self.assertIn("goodnight", event_name)
+        self.assertEqual(bonus, persona_cli._GOODNIGHT_BONUS)
+
+    def test_detect_both_returns_larger_bonus(self):
+        result = persona_cli._detect_ritual_event("ごめん、おやすみなさい")
+        self.assertIsNotNone(result)
+        _, bonus = result
+        self.assertEqual(bonus, max(persona_cli._APOLOGY_BONUS, persona_cli._GOODNIGHT_BONUS))
+
+    def test_detect_none_for_normal_text(self):
+        self.assertIsNone(persona_cli._detect_ritual_event("今日はいい天気だね"))
+        self.assertIsNone(persona_cli._detect_ritual_event("How are you?"))
+
+    def test_detect_case_insensitive(self):
+        self.assertIsNotNone(persona_cli._detect_ritual_event("SORRY"))
+        self.assertIsNotNone(persona_cli._detect_ritual_event("Good Night"))
+
+    def _run_with_mood(self, message, affinity=50.0):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=affinity)
+        inputs = iter([message, "/quit"])
+        outputs = []
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(inputs),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        return outputs, tracker
+
+    def test_apology_increases_affinity(self):
+        """Saying ごめん should raise affinity by the apology bonus."""
+        _, tracker = self._run_with_mood("ごめんね", affinity=50.0)
+        self.assertGreater(tracker.affinity, 50.0)
+
+    def test_goodnight_increases_affinity(self):
+        """Saying おやすみ should raise affinity by the goodnight bonus."""
+        _, tracker = self._run_with_mood("おやすみ", affinity=50.0)
+        self.assertGreater(tracker.affinity, 50.0)
+
+    def test_apology_bonus_is_correct_amount(self):
+        """Apology-only message with no other sentiment keywords → exact bonus."""
+        # "ごめん" has no positive/negative keywords from the default list, so
+        # raw_delta == 0 and only the ritual bonus is applied.
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=50.0)
+        inputs = iter(["ごめん", "/quit"])
+        outputs = []
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(inputs),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        self.assertAlmostEqual(tracker.affinity, 50.0 + persona_cli._APOLOGY_BONUS, places=4)
+
+    def test_goodnight_bonus_is_correct_amount(self):
+        """Goodnight-only message → exact bonus applied."""
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=50.0)
+        inputs = iter(["おやすみ", "/quit"])
+        outputs = []
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(inputs),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        self.assertAlmostEqual(tracker.affinity, 50.0 + persona_cli._GOODNIGHT_BONUS, places=4)
+
+    def test_ritual_bonus_not_applied_without_mood(self):
+        """Without a mood tracker, saying おやすみ should not crash."""
+        inputs = iter(["おやすみ", "/quit"])
+        outputs = []
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(inputs),
+            output_fn=outputs.append,
+            greet=False,
+            mood=None,
+        )
+        self.assertTrue(any("T:" in o for o in outputs))
+
+
 if __name__ == "__main__":
     unittest.main()

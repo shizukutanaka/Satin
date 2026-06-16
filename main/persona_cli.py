@@ -121,6 +121,39 @@ _MOOD_RESET_COMMANDS = {"/reset-mood", "/resetmood"}
 # N 回ごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
 _FOLLOW_UP_EVERY = 4
 
+# 謝罪・おやすみキーワードで好感度に小さなボーナスを与える。
+# これにより「謝ったら許してもらえた（関係回復）」「おやすみを言い合う習慣」が育つ。
+_APOLOGY_BONUS = 3.0     # 謝罪による回復
+_GOODNIGHT_BONUS = 2.0   # おやすみ就寝ルーティンのボーナス
+
+_APOLOGY_KEYWORDS = frozenset([
+    "ごめん", "すまない", "すみません", "許して", "ごめんなさい", "謝る",
+    "sorry", "apologize", "my bad", "forgive",
+])
+_GOODNIGHT_KEYWORDS = frozenset([
+    "おやすみ", "おやすみなさい",
+    "good night", "goodnight", "nighty night", "sweet dreams",
+])
+
+
+def _detect_ritual_event(text: str):
+    """謝罪またはおやすみキーワードを検出して (event_name, bonus) を返す。
+
+    複数のイベントが同一発話に含まれる場合はより大きいボーナスを優先。
+    何も検出しなければ None。
+    """
+    norm = text.strip().lower()
+    found_apology = any(kw in norm for kw in _APOLOGY_KEYWORDS)
+    found_goodnight = any(kw in norm for kw in _GOODNIGHT_KEYWORDS)
+    if found_apology and found_goodnight:
+        bonus = max(_APOLOGY_BONUS, _GOODNIGHT_BONUS)
+        return ("apology_goodnight", bonus)
+    if found_apology:
+        return ("apology", _APOLOGY_BONUS)
+    if found_goodnight:
+        return ("goodnight", _GOODNIGHT_BONUS)
+    return None
+
 
 def respond_to(
     text: str,
@@ -377,6 +410,10 @@ def run_chat(
                             mood.adjust(extra)
                     except Exception:
                         pass
+                # 謝罪・おやすみルーティン: 小さな好感度ボーナスで「仲直り/就寝の習慣」を演出
+                ritual = _detect_ritual_event(text)
+                if ritual is not None:
+                    mood.adjust(ritual[1])
                 after_affinity = mood.affinity
                 # 告白イベント（friendly→close の初回のみ）
                 if _check_confession_event is not None:
