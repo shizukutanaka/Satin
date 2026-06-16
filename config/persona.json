@@ -438,10 +438,29 @@
         "今日はこれから何をするの？"
       ],
       "follow_up_by_affinity": {
+        "distant": [
+          "…何か好きなものはあったりしますか？",
+          "…特に趣味とかはありますか？"
+        ],
+        "reserved": [
+          "えっと…好きな食べ物とかありますか？",
+          "よかったら…好きなものを教えてください。",
+          "あの…最近何かいいことありましたか？"
+        ],
+        "neutral": [
+          "最近どんなことが楽しかった？",
+          "好きなゲームとか音楽とかある？",
+          "今日ご飯は何食べた？"
+        ],
+        "friendly": [
+          "ねえ、最近ハマってることある？",
+          "何か新しいことやってみたいとかある？",
+          "一番好きなものってなに？"
+        ],
         "close": [
           "ねえ、悩んでることとかない？なんでも聞くよ。",
-          "あなたの夢、いつか聞いてみたいな。",
-          "今いちばん幸せだなって思う瞬間はいつ？"
+          "最近どんな夢見た？",
+          "あなたのこと、もっと知りたい。好きなものとか教えて？"
         ]
       },
       "respond_by_affinity": {
@@ -852,10 +871,29 @@
         "So {user}, what are you up to next?"
       ],
       "follow_up_by_affinity": {
+        "distant": [
+          "Do you have any… hobbies?",
+          "Is there anything you enjoy?"
+        ],
+        "reserved": [
+          "Um… do you have any favorite foods?",
+          "If you'd like… tell me something you enjoy.",
+          "Has anything nice happened to you lately?"
+        ],
+        "neutral": [
+          "What's been fun lately?",
+          "Got any favorite games or music?",
+          "What did you have for dinner today?"
+        ],
+        "friendly": [
+          "Hey, what have you been into lately?",
+          "Is there anything new you've been wanting to try?",
+          "What's your absolute favorite thing?"
+        ],
         "close": [
           "Hey, is anything on your mind? You can tell me anything.",
-          "I'd love to hear about your dreams someday.",
-          "When do you feel happiest these days?"
+          "What have you been dreaming about lately?",
+          "Tell me more about yourself… I want to know everything about you."
         ]
       },
       "respond_by_affinity": {
