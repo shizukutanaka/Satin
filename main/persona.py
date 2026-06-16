@@ -158,6 +158,34 @@ _DEFAULT_RESPONSES: Dict[str, Dict] = {
             "{user}のことも聞かせてよ。",
             "今、いちばん気になってることは何？",
         ],
+        "respond_by_affinity": {
+            "distant": [
+                {"keywords": ["こんにちは", "やあ", "おはよう"],
+                 "replies": ["…どうも。", "…あ、来たんだ。"]},
+                {"fallback": ["…そう。", "…うん。"]},
+            ],
+            "reserved": [
+                {"keywords": ["こんにちは", "やあ", "おはよう"],
+                 "replies": ["あ、こんにちは。", "…やあ。"]},
+                {"fallback": ["そうだね…", "ふーん。"]},
+            ],
+            "neutral": [
+                {"keywords": ["こんにちは", "やあ", "おはよう"],
+                 "replies": ["こんにちは！", "やっほ！"]},
+                {"fallback": ["なるほどね。", "うん、そうかも。"]},
+            ],
+            "friendly": [
+                {"keywords": ["こんにちは", "やあ", "おはよう"],
+                 "replies": ["来たね！待ってたよ。", "やっほー！元気だった？"]},
+                {"fallback": ["{user}、それ面白い！", "もっと聞かせて！"]},
+            ],
+            "close": [
+                {"keywords": ["こんにちは", "やあ", "おはよう"],
+                 "replies": ["やっと来てくれた！会いたかったよ！", "来た来た！ずっと待ってたの！"]},
+                {"fallback": ["{user}、もっと話して！全部聞きたいな。",
+                              "大好きだから、もっと一緒にいたい。"]},
+            ],
+        },
     },
     "en": {
         "rules": [
@@ -188,6 +216,34 @@ _DEFAULT_RESPONSES: Dict[str, Dict] = {
             "Tell me a bit about you, too, {user}.",
             "What's on your mind the most right now?",
         ],
+        "respond_by_affinity": {
+            "distant": [
+                {"keywords": ["hello", "hi", "hey"],
+                 "replies": ["...oh, hi.", "...yes?"]},
+                {"fallback": ["...I see.", "...okay."]},
+            ],
+            "reserved": [
+                {"keywords": ["hello", "hi", "hey"],
+                 "replies": ["Oh... hi.", "...hey."]},
+                {"fallback": ["I see...", "Hmm."]},
+            ],
+            "neutral": [
+                {"keywords": ["hello", "hi", "hey"],
+                 "replies": ["Hello!", "Hey, you!"]},
+                {"fallback": ["I see.", "Yeah, that makes sense."]},
+            ],
+            "friendly": [
+                {"keywords": ["hello", "hi", "hey"],
+                 "replies": ["You're here! I was waiting.", "Hey! How have you been?"]},
+                {"fallback": ["That's so interesting, {user}!", "Tell me more!"]},
+            ],
+            "close": [
+                {"keywords": ["hello", "hi", "hey"],
+                 "replies": ["You finally came! I missed you!", "You're here! I've been waiting all this time!"]},
+                {"fallback": ["{user}, keep talking to me — I want to hear everything.",
+                              "I love you, so please stay longer."]},
+            ],
+        },
     },
 }
 

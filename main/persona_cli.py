@@ -770,10 +770,18 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
     if bonus <= 0.0:
         # min_level 未達: 断り文句のみ、ボーナス表示・保存なし
         return
+    # デイリームードの倍率を好感度ボーナスに適用（energetic は +20% など）
+    effective_bonus = bonus
+    if _get_daily_mood is not None and _mood_affinity_multiplier is not None:
+        try:
+            mult = _mood_affinity_multiplier(_get_daily_mood())
+            effective_bonus = bonus * mult
+        except Exception:
+            pass
     # 好感度ボーナスを適用し、即時保存（Ctrl+C 等でもボーナスが消えないよう）
     if mood is not None:
         try:
-            mood.adjust(bonus)
+            mood.adjust(effective_bonus)
             # 受け取り記録（デイリークールダウン用）
             if hasattr(mood, "record_gift") and _lookup_gift_key is not None:
                 try:
@@ -791,9 +799,9 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
         except Exception:
             pass
     if lang == "en":
-        output_fn(f"(+{int(bonus)} affinity)")
+        output_fn(f"(+{int(effective_bonus)} affinity)")
     else:
-        output_fn(f"（好感度 +{int(bonus)}）")
+        output_fn(f"（好感度 +{int(effective_bonus)}）")
 
 
 def _add_interest(profile, thing: str, avatar_name: str, lang: str,

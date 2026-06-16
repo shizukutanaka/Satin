@@ -63,6 +63,15 @@ except Exception:  # pragma: no cover - defensive
     _acknowledge_answer_gui = None
 
 try:
+    from daily_mood import (  # noqa: E402
+        get_daily_mood as _get_daily_mood_gui,
+        mood_affinity_multiplier as _mood_affinity_multiplier_gui,
+    )
+except Exception:  # pragma: no cover - defensive
+    _get_daily_mood_gui = None
+    _mood_affinity_multiplier_gui = None
+
+try:
     from gifts import (  # noqa: E402
         lookup_gift as _lookup_gift_gui,
         lookup_gift_key as _lookup_gift_key_gui,
@@ -333,6 +342,9 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l.startswith("stats"):
             self._cmd_stats_gui(lang)
             return True
+        if cmd_l.startswith("reset-mood") or cmd_l == "resetmood":
+            self._cmd_reset_mood_gui(lang)
+            return True
         return False  # 未知のコマンドは通常の respond() へ
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
@@ -374,10 +386,18 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             return
 
         bonus, avatar_reply = result
-        if bonus > 0.0 and get_mood_tracker is not None:
+        # デイリームードの倍率を好感度ボーナスに適用
+        effective_bonus = bonus
+        if bonus > 0.0 and _get_daily_mood_gui is not None and _mood_affinity_multiplier_gui is not None:
+            try:
+                mult = _mood_affinity_multiplier_gui(_get_daily_mood_gui())
+                effective_bonus = bonus * mult
+            except Exception:
+                pass
+        if effective_bonus > 0.0 and get_mood_tracker is not None:
             try:
                 tracker = get_mood_tracker()
-                tracker.adjust(bonus)
+                tracker.adjust(effective_bonus)
                 # 受け取り記録（デイリークールダウン用）
                 if _lookup_gift_key_gui is not None and hasattr(tracker, "record_gift"):
                     try:
@@ -393,9 +413,9 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             except Exception as e:
                 logger.debug("プレゼントの好感度ボーナス適用に失敗（GUI）: %s", e)
 
-        if bonus > 0.0:
-            avatar_reply = (f"{avatar_reply} (+{int(bonus)} affinity)" if lang == "en"
-                            else f"{avatar_reply}（好感度 +{int(bonus)}）")
+        if effective_bonus > 0.0:
+            avatar_reply = (f"{avatar_reply} (+{int(effective_bonus)} affinity)" if lang == "en"
+                            else f"{avatar_reply}（好感度 +{int(effective_bonus)}）")
 
         if get_conversation_log is not None:
             try:
@@ -558,6 +578,30 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 logger.debug("/stats 会話ログ取得に失敗（GUI）: %s", e)
         reply = "\n".join(parts) if parts else (
             "(統計情報は利用できません)" if lang != "en" else "(Stats unavailable)")
+        self._speak_reply(reply)
+
+    def _cmd_reset_mood_gui(self, lang: str) -> None:
+        """GUI の /reset-mood コマンドを処理する（好感度をニュートラルにリセット）。"""
+        if get_mood_tracker is None:
+            self._speak_reply("(好感度は無効です)" if lang != "en" else "(Affinity unavailable)")
+            return
+        try:
+            from mood import AFFINITY_START
+            tracker = get_mood_tracker()
+            tracker.affinity = AFFINITY_START
+            tracker.interactions = 0
+            tracker._last_interaction_time = 0.0
+            tracker._first_interaction_time = 0.0
+            tracker._last_anniversary_days = 0
+            tracker._last_login_date = ""
+            tracker._login_streak = 0
+            if _default_mood_path is not None:
+                tracker.save(_default_mood_path())
+            reply = (f"Affinity reset to neutral ({int(AFFINITY_START)}/100)." if lang == "en"
+                     else f"好感度をニュートラル（{int(AFFINITY_START)}/100）にリセットしました。")
+        except Exception as e:
+            logger.debug("/reset-mood に失敗（GUI）: %s", e)
+            reply = "(好感度のリセットに失敗しました)" if lang != "en" else "(Reset failed)"
         self._speak_reply(reply)
 
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:

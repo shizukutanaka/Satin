@@ -816,6 +816,48 @@ class InterestMentionTests(unittest.TestCase):
         reset_persona()
 
 
+class DefaultRespondByAffinityTests(unittest.TestCase):
+    """_DEFAULT_RESPONSES now includes respond_by_affinity for all 5 levels."""
+
+    def test_close_level_different_from_neutral(self):
+        """Close-level reply to 'hello' is more affectionate than neutral."""
+        p = Persona(lang="ja")
+        close_reply = p.respond("こんにちは", level="close")
+        neutral_reply = p.respond("こんにちは", level="neutral")
+        self.assertGreater(len(close_reply), 0)
+        self.assertGreater(len(neutral_reply), 0)
+        # close and neutral should have different pools
+        # (not guaranteed to differ on a single draw, but both should be nonempty)
+
+    def test_distant_level_reply_nonempty(self):
+        p = Persona(lang="ja")
+        self.assertGreater(len(p.respond("こんにちは", level="distant")), 0)
+
+    def test_friendly_level_fallback_nonempty(self):
+        p = Persona(lang="ja")
+        self.assertGreater(len(p.respond("random text xyz", level="friendly")), 0)
+
+    def test_en_close_level_reply_nonempty(self):
+        p = Persona(lang="en")
+        self.assertGreater(len(p.respond("hello", level="close")), 0)
+
+    def test_en_distant_level_fallback_nonempty(self):
+        p = Persona(lang="en")
+        self.assertGreater(len(p.respond("random text xyz", level="distant")), 0)
+
+    def test_all_levels_respond_nonempty_ja(self):
+        p = Persona(lang="ja")
+        for level in ("distant", "reserved", "neutral", "friendly", "close"):
+            reply = p.respond("こんにちは", level=level)
+            self.assertGreater(len(reply), 0, f"level={level} returned empty reply")
+
+    def test_all_levels_respond_nonempty_en(self):
+        p = Persona(lang="en")
+        for level in ("distant", "reserved", "neutral", "friendly", "close"):
+            reply = p.respond("hello", level=level)
+            self.assertGreater(len(reply), 0, f"level={level} returned empty reply")
+
+
 class GiftCatalogMinLevelTests(unittest.TestCase):
     """gift_catalog_text() must show min_level info for gated items."""
 

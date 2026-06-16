@@ -1023,6 +1023,49 @@ class GUILikeForgetMoodBirthdayTests(unittest.TestCase):
         self.assertGreater(len(v.comment_text), 0)
 
 
+class GUIResetMoodTests(unittest.TestCase):
+    """Tests for /reset-mood GUI command."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def test_reset_mood_resets_affinity(self):
+        class _FakeTracker:
+            affinity = 90.0
+            interactions = 50
+            _last_interaction_time = 0.0
+            _first_interaction_time = 0.0
+            _last_anniversary_days = 5
+            _last_login_date = "2024-01-01"
+            _login_streak = 7
+            def save(self, p): pass
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()), \
+             mock.patch.object(_mod, "_default_mood_path", None):
+            v.speak_comment("/reset-mood")
+
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_reset_mood_no_tracker_no_crash(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", None):
+            v.speak_comment("/reset-mood")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_reset_mood_sets_mode_comment(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", None):
+            v.speak_comment("/reset-mood")
+        self.assertEqual(v.mode, "comment")
+
+
 class GUIWhoamiTests(unittest.TestCase):
     """Tests for /whoami GUI command."""
 

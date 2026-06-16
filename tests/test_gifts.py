@@ -422,5 +422,66 @@ class GiftCooldownTests(unittest.TestCase):
         self.assertGreater(len(cooldown_message("en")), 0)
 
 
+class GiftDailyMoodMultiplierTests(unittest.TestCase):
+    """Gift bonus is multiplied by the daily mood affinity multiplier."""
+
+    def setUp(self):
+        import persona_cli
+        self._pc = persona_cli
+
+    def test_energetic_mood_amplifies_gift_bonus(self):
+        """energetic mood (1.2x multiplier) makes the flower bonus larger."""
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+
+        tracker = MoodTracker(affinity=50.0)
+        before = tracker.affinity
+
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"), \
+             mock.patch.object(self._pc, "_get_daily_mood", lambda: "energetic"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        # energetic multiplier is 1.2x, flower base bonus is 5.0 → 6.0
+        self.assertGreater(tracker.affinity - before, 5.0)
+
+    def test_melancholy_mood_reduces_gift_bonus(self):
+        """melancholy mood (< 1.0x multiplier) reduces the gift bonus."""
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+
+        tracker = MoodTracker(affinity=50.0)
+        before = tracker.affinity
+
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"), \
+             mock.patch.object(self._pc, "_get_daily_mood", lambda: "melancholy"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        # melancholy multiplier < 1.0, flower base is 5.0 → less than 5.0
+        self.assertLess(tracker.affinity - before, 5.0)
+        # But still positive
+        self.assertGreater(tracker.affinity - before, 0.0)
+
+    def test_calm_mood_no_change_in_bonus(self):
+        """calm mood (1.0x multiplier) leaves the gift bonus unchanged."""
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+
+        tracker = MoodTracker(affinity=50.0)
+        before = tracker.affinity
+
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"), \
+             mock.patch.object(self._pc, "_get_daily_mood", lambda: "calm"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        actual_bonus = tracker.affinity - before
+        self.assertAlmostEqual(actual_bonus, 5.0, places=1)
+
+
 if __name__ == "__main__":
     unittest.main()
