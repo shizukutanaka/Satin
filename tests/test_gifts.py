@@ -152,6 +152,140 @@ class CLIGiftIntegrationTests(unittest.TestCase):
                             or "affinity" in l.lower() for l in logs))
 
 
+class LevelGatingTests(unittest.TestCase):
+    """lookup_gift() returns (0.0, decline_msg) when level < min_level."""
+
+    def test_music_declined_for_distant(self):
+        result = lookup_gift("音楽", lang="ja", level="distant")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+        self.assertGreater(len(reply), 0)
+
+    def test_music_declined_for_reserved(self):
+        result = lookup_gift("music", lang="en", level="reserved")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+        self.assertGreater(len(reply), 0)
+
+    def test_music_accepted_at_neutral(self):
+        result = lookup_gift("音楽", lang="ja", level="neutral")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_music_accepted_at_close(self):
+        result = lookup_gift("music", lang="en", level="close")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_ribbon_declined_for_distant(self):
+        result = lookup_gift("リボン", lang="ja", level="distant")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertEqual(bonus, 0.0)
+
+    def test_ribbon_accepted_at_neutral(self):
+        result = lookup_gift("ribbon", lang="en", level="neutral")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_letter_declined_for_neutral(self):
+        result = lookup_gift("手紙", lang="ja", level="neutral")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+        self.assertGreater(len(reply), 0)
+
+    def test_letter_declined_en_for_reserved(self):
+        result = lookup_gift("letter", lang="en", level="reserved")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+
+    def test_letter_accepted_at_friendly(self):
+        result = lookup_gift("手紙", lang="ja", level="friendly")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_letter_accepted_at_close(self):
+        result = lookup_gift("letter", lang="en", level="close")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_no_level_arg_bypasses_gate(self):
+        """Callers that don't pass level still get the bonus (backward compat)."""
+        result = lookup_gift("手紙", lang="ja")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_flowers_always_accepted(self):
+        """Items without min_level are always accepted regardless of level."""
+        for lvl in ("distant", "reserved", "neutral", "friendly", "close"):
+            result = lookup_gift("花", lang="ja", level=lvl)
+            self.assertIsNotNone(result)
+            bonus, _ = result
+            self.assertGreater(bonus, 0.0, f"flowers should be accepted at level={lvl}")
+
+    def test_decline_message_nonempty_ja(self):
+        result = lookup_gift("手紙", lang="ja", level="distant")
+        self.assertIsNotNone(result)
+        _, msg = result
+        self.assertGreater(len(msg.strip()), 0)
+
+    def test_decline_message_nonempty_en(self):
+        result = lookup_gift("letter", lang="en", level="distant")
+        self.assertIsNotNone(result)
+        _, msg = result
+        self.assertGreater(len(msg.strip()), 0)
+
+
+class CLILevelGatingIntegrationTests(unittest.TestCase):
+    """_give_gift() must respect level-gating and not apply bonus on decline."""
+
+    def setUp(self):
+        import persona_cli
+        self._pc = persona_cli
+
+    def test_music_declined_at_reserved_no_bonus(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=10.0)  # reserved level
+        before = tracker.affinity
+        logs = []
+        self._pc._give_gift("音楽", tracker, "Avatar", "ja", logs.append)
+        self.assertEqual(tracker.affinity, before, "Affinity must not change on decline")
+
+    def test_music_declined_shows_decline_message(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=10.0)
+        logs = []
+        self._pc._give_gift("音楽", tracker, "Avatar", "ja", logs.append)
+        full_output = " ".join(logs)
+        self.assertGreater(len(full_output), 0)
+        # Should show the decline text, not a bonus line
+        self.assertNotIn("+", full_output)
+
+    def test_letter_accepted_at_friendly(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=60.0)  # friendly level
+        before = tracker.affinity
+        self._pc._give_gift("手紙", tracker, "Avatar", "ja", lambda t: None)
+        self.assertGreater(tracker.affinity, before)
+
+    def test_no_mood_no_level_check(self):
+        """Without a mood tracker, level gating is bypassed (level=None)."""
+        logs = []
+        self._pc._give_gift("音楽", None, "Avatar", "ja", logs.append)
+        # With no level, should get a reply (not the decline) — but won't crash either way
+        self.assertTrue(len(logs) > 0)
+
+
 class GiftPersistenceTests(unittest.TestCase):
     """_give_gift() must save mood immediately so bonus survives an abrupt exit."""
 

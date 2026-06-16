@@ -737,7 +737,8 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
     if _lookup_gift is None:
         output_fn("(プレゼント機能は利用できません)")
         return
-    result = _lookup_gift(item, lang=lang)
+    current_level = mood.level if mood is not None and hasattr(mood, "level") else None
+    result = _lookup_gift(item, lang=lang, level=current_level)
     if result is None:
         if lang == "en":
             output_fn(f"Hmm, I'm not sure about {item}. Try /gift list to see options.")
@@ -745,6 +746,11 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
             output_fn(f"「{item}」はよく分からないな。/gift list で確認してね。")
         return
     bonus, reply = result
+    _say_fn = lambda text: output_fn(f"{avatar_name}: {text}")  # noqa: E731
+    _say_fn(reply)
+    if bonus <= 0.0:
+        # min_level 未達: 断り文句のみ、ボーナス表示・保存なし
+        return
     # 好感度ボーナスを適用し、即時保存（Ctrl+C 等でもボーナスが消えないよう）
     if mood is not None:
         try:
@@ -757,8 +763,6 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
                 pass
         except Exception:
             pass
-    _say_fn = lambda text: output_fn(f"{avatar_name}: {text}")  # noqa: E731
-    _say_fn(reply)
     if lang == "en":
         output_fn(f"(+{int(bonus)} affinity)")
     else:

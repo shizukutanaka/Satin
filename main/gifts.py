@@ -14,9 +14,26 @@ from typing import Dict, List, Optional, Tuple
 # --------------------------------------------------------------------------- #
 # 各エントリ:
 #   "affinity": 好感度ボーナス（float）
-#   "ja": {"aliases": [...], "replies": [...]}  <- aliases: 日本語入力の別名リスト
-#   "en": {"aliases": [...], "replies": [...]}  <- aliases: 英語入力の別名リスト
+#   "min_level": 最低好感度レベル（省略可: 制限なし）
+#                distant < reserved < neutral < friendly < close
+#   "ja": {"aliases": [...], "replies": [...], "decline": <任意>}
+#   "en": {"aliases": [...], "replies": [...], "decline": <任意>}
 # --------------------------------------------------------------------------- #
+
+# 好感度レベル順（low→high）。min_level チェックに使用。
+_LEVEL_ORDER = ("distant", "reserved", "neutral", "friendly", "close")
+
+# 関係が浅すぎてプレゼントを受け取れないときの断り文句
+_DECLINE_MESSAGES = {
+    "ja": {
+        "neutral": "…ありがとう。でも、もう少し仲良くなってからにしてほしいかな。",
+        "friendly": "…嬉しいけど、まだ少し早い気がする。もっと一緒にいてから？",
+    },
+    "en": {
+        "neutral": "…Thank you. But I'd like to get to know you a little better first.",
+        "friendly": "…I'm touched, but this feels a little soon. Maybe when we're closer?",
+    },
+}
 _GIFTS: List[Dict] = [
     {
         "key": "flowers",
@@ -75,6 +92,7 @@ _GIFTS: List[Dict] = [
     {
         "key": "music",
         "affinity": 4.0,
+        "min_level": "neutral",
         "ja": {
             "aliases": ["音楽", "cd", "CD", "アルバム", "プレイリスト"],
             "replies": [
@@ -111,6 +129,7 @@ _GIFTS: List[Dict] = [
     {
         "key": "ribbon",
         "affinity": 3.0,
+        "min_level": "neutral",
         "ja": {
             "aliases": ["リボン", "アクセサリー", "ヘアピン"],
             "replies": [
@@ -129,6 +148,7 @@ _GIFTS: List[Dict] = [
     {
         "key": "letter",
         "affinity": 6.0,
+        "min_level": "friendly",
         "ja": {
             "aliases": ["手紙", "てがみ", "レター", "letter", "メッセージ"],
             "replies": [
@@ -163,15 +183,18 @@ def _pick(options: List[str], key: str = "") -> str:
     return random.choice(options) if options else ""
 
 
-def lookup_gift(item: str, lang: str = "ja") -> Optional[Tuple[float, str]]:
+def lookup_gift(item: str, lang: str = "ja",
+                level: Optional[str] = None) -> Optional[Tuple[float, str]]:
     """アイテム名から (好感度ボーナス, 反応テキスト) を返す。
 
     一致しなければ None。
     マッチングは小文字部分一致（「手紙」が含まれていれば OK）。
+    level が min_level を下回る場合は (0.0, 断り文句) を返す（ボーナス無し）。
 
     Args:
         item: ユーザーが入力したアイテム名。
         lang: "ja" または "en"。
+        level: 現在の好感度レベル（"distant"/"reserved"/"neutral"/"friendly"/"close"）。
     """
     if not item:
         return None
@@ -190,6 +213,16 @@ def lookup_gift(item: str, lang: str = "ja") -> Optional[Tuple[float, str]]:
         return None
 
     gift = _GIFTS[idx]
+
+    # 好感度レベルが min_level を下回る場合は断り文句を返す
+    min_level = gift.get("min_level")
+    if min_level and level:
+        norm_level = str(level).lower()
+        if norm_level in _LEVEL_ORDER and min_level in _LEVEL_ORDER:
+            if _LEVEL_ORDER.index(norm_level) < _LEVEL_ORDER.index(min_level):
+                decline = (_DECLINE_MESSAGES.get(lang_key, {}).get(min_level) or "")
+                return 0.0, decline
+
     affinity_bonus = float(gift["affinity"])
     replies = list(gift[lang_key]["replies"])
     reply = _pick(replies)
