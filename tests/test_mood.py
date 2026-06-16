@@ -975,5 +975,82 @@ class AnniversaryMessageTests(unittest.TestCase):
         self.assertEqual(t._last_anniversary_days, 100)
 
 
+class InteractionMilestoneTests(unittest.TestCase):
+    """Tests for check_interaction_milestone — cumulative conversation count rewards."""
+
+    def setUp(self):
+        from mood import check_interaction_milestone, _INTERACTION_MILESTONE_MESSAGES
+        self._check = check_interaction_milestone
+        self._msgs = _INTERACTION_MILESTONE_MESSAGES
+
+    def test_fires_at_10_ja(self):
+        msg = self._check(9, 10, lang="ja")
+        self.assertIsNotNone(msg)
+        self.assertIsInstance(msg, str)
+        self.assertGreater(len(msg), 0)
+
+    def test_fires_at_10_en(self):
+        msg = self._check(9, 10, lang="en")
+        self.assertIsNotNone(msg)
+        self.assertGreater(len(msg), 0)
+
+    def test_fires_at_25(self):
+        self.assertIsNotNone(self._check(24, 25, lang="ja"))
+
+    def test_fires_at_50(self):
+        self.assertIsNotNone(self._check(49, 50, lang="en"))
+
+    def test_fires_at_100(self):
+        self.assertIsNotNone(self._check(99, 100, lang="ja"))
+
+    def test_fires_at_250(self):
+        self.assertIsNotNone(self._check(249, 250, lang="en"))
+
+    def test_fires_at_500(self):
+        self.assertIsNotNone(self._check(499, 500, lang="ja"))
+
+    def test_fires_at_1000(self):
+        self.assertIsNotNone(self._check(999, 1000, lang="en"))
+
+    def test_no_fire_below_first_milestone(self):
+        self.assertIsNone(self._check(0, 9, lang="ja"))
+
+    def test_no_fire_above_milestone(self):
+        self.assertIsNone(self._check(10, 11, lang="ja"))
+
+    def test_no_fire_at_same_value(self):
+        self.assertIsNone(self._check(10, 10, lang="ja"))
+
+    def test_first_milestone_wins_when_multiple_crossed(self):
+        # Crosses both 10 and 25; should return a 10-milestone message
+        msg = self._check(8, 26, lang="ja")
+        self.assertIsNotNone(msg)
+        msgs_10 = self._msgs[10]["ja"]
+        msgs_25 = self._msgs[25]["ja"]
+        self.assertTrue(msg in msgs_10 or msg in msgs_25)
+        # The returned message must be from the *first* milestone (10)
+        self.assertIn(msg, msgs_10)
+
+    def test_all_milestones_have_ja_and_en(self):
+        from mood import _INTERACTION_MILESTONES_SORTED
+        for m in _INTERACTION_MILESTONES_SORTED:
+            self.assertIn("ja", self._msgs[m], f"milestone {m} missing ja")
+            self.assertIn("en", self._msgs[m], f"milestone {m} missing en")
+            self.assertGreater(len(self._msgs[m]["ja"]), 0, f"milestone {m} ja empty")
+            self.assertGreater(len(self._msgs[m]["en"]), 0, f"milestone {m} en empty")
+
+    def test_region_code_falls_back_to_en(self):
+        msg = self._check(9, 10, lang="en-US")
+        self.assertIsNotNone(msg)
+
+    def test_unknown_lang_falls_back_to_ja(self):
+        msg = self._check(9, 10, lang="fr")
+        self.assertIsNotNone(msg)
+
+    def test_returns_string_not_list(self):
+        result = self._check(9, 10, lang="ja")
+        self.assertIsInstance(result, str)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -703,5 +703,80 @@ class MainEntryTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class InteractionMilestoneIntegrationTests(unittest.TestCase):
+    """Tests that interaction count milestones appear in CLI output."""
+
+    def setUp(self):
+        import mood as _mood
+        _mood.reset_mood_tracker()
+
+    def tearDown(self):
+        import mood as _mood
+        _mood.reset_mood_tracker()
+
+    def _run(self, messages, interactions_start=0, affinity=50.0):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=affinity, interactions=interactions_start)
+        inputs = iter(messages + ["/quit"])
+        outputs = []
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(inputs),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        return outputs, tracker
+
+    def test_milestone_at_10_ja(self):
+        """10th exchange triggers milestone message (ja)."""
+        outputs, tracker = self._run(["こんにちは"], interactions_start=9)
+        self.assertEqual(tracker.interactions, 10)
+        full = " ".join(outputs)
+        self.assertIn("10", full)
+
+    def test_milestone_at_10_en(self):
+        """10th exchange triggers milestone message (en)."""
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=50.0, interactions=9)
+        inputs = iter(["hello", "/quit"])
+        outputs = []
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T", "default_lang": "en"}),
+            input_fn=lambda _: next(inputs),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        self.assertEqual(tracker.interactions, 10)
+        full = " ".join(outputs)
+        self.assertIn("10", full)
+
+    def test_no_milestone_at_9(self):
+        """9th exchange does not trigger milestone."""
+        outputs, tracker = self._run(["こんにちは"], interactions_start=8)
+        self.assertEqual(tracker.interactions, 9)
+        full = " ".join(outputs)
+        # "10" might appear in other numbers but NOT in milestone text
+        # Verify by checking interaction count
+        self.assertNotIn("10回", full)
+
+    def test_milestone_at_100(self):
+        """100th exchange triggers milestone."""
+        outputs, tracker = self._run(["hello"], interactions_start=99)
+        self.assertEqual(tracker.interactions, 100)
+        full = " ".join(outputs)
+        self.assertIn("100", full)
+
+    def test_no_milestone_for_normal_exchanges(self):
+        """Non-milestone exchanges don't produce milestone text."""
+        outputs, tracker = self._run(["こんにちは"], interactions_start=5)
+        self.assertEqual(tracker.interactions, 6)
+        full = " ".join(outputs)
+        # Should not contain any milestone count keywords
+        for count in ["10回", "25回", "50回", "100回"]:
+            self.assertNotIn(count, full)
+
+
 if __name__ == "__main__":
     unittest.main()

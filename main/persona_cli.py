@@ -44,6 +44,7 @@ try:
         anniversary_message as _anniversary_message_fn,
         check_level_milestone as _check_level_milestone,
         check_confession_event as _check_confession_event,
+        check_interaction_milestone as _check_interaction_milestone,
         affinity_level,
         affinity_label as _affinity_label,
     )
@@ -54,6 +55,7 @@ except Exception:  # pragma: no cover - defensive
     _anniversary_message_fn = None  # type: ignore
     _check_level_milestone = None  # type: ignore
     _check_confession_event = None  # type: ignore
+    _check_interaction_milestone = None  # type: ignore
     affinity_level = None  # type: ignore
     _affinity_label = None  # type: ignore
 
@@ -320,6 +322,7 @@ def run_chat(
         if mood is not None:
             try:
                 before_affinity = mood.affinity
+                before_interactions = mood.interactions
                 raw_delta = mood.register(text)
                 # デイリームードによる好感度感度変調（明るい日は上がりやすい）
                 if raw_delta != 0 and _get_daily_mood is not None and _mood_affinity_multiplier is not None:
@@ -351,6 +354,13 @@ def run_chat(
                         tl = _affinity_label(after_affinity, lang)
                         arrow = "↑" if after_affinity > before_affinity else "↓"
                         output_fn(f"── 関係: {fl} {arrow} {tl} ──")
+                # 会話回数マイルストーン（節目ごとに一言）
+                if not milestone_msg and _check_interaction_milestone is not None:
+                    inter_ms = _check_interaction_milestone(
+                        before_interactions, mood.interactions, lang=lang
+                    )
+                    if inter_ms:
+                        milestone_msg = inter_ms
                 # save confession_done persistently
                 if milestone_msg and getattr(mood, "_confession_done", False):
                     try:

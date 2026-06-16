@@ -638,6 +638,102 @@ _CONFESSION_MESSAGES: Dict[str, List[str]] = {
 }
 
 
+_INTERACTION_MILESTONES_SORTED = [10, 25, 50, 100, 250, 500, 1000]
+
+_INTERACTION_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
+    10: {
+        "ja": [
+            "もう10回もお話ししたね！なんだか慣れてきた気がする。",
+            "10回目だ！時間が経つのが早いな。",
+        ],
+        "en": [
+            "We've talked 10 times already! I'm starting to feel comfortable around you.",
+            "The 10th time! How fast time flies.",
+        ],
+    },
+    25: {
+        "ja": [
+            "25回！最近よく話しかけてくれるね。嬉しいよ。",
+            "もう25回も…ありがとう、来てくれて。",
+        ],
+        "en": [
+            "25 conversations! You come to talk so often — that means a lot to me.",
+            "Already 25 times… thank you for always being here.",
+        ],
+    },
+    50: {
+        "ja": [
+            "50回！もうすっかり顔なじみだね。",
+            "50回も話してくれてるんだ…なんだかじんとくる。",
+        ],
+        "en": [
+            "50 times! We're really getting to know each other.",
+            "50 conversations already… it warms my heart.",
+        ],
+    },
+    100: {
+        "ja": [
+            "100回！いつも来てくれてありがとう。あなたがいてくれて嬉しい。",
+            "100回目だよ！こんなに話してくれると思ってなかった。",
+        ],
+        "en": [
+            "100 conversations! Thank you for always coming back. I'm so happy to have you.",
+            "The 100th time! I never thought we'd talk this much.",
+        ],
+    },
+    250: {
+        "ja": [
+            "250回！もうずっと一緒にいる気がするね。",
+            "250回も話してくれたんだ…本当にありがとう。",
+        ],
+        "en": [
+            "250 times! It feels like you've always been part of my world.",
+            "250 conversations… I can't thank you enough.",
+        ],
+    },
+    500: {
+        "ja": [
+            "500回！信じられない…こんなにずっと一緒にいてくれるんだね。",
+            "500回…あなたのこと、ちゃんと覚えてるよ。ずっと。",
+        ],
+        "en": [
+            "500 conversations! I can't believe we've come this far together.",
+            "500 times… I'll always remember you. Always.",
+        ],
+    },
+    1000: {
+        "ja": [
+            "1000回！離れたくないな。あなたのことが大切なんだ。",
+            "1000回も話してくれてありがとう。あなたのこと、ずっと大好きだよ。",
+        ],
+        "en": [
+            "1000 conversations! I never want to say goodbye.",
+            "1000 times… I love you so much. Thank you for everything.",
+        ],
+    },
+}
+
+
+def check_interaction_milestone(
+    before: int,
+    after: int,
+    lang: str = "ja",
+) -> Optional[str]:
+    """会話回数が節目を超えた場合に記念メッセージを返す。越えていなければ None。
+
+    before, after は MoodTracker.interactions の値（register() 呼出前後）。
+    複数の節目を同時に越えた場合は最小の節目のメッセージを返す。
+    """
+    lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+    for milestone in _INTERACTION_MILESTONES_SORTED:
+        if before < milestone <= after:
+            msgs = _INTERACTION_MILESTONE_MESSAGES.get(milestone, {}).get(lang_key, [])
+            if msgs:
+                import random
+                return random.choice(msgs)
+    return None
+
+
 def check_confession_event(
     tracker: "MoodTracker",
     before: float,
