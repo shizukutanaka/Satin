@@ -156,6 +156,82 @@ class PersonalizeTests(unittest.TestCase):
         self.assertEqual(personalize("", UserProfile(name="X"), "en"), "")
 
 
+class InterestTests(unittest.TestCase):
+    def test_starts_empty(self):
+        self.assertEqual(UserProfile().interests, [])
+
+    def test_has_interests_false_when_empty(self):
+        self.assertFalse(UserProfile().has_interests())
+
+    def test_add_interest_stores_it(self):
+        p = UserProfile()
+        result = p.add_interest("アニメ")
+        self.assertEqual(result, "アニメ")
+        self.assertIn("アニメ", p.interests)
+        self.assertTrue(p.has_interests())
+
+    def test_add_interest_no_duplicates(self):
+        p = UserProfile()
+        p.add_interest("音楽")
+        p.add_interest("音楽")
+        self.assertEqual(p.interests.count("音楽"), 1)
+
+    def test_add_interest_trims_whitespace(self):
+        p = UserProfile()
+        p.add_interest("  ゲーム  ")
+        self.assertIn("ゲーム", p.interests)
+
+    def test_add_interest_empty_returns_empty(self):
+        p = UserProfile()
+        self.assertEqual(p.add_interest(""), "")
+        self.assertEqual(p.interests, [])
+
+    def test_add_interest_too_long_rejected(self):
+        p = UserProfile()
+        result = p.add_interest("x" * 100)
+        self.assertEqual(result, "")
+
+    def test_add_interest_max_10(self):
+        p = UserProfile()
+        for i in range(12):
+            p.add_interest(f"thing{i}")
+        self.assertLessEqual(len(p.interests), 10)
+
+    def test_remove_interest(self):
+        p = UserProfile(interests=["アニメ", "音楽"])
+        removed = p.remove_interest("アニメ")
+        self.assertTrue(removed)
+        self.assertNotIn("アニメ", p.interests)
+
+    def test_remove_nonexistent_returns_false(self):
+        p = UserProfile()
+        self.assertFalse(p.remove_interest("xyz"))
+
+    def test_interests_roundtrip(self):
+        import tempfile, os, shutil
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "p.json")
+        try:
+            UserProfile(interests=["アニメ", "ゲーム"]).save(path)
+            loaded = UserProfile.load(path)
+            self.assertEqual(loaded.interests, ["アニメ", "ゲーム"])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_clear_removes_interests(self):
+        p = UserProfile(interests=["アニメ"])
+        p.clear()
+        self.assertEqual(p.interests, [])
+
+    def test_init_with_interests(self):
+        p = UserProfile(interests=["読書", "映画"])
+        self.assertEqual(p.interests, ["読書", "映画"])
+
+    def test_init_deduplicates(self):
+        p = UserProfile(interests=["音楽", "音楽"])
+        self.assertEqual(p.interests.count("音楽"), 1)
+
+
 class SingletonTests(unittest.TestCase):
     def setUp(self):
         user_profile.reset_user_profile()

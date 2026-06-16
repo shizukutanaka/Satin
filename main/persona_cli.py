@@ -15,7 +15,9 @@
   /search <キーワード> 会話履歴をキーワード検索（アーカイブ含む）
   /callme <名前>       アバターに呼んでほしい名前を覚えさせる
   /birthday MM-DD      誕生日を覚えさせる（当日に祝ってくれる）
-  /whoami             今記憶している呼び名・誕生日を表示
+  /like <好きなもの>    好きなものを覚えさせる（例: /like アニメ）
+  /forget <好きなもの>  覚えた好きなものを忘れさせる
+  /whoami             今記憶している呼び名・誕生日・好きなものを表示
   /mood               好感度レベルと今日のアバターの気分を表示
   /reset-mood         好感度をニュートラルにリセット
   /stats              会話統計を表示
@@ -274,6 +276,14 @@ def run_chat(
             new_bday = text[len("/birthday"):].strip()
             _set_birthday(profile, new_bday, name, lang, output_fn)
             continue
+        if text.lower().startswith("/like"):
+            thing = text[len("/like"):].strip()
+            _add_interest(profile, thing, name, lang, output_fn)
+            continue
+        if text.lower().startswith("/forget"):
+            thing = text[len("/forget"):].strip()
+            _remove_interest(profile, thing, name, lang, output_fn)
+            continue
         if text.lower() == "/whoami":
             _print_user_name(profile, lang, output_fn)
             continue
@@ -350,7 +360,17 @@ def run_chat(
         if _FOLLOW_UP_EVERY > 0 and exchanges % _FOLLOW_UP_EVERY == 0 \
                 and not reply.rstrip().endswith(("？", "?")):
             try:
-                question = persona.follow_up_question(level=level)
+                # 8 交換ごと（_FOLLOW_UP_EVERY の 2 倍）かつ趣味が記憶されていれば
+                # 趣味を引用した思い出し質問を優先する（level >= neutral のとき）
+                question = ""
+                recall_levels = {"neutral", "friendly", "close"}
+                if (exchanges % (_FOLLOW_UP_EVERY * 2) == 0
+                        and profile is not None
+                        and getattr(profile, "interests", [])
+                        and level in recall_levels):
+                    question = _interest_recall(profile, lang)
+                if not question:
+                    question = persona.follow_up_question(level=level)
             except Exception:  # pragma: no cover - defensive
                 question = ""
             if question:
@@ -358,6 +378,31 @@ def run_chat(
         _say(reply)
 
     return exchanges
+
+
+def _interest_recall(profile, lang: str = "ja") -> str:
+    """記憶した趣味のうちランダムな 1 件を引用した思い出し質問を返す。
+
+    趣味が無い / プロファイルが None の場合は空文字を返す。
+    """
+    import random
+    interests = getattr(profile, "interests", [])
+    if not interests:
+        return ""
+    item = random.choice(interests)
+    if lang == "en":
+        templates = [
+            f"Hey, you mentioned liking {item}! Any updates on that?",
+            f"Speaking of {item} — anything new there?",
+            f"So, still into {item}?",
+        ]
+    else:
+        templates = [
+            f"そういえば{item}が好きって言ってたよね。最近どう？",
+            f"{item}の話、もっと聞かせて？",
+            f"ねえ、{item}って最近どんな感じ？",
+        ]
+    return random.choice(templates)
 
 
 def _absence_message(mood, name: str, lang: str) -> str:  # name is kept for API compat
@@ -473,8 +518,70 @@ def _set_birthday(profile, new_bday: str, avatar_name: str, lang: str,
         output_fn(f"{avatar_name}: 覚えた、誕生日は{saved}だね。忘れないよ！")
 
 
+def _add_interest(profile, thing: str, avatar_name: str, lang: str,
+                  output_fn: Callable[[str], None]) -> None:
+    """ユーザーの趣味を追加して永続化する。"""
+    if profile is None:
+        output_fn("(プロファイルは利用できません)")
+        return
+    if not thing:
+        if lang == "en":
+            output_fn("Usage: /like <thing you enjoy>  e.g. /like anime")
+        else:
+            output_fn("使用方法: /like <好きなもの>  例: /like アニメ")
+        return
+    try:
+        saved = profile.add_interest(thing)
+        if saved and _profile_path is not None:
+            profile.save(_profile_path())
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(保存に失敗しました)")
+        return
+    if not saved:
+        if lang == "en":
+            output_fn(f"Couldn't save that — maybe the list is full (max 10)?")
+        else:
+            output_fn(f"うまく保存できなかったよ（上限10件かも？）")
+        return
+    if lang == "en":
+        output_fn(f"{avatar_name}: Oh, you like {saved}? I'll remember that!")
+    else:
+        output_fn(f"{avatar_name}: {saved}が好きなんだね！覚えておくよ。")
+
+
+def _remove_interest(profile, thing: str, avatar_name: str, lang: str,
+                     output_fn: Callable[[str], None]) -> None:
+    """ユーザーの趣味を削除して永続化する。"""
+    if profile is None:
+        output_fn("(プロファイルは利用できません)")
+        return
+    if not thing:
+        if lang == "en":
+            output_fn("Usage: /forget <thing>  — removes it from memory")
+        else:
+            output_fn("使用方法: /forget <覚えさせたもの>")
+        return
+    try:
+        removed = profile.remove_interest(thing)
+        if removed and _profile_path is not None:
+            profile.save(_profile_path())
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(削除に失敗しました)")
+        return
+    if removed:
+        if lang == "en":
+            output_fn(f"{avatar_name}: Got it, I'll forget about {thing}.")
+        else:
+            output_fn(f"{avatar_name}: わかった、{thing}のこと忘れておくね。")
+    else:
+        if lang == "en":
+            output_fn(f"I don't have '{thing}' in my memory.")
+        else:
+            output_fn(f"「{thing}」は覚えてないよ。")
+
+
 def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> None:
-    """現在記憶している呼び名・誕生日を表示する。"""
+    """現在記憶している呼び名・誕生日・趣味を表示する。"""
     if profile is None:
         output_fn("(プロファイルは利用できません)")
         return
@@ -494,6 +601,13 @@ def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> No
             output_fn(f"Your birthday: {bday}")
         else:
             output_fn(f"あなたの誕生日: {bday}")
+    interests = getattr(profile, "interests", [])
+    if interests:
+        joined = "、".join(interests) if lang != "en" else ", ".join(interests)
+        if lang == "en":
+            output_fn(f"Things you like: {joined}")
+        else:
+            output_fn(f"好きなもの: {joined}")
 
 
 def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:

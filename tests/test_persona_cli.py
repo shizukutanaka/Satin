@@ -608,6 +608,62 @@ class UserProfileIntegrationTests(unittest.TestCase):
         )
         self.assertTrue(any("Hi Sam!" in line for line in d.out))
 
+    def test_like_adds_interest(self):
+        prof = self._profile()
+        d = _Driver(["/like アニメ"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertIn("アニメ", prof.interests)
+        self.assertTrue(any("アニメ" in line for line in d.out))
+
+    def test_like_persists_to_disk(self):
+        prof = self._profile()
+        d = _Driver(["/like 音楽"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        loaded = self._up.UserProfile.load(self._ppath)
+        self.assertIn("音楽", loaded.interests)
+
+    def test_like_without_arg_shows_usage(self):
+        prof = self._profile()
+        d = _Driver(["/like"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("/like" in line for line in d.out))
+
+    def test_forget_removes_interest(self):
+        prof = self._profile(interests=["ゲーム"])
+        d = _Driver(["/forget ゲーム"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertNotIn("ゲーム", prof.interests)
+
+    def test_forget_nonexistent_shows_message(self):
+        prof = self._profile()
+        d = _Driver(["/forget xyz"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("xyz" in line for line in d.out))
+
+    def test_whoami_shows_interests(self):
+        prof = self._profile(interests=["アニメ", "ゲーム"])
+        d = _Driver(["/whoami"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("アニメ" in line for line in d.out))
+
 
 class MainEntryTests(unittest.TestCase):
     def _eof_input(self):

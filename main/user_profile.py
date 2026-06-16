@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import threading
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,10 @@ except Exception:  # pragma: no cover - defensive fallback
 
 # 名前が長すぎる/制御文字を含む入力を弾くための上限
 _MAX_NAME_LEN = 40
+# 保持する趣味・興味の最大件数
+_MAX_INTERESTS = 10
+# 1件あたりの趣味テキストの最大文字数
+_MAX_INTEREST_LEN = 30
 
 # 名前が未設定のときの中立的な呼びかけ（{user} プレースホルダのフォールバック）
 _NEUTRAL_ADDRESS = {"ja": "きみ", "en": "you"}
@@ -74,16 +78,35 @@ def _sanitize_name(name: Optional[str]) -> str:
     return s
 
 
+def _sanitize_interest(text: Optional[str]) -> str:
+    """趣味テキストを安全な 1 行文字列へ整える。空/長すぎる場合は空文字。"""
+    if not text:
+        return ""
+    s = str(text).replace("\r", " ").replace("\n", " ").strip()
+    s = "".join(ch if ch.isprintable() else " " for ch in s).strip()
+    if not s or len(s) > _MAX_INTEREST_LEN:
+        return ""
+    return s
+
+
 class UserProfile:
     """ユーザーの呼び名と任意メモを保持・永続化するクラス。"""
 
     def __init__(self, name: str = "", note: str = "",
-                 birthday: str = "", last_birthday_year: int = 0):
+                 birthday: str = "", last_birthday_year: int = 0,
+                 interests: Optional[List[str]] = None):
         self.name = _sanitize_name(name)
         self.note = _sanitize_name(note)
         # 誕生日（MM-DD、毎年巡る）と、最後に祝った年（重複祝い防止）
         self.birthday = _sanitize_birthday(birthday)
         self._last_birthday_year = int(last_birthday_year or 0)
+        # 趣味・好きなものリスト（最大 _MAX_INTERESTS 件）
+        self.interests: List[str] = []
+        for item in (interests or []):
+            s = _sanitize_interest(item)
+            if s and s not in self.interests:
+                self.interests.append(s)
+        self.interests = self.interests[:_MAX_INTERESTS]
 
     # ---- 状態参照 -------------------------------------------------------- #
     def has_name(self) -> bool:
@@ -91,6 +114,9 @@ class UserProfile:
 
     def has_birthday(self) -> bool:
         return bool(self.birthday)
+
+    def has_interests(self) -> bool:
+        return bool(self.interests)
 
     def address(self, lang: str = "ja") -> str:
         """呼びかけに使う文字列を返す。名前未設定なら中立的な代名詞。"""
@@ -114,12 +140,33 @@ class UserProfile:
         self.birthday = new
         return self.birthday
 
+    def add_interest(self, text: str) -> str:
+        """趣味を追加する。整形後の値を返す（無効なら空文字、上限超えでも空文字）。"""
+        s = _sanitize_interest(text)
+        if not s:
+            return ""
+        if s in self.interests:
+            return s
+        if len(self.interests) >= _MAX_INTERESTS:
+            return ""
+        self.interests.append(s)
+        return s
+
+    def remove_interest(self, text: str) -> bool:
+        """趣味を削除する。見つかれば True。"""
+        s = _sanitize_interest(text)
+        if s and s in self.interests:
+            self.interests.remove(s)
+            return True
+        return False
+
     def clear(self) -> None:
         """プロファイルを空にする（メモリ上のみ。削除は呼び出し側で）。"""
         self.name = ""
         self.note = ""
         self.birthday = ""
         self._last_birthday_year = 0
+        self.interests = []
 
     # ---- 永続化 ---------------------------------------------------------- #
     def to_dict(self) -> Dict:
@@ -128,6 +175,7 @@ class UserProfile:
             "note": self.note,
             "birthday": self.birthday,
             "last_birthday_year": self._last_birthday_year,
+            "interests": list(self.interests),
         }
 
     def save(self, path: str) -> bool:
@@ -150,11 +198,14 @@ class UserProfile:
     def from_dict(cls, data: Dict) -> "UserProfile":
         if not isinstance(data, dict):
             data = {}
+        raw_interests = data.get("interests", [])
+        interests = raw_interests if isinstance(raw_interests, list) else []
         return cls(
             name=data.get("name", ""),
             note=data.get("note", ""),
             birthday=data.get("birthday", ""),
             last_birthday_year=data.get("last_birthday_year", 0),
+            interests=interests,
         )
 
     @classmethod
