@@ -24,6 +24,7 @@ from mood import (  # noqa: E402
     affinity_level,
     check_level_milestone,
     check_confession_event,
+    check_hurt_event,
     get_mood_tracker,
     reset_mood_tracker,
 )
@@ -1170,6 +1171,51 @@ class InteractionMilestoneTests(unittest.TestCase):
 
     def test_returns_string_not_list(self):
         result = self._check(9, 10, lang="ja")
+        self.assertIsInstance(result, str)
+
+
+class HurtEventTests(unittest.TestCase):
+    """check_hurt_event() — fires when delta is below the hurt threshold."""
+
+    def test_no_hurt_for_zero_delta(self):
+        self.assertIsNone(check_hurt_event(0.0))
+
+    def test_no_hurt_for_small_negative(self):
+        self.assertIsNone(check_hurt_event(-1.0))
+
+    def test_no_hurt_exactly_at_threshold(self):
+        from mood import _HURT_THRESHOLD
+        self.assertIsNone(check_hurt_event(_HURT_THRESHOLD))
+
+    def test_hurt_fires_below_threshold(self):
+        from mood import _HURT_THRESHOLD
+        result = check_hurt_event(_HURT_THRESHOLD - 0.01)
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+    def test_hurt_fires_at_max_negative(self):
+        result = check_hurt_event(-10.0)
+        self.assertIsNotNone(result)
+
+    def test_hurt_for_positive_delta_returns_none(self):
+        self.assertIsNone(check_hurt_event(5.0))
+
+    def test_hurt_ja(self):
+        result = check_hurt_event(-8.0, lang="ja")
+        self.assertIsNotNone(result)
+        self.assertTrue(any(c in result for c in "あいうえおかきくけこさしすせそたちつてとなにぬねの"
+                                                  "はひふへほまみむめもやゆよらりるれろわをんー"))
+
+    def test_hurt_en(self):
+        result = check_hurt_event(-8.0, lang="en")
+        self.assertIsNotNone(result)
+        self.assertTrue(any(ord(c) < 128 and c.isalpha() for c in result))
+
+    def test_hurt_lang_fallback(self):
+        """Unknown lang falls back to ja messages (or en — just must not crash)."""
+        result = check_hurt_event(-8.0, lang="fr")
+        self.assertIsNotNone(result)
         self.assertIsInstance(result, str)
 
 

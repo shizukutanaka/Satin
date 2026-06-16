@@ -873,6 +873,94 @@ class InteractionMilestoneIntegrationTests(unittest.TestCase):
             self.assertNotIn(count, full)
 
 
+class HurtEventIntegrationTests(unittest.TestCase):
+    """run_chat() integrates hurt_event: rude input triggers emotional reaction."""
+
+    def _run(self, message, affinity=50.0, interactions=1):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=affinity, interactions=interactions,
+                              negative_delta=6.0)
+        outputs = []
+        it = iter([message, "/quit"])
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(it),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        return outputs, tracker
+
+    def _run_with_messages(self, messages, affinity=50.0, interactions=1):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=affinity, interactions=interactions,
+                              negative_delta=6.0)
+        outputs = []
+        it = iter(messages + ["/quit"])
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(it),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        return outputs, tracker
+
+    def test_rude_message_triggers_hurt_reply(self):
+        """Multiple negative keywords cause a large delta and trigger a hurt response."""
+        from mood import _HURT_THRESHOLD
+        # "嫌い うざい ばか" hits 3 negative words → delta = -3 * 6 = -18
+        # but capped at -10, which is below _HURT_THRESHOLD (-4)
+        outputs, tracker = self._run("嫌い うざい ばか", affinity=80.0)
+        full = " ".join(outputs)
+        # The reply should contain a hurt message, not the generic persona fallback
+        from mood import _HURT_MESSAGES
+        hurt_words = _HURT_MESSAGES["ja"]
+        self.assertTrue(
+            any(hw in full for hw in hurt_words),
+            f"Expected hurt message in output; got: {full!r}"
+        )
+
+    def test_mild_negative_does_not_trigger_hurt(self):
+        """A single negative keyword gives only a small delta — no hurt response."""
+        # "嫌い" alone → delta = -6, capped at -6; this IS below threshold (-4),
+        # so let's use a word that gives -4 exactly. But with delta_cap at 10,
+        # "嫌い" gives -6. So actually it SHOULD trigger hurt.
+        # Let me use a custom tracker with small negative_delta
+        from mood import MoodTracker, _HURT_THRESHOLD
+        tracker = MoodTracker(affinity=50.0, interactions=1,
+                              negative_delta=2.0)  # small delta: 1 word → -2 > -4
+        outputs = []
+        it = iter(["嫌い", "/quit"])
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(it),
+            output_fn=outputs.append,
+            greet=False,
+            mood=tracker,
+        )
+        full = " ".join(outputs)
+        from mood import _HURT_MESSAGES
+        hurt_words = _HURT_MESSAGES["ja"]
+        self.assertFalse(
+            any(hw in full for hw in hurt_words),
+            f"Expected NO hurt message for mild negative; got: {full!r}"
+        )
+
+    def test_hurt_reply_without_mood_no_crash(self):
+        """Without mood tracker, rude input produces normal response, no crash."""
+        outputs = []
+        it = iter(["嫌い うざい ばか", "/quit"])
+        persona_cli.run_chat(
+            persona=Persona.from_dict({"name": "T"}),
+            input_fn=lambda _: next(it),
+            output_fn=outputs.append,
+            greet=False,
+            mood=None,
+        )
+        self.assertTrue(any("T:" in o for o in outputs))
+
+
 class RitualEventTests(unittest.TestCase):
     """_detect_ritual_event() and its integration into run_chat()."""
 

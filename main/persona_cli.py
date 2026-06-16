@@ -46,6 +46,7 @@ try:
         check_confession_event as _check_confession_event,
         check_interaction_milestone as _check_interaction_milestone,
         check_daily_login as _check_daily_login,
+        check_hurt_event as _check_hurt_event,
         affinity_level,
         affinity_label as _affinity_label,
     )
@@ -58,6 +59,7 @@ except Exception:  # pragma: no cover - defensive
     _check_confession_event = None  # type: ignore
     _check_interaction_milestone = None  # type: ignore
     _check_daily_login = None  # type: ignore
+    _check_hurt_event = None  # type: ignore
     affinity_level = None  # type: ignore
     _affinity_label = None  # type: ignore
 
@@ -394,6 +396,7 @@ def run_chat(
 
         # 好感度を更新（指定時のみ）
         milestone_msg = ""
+        hurt_msg = ""
         if mood is not None:
             try:
                 before_affinity = mood.affinity
@@ -414,6 +417,10 @@ def run_chat(
                 ritual = _detect_ritual_event(text)
                 if ritual is not None:
                     mood.adjust(ritual[1])
+                # 傷つきイベント: 大きな好感度低下で通常応答を感情反応に差し替える
+                hurt_msg = ""
+                if _check_hurt_event is not None:
+                    hurt_msg = _check_hurt_event(raw_delta, lang=lang) or ""
                 after_affinity = mood.affinity
                 # 告白イベント（friendly→close の初回のみ）
                 if _check_confession_event is not None:
@@ -451,7 +458,11 @@ def run_chat(
 
         # 通常の会話 (好感度レベルがあれば mood-specific ルールを優先)
         level = mood.level if mood is not None else None
-        reply = respond_to(text, persona, conv_log, level=level)
+        # 傷つきイベント: 通常応答を上書き（マイルストーンは引き続き添付）
+        if hurt_msg:
+            reply = hurt_msg
+        else:
+            reply = respond_to(text, persona, conv_log, level=level)
         if milestone_msg:
             reply = (reply + " " + milestone_msg).strip() if reply else milestone_msg
         # 一問一答の回答を覚えたら、その確認をすぐ前置きして「ちゃんと聞いてる」を示す

@@ -769,6 +769,45 @@ def check_confession_event(
 
 
 # --------------------------------------------------------------------------- #
+# 傷つきイベント（Hurt event）
+# --------------------------------------------------------------------------- #
+# 1 メッセージで大きな好感度低下があったとき、通常応答を傷ついた反応に差し替える。
+# delta が _HURT_THRESHOLD を下回ったときのみ発火する。
+
+_HURT_THRESHOLD = -4.0
+
+_HURT_MESSAGES: Dict[str, List[str]] = {
+    "ja": [
+        "…ちょっと、それはひどいよ。",
+        "そんなこと言わないでよ…。",
+        "うぅ、なんかそれ、傷ついた…。",
+        "ねえ、もう少し優しくしてよ…。",
+    ],
+    "en": [
+        "…That really hurt, you know.",
+        "Please don't say things like that…",
+        "Ouch… that stings a little.",
+        "Hey… could you be a little kinder?",
+    ],
+}
+
+
+def check_hurt_event(delta: float, lang: str = "ja") -> Optional[str]:
+    """急激な好感度低下があったとき「傷ついた」反応文を返す。それ以外は None。
+
+    delta が _HURT_THRESHOLD（デフォルト -4.0）を下回る場合のみ発火する。
+    通常の軽微な否定語（-4.0 以上）は既存の返答フローで処理されるが、
+    大きなダメージを与えた場合はアバターが感情的に反応し、関係に重みを与える。
+    """
+    if delta >= _HURT_THRESHOLD:
+        return None
+    import random as _rnd
+    lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+    options = _HURT_MESSAGES.get(lang_key) or _HURT_MESSAGES["ja"]
+    return _rnd.choice(options)
+
+
+# --------------------------------------------------------------------------- #
 # 長期不在メッセージ
 # --------------------------------------------------------------------------- #
 
