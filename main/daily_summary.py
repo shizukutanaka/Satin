@@ -248,7 +248,7 @@ _GREETINGS: Dict[str, Dict] = {
         "few": "{total}回お話ししましたね。",
         "many": "たくさんお話ししました！{total}回も。",
         "affinity_up": "好感度が上がっています（+{delta:.1f}）。嬉しいです！",
-        "affinity_down": "好感度が少し下がりました（{delta:.1f}）。どうかしましたか？",
+        "affinity_down": "好感度が少し下がりました（-{delta:.1f}）。どうかしましたか？",
         "peak": "一番活発だった時間帯は{hour}時台でした。",
         "streak": "{days}日連続で会えて嬉しいです！",
         "yesterday_prefix": "昨日は",
@@ -259,7 +259,7 @@ _GREETINGS: Dict[str, Dict] = {
         "few": "we chatted {total} time(s).",
         "many": "we chatted a lot — {total} times!",
         "affinity_up": "Our bond is growing (+{delta:.1f})! That makes me happy.",
-        "affinity_down": "Our bond dropped a bit ({delta:.1f}). Is everything okay?",
+        "affinity_down": "Our bond dropped a bit (-{delta:.1f}). Is everything okay?",
         "peak": "You were most active around {hour}:00.",
         "streak": "{days} days in a row — I'm so glad!",
         "yesterday_prefix": "Yesterday, ",
@@ -279,6 +279,8 @@ def summary_greeting(
     データが無い場合はデフォルト文を返す。
     """
     lang_key = lang[:2] if lang[:2] in _GREETINGS else "en"
+    if lang_key != lang[:2]:
+        logger.debug("summary_greeting: unsupported lang %r, falling back to %r", lang, lang_key)
     msgs = _GREETINGS[lang_key]
 
     s = daily_summary(
@@ -309,7 +311,7 @@ def summary_greeting(
         if change > 0:
             parts.append(msgs["affinity_up"].format(delta=change))
         elif change < 0:
-            parts.append(msgs["affinity_down"].format(delta=change))
+            parts.append(msgs["affinity_down"].format(delta=abs(change)))
 
     # 連続記録は 2 日以上で、かつ「今日」のサマリーのときだけ祝う（現在進行中の
     # ストリークが意味を持つのは現時点なので、過去日サマリーでは出さない）。

@@ -517,6 +517,39 @@ class SummaryGreetingTests(unittest.TestCase):
         self.assertIsInstance(result, dict)
         self.assertIn("date", result)
 
+    def test_affinity_drop_shown_as_negative_magnitude(self):
+        """When affinity decreased, the displayed delta should be -X.X (not --X.X)."""
+        today = date.today()
+        today_str = today.isoformat()
+        yesterday_str = (today - __import__("datetime").timedelta(days=1)).isoformat()
+        mood_entries = [
+            {"date": yesterday_str, "affinity": 60.0},
+            {"date": today_str, "affinity": 54.0},
+        ]
+        _write_mood(self._mood_path, mood_entries)
+        result = summary_greeting(lang="en", **self._kwargs())
+        self.assertIn("-6.0", result, f"Expected '-6.0' not '--6.0'; got: {result}")
+        self.assertNotIn("--", result, f"Double-negative sign should not appear; got: {result}")
+
+    def test_affinity_rise_shown_as_positive_magnitude(self):
+        """When affinity increased, the displayed delta should be +X.X."""
+        today = date.today()
+        today_str = today.isoformat()
+        yesterday_str = (today - __import__("datetime").timedelta(days=1)).isoformat()
+        mood_entries = [
+            {"date": yesterday_str, "affinity": 50.0},
+            {"date": today_str, "affinity": 56.5},
+        ]
+        _write_mood(self._mood_path, mood_entries)
+        result = summary_greeting(lang="en", **self._kwargs())
+        self.assertIn("+6.5", result, f"Expected '+6.5' in output; got: {result}")
+
+    def test_unsupported_lang_falls_back_to_english(self):
+        """summary_greeting with unknown lang code returns a non-empty string (en fallback)."""
+        result = summary_greeting(lang="zh", **self._kwargs())
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
