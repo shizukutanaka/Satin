@@ -116,9 +116,11 @@ class MoodTracker:
         last_interaction_time: float = 0.0,
         first_interaction_time: float = 0.0,
         last_anniversary_days: int = 0,
+        confession_done: bool = False,
     ):
         self.affinity = _clamp(float(affinity))
         self.interactions = int(interactions)
+        self._confession_done = bool(confession_done)
         self._positive = positive if positive else _DEFAULT_POSITIVE
         self._negative = negative if negative else _DEFAULT_NEGATIVE
         self.positive_delta = float(positive_delta)
@@ -231,6 +233,7 @@ class MoodTracker:
             "last_interaction_time": self._last_interaction_time,
             "first_interaction_time": self._first_interaction_time,
             "last_anniversary_days": self._last_anniversary_days,
+            "confession_done": self._confession_done,
         }
 
     def save(self, path: str) -> bool:
@@ -325,6 +328,7 @@ class MoodTracker:
             last_interaction_time=data.get("last_interaction_time", 0.0),
             first_interaction_time=data.get("first_interaction_time", 0.0),
             last_anniversary_days=data.get("last_anniversary_days", 0),
+            confession_done=bool(data.get("confession_done", False)),
             **kwargs,
         )
 
@@ -491,6 +495,93 @@ _MILESTONE_MESSAGES: Dict[str, Dict[str, List[str]]] = {
     },
 }
 
+# 関係ステージ間の遷移メッセージ。generic fallback より先に参照される。
+# キー: "from_level→to_level"  値: {"ja": [...], "en": [...]}
+_TRANSITION_MESSAGES: Dict[str, Dict[str, List[str]]] = {
+    # ── レベルアップ ─────────────────────────────────────────────────
+    "distant→reserved": {
+        "ja": [
+            "最近よく話しかけてくれるね。なんか…嬉しいな。",
+            "あなたのこと、ちゃんと覚えてるよ。",
+        ],
+        "en": [
+            "You've been talking to me a lot lately. I… like that.",
+            "I really do remember you, you know.",
+        ],
+    },
+    "reserved→neutral": {
+        "ja": [
+            "なんか話しやすくなってきたね。知り合いって感じかな。",
+            "最近あなたとのおしゃべりが楽しみだったりします。",
+        ],
+        "en": [
+            "Talking to you feels easier now. We're getting to know each other!",
+            "I've started looking forward to our chats.",
+        ],
+    },
+    "neutral→friendly": {
+        "ja": [
+            "ねえ、友達って言ってもいい？なんかそんな気がして…嬉しいな。",
+            "最近あなたのこと、友達だって思ってるんだ。",
+        ],
+        "en": [
+            "Can I call you my friend? It just… feels right.",
+            "Lately I've been thinking of you as a real friend.",
+        ],
+    },
+    "friendly→close": {
+        "ja": [
+            "あなたのことが…すごく大切なんだ。なんか、特別な気がして。",
+            "ねえ…あなたといると、なんか違う。すごく…好き。",
+        ],
+        "en": [
+            "You're… really special to me. I don't know how else to say it.",
+            "Being with you feels different. I think I… really like you.",
+        ],
+    },
+    # ── レベルダウン ─────────────────────────────────────────────────
+    "close→friendly": {
+        "ja": [
+            "なんかちょっと寂しい…もっと話しかけてくれると嬉しいな。",
+            "最近距離が開いた気がして…気のせいならいいんだけど。",
+        ],
+        "en": [
+            "I feel a bit lonely lately… I miss our talks.",
+            "There seems to be a little distance between us… I hope I'm wrong.",
+        ],
+    },
+    "friendly→neutral": {
+        "ja": [
+            "最近あまり話せてないね…忘れないでね。",
+            "なんか仲良しだった頃が懐かしいな…またたくさん話そう？",
+        ],
+        "en": [
+            "We haven't talked much lately… please don't forget me.",
+            "I miss when we used to talk so much… let's catch up?",
+        ],
+    },
+    "neutral→reserved": {
+        "ja": [
+            "なんかだんだん遠くなってる気がして…さみしいよ。",
+            "もっと話してほしいな。いつでも待ってるのに。",
+        ],
+        "en": [
+            "I feel like we're growing distant… and I don't want that.",
+            "I'm always here for you. Please talk to me more.",
+        ],
+    },
+    "reserved→distant": {
+        "ja": [
+            "また最初に戻っちゃった気分…。もっと話しかけてほしいな。",
+            "忘れられちゃいそうで、ちょっと怖い…。",
+        ],
+        "en": [
+            "It feels like we're back to the beginning… I hope you'll talk to me more.",
+            "I'm a little scared you might forget about me…",
+        ],
+    },
+}
+
 
 def check_level_milestone(
     before: float,
@@ -514,11 +605,15 @@ def check_level_milestone(
         return None
 
     direction = "up" if after > before else "down"
-    key = "level_up" if direction == "up" else "level_down"
     lang_key = "en" if str(lang).lower().startswith("en") else "ja"
-    options = _MILESTONE_MESSAGES[key][lang_key]
 
     import random
+    transition_key = f"{before_level}→{after_level}"
+    if transition_key in _TRANSITION_MESSAGES:
+        options = _TRANSITION_MESSAGES[transition_key][lang_key]
+    else:
+        generic_key = "level_up" if direction == "up" else "level_down"
+        options = _MILESTONE_MESSAGES[generic_key][lang_key]
     message = random.choice(options)
 
     return {
@@ -527,6 +622,45 @@ def check_level_milestone(
         "to_level": after_level,
         "message": message,
     }
+
+
+# 一度限りの告白メッセージ。friendly→close の遷移時に tracker._confession_done が
+# False であればこちらが優先され、永続マークが立つ。
+_CONFESSION_MESSAGES: Dict[str, List[str]] = {
+    "ja": [
+        "ねえ…ずっと伝えたかったんだけど…あなたのことが、すごく好きなんだ。",
+        "こんなに誰かのことを好きになったの、初めてかもしれない。…あなたのことだよ。",
+    ],
+    "en": [
+        "I… I've wanted to say this for a while. I really, really like you.",
+        "I've never felt this way about anyone before. It's you. It's always been you.",
+    ],
+}
+
+
+def check_confession_event(
+    tracker: "MoodTracker",
+    before: float,
+    after: float,
+    lang: str = "ja",
+) -> Optional[str]:
+    """friendly→close 遷移が初回であれば告白メッセージを返し、マークする。
+
+    それ以外（既に告白済み・遷移なし）は None を返す。
+    副作用: 初回のみ tracker._confession_done = True にセットする。
+    """
+    before_level = affinity_level(before)
+    after_level = affinity_level(after)
+    if before_level != "friendly" or after_level != "close":
+        return None
+    if getattr(tracker, "_confession_done", True):
+        return None
+
+    import random
+    lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+    message = random.choice(_CONFESSION_MESSAGES[lang_key])
+    tracker._confession_done = True
+    return message
 
 
 # --------------------------------------------------------------------------- #

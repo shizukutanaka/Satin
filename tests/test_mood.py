@@ -23,6 +23,7 @@ from mood import (  # noqa: E402
     affinity_label,
     affinity_level,
     check_level_milestone,
+    check_confession_event,
     get_mood_tracker,
     reset_mood_tracker,
 )
@@ -548,6 +549,162 @@ class LevelMilestoneTests(unittest.TestCase):
         result = check_level_milestone(39.0, 41.0)  # reserved → neutral
         for key in ("direction", "from_level", "to_level", "message"):
             self.assertIn(key, result)
+
+
+class TransitionMessageTests(unittest.TestCase):
+    """stage-specific transition messages differ per from→to pair."""
+
+    def _msg(self, before, after, lang="ja"):
+        return check_level_milestone(before, after, lang=lang)["message"]
+
+    def _all_candidates(self, before, after, lang="ja"):
+        from mood import _TRANSITION_MESSAGES
+        fl = check_level_milestone(before, after, lang)["from_level"]
+        tl = check_level_milestone(before, after, lang)["to_level"]
+        key = f"{fl}→{tl}"
+        if key not in _TRANSITION_MESSAGES:
+            return None
+        return _TRANSITION_MESSAGES[key][lang]
+
+    def test_distant_to_reserved_ja(self):
+        candidates = self._all_candidates(19.0, 21.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(19.0, 21.0, "ja"), candidates)
+
+    def test_reserved_to_neutral_ja(self):
+        candidates = self._all_candidates(39.0, 41.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(39.0, 41.0, "ja"), candidates)
+
+    def test_neutral_to_friendly_ja(self):
+        candidates = self._all_candidates(59.0, 61.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(59.0, 61.0, "ja"), candidates)
+
+    def test_friendly_to_close_ja(self):
+        candidates = self._all_candidates(79.0, 81.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(79.0, 81.0, "ja"), candidates)
+
+    def test_close_to_friendly_down_ja(self):
+        candidates = self._all_candidates(81.0, 79.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(81.0, 79.0, "ja"), candidates)
+
+    def test_friendly_to_neutral_down_ja(self):
+        candidates = self._all_candidates(61.0, 59.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(61.0, 59.0, "ja"), candidates)
+
+    def test_neutral_to_reserved_down_ja(self):
+        candidates = self._all_candidates(41.0, 39.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(41.0, 39.0, "ja"), candidates)
+
+    def test_reserved_to_distant_down_ja(self):
+        candidates = self._all_candidates(21.0, 19.0, "ja")
+        self.assertIsNotNone(candidates)
+        self.assertIn(self._msg(21.0, 19.0, "ja"), candidates)
+
+    def test_all_transitions_en(self):
+        pairs = [(19.0, 21.0), (39.0, 41.0), (59.0, 61.0), (79.0, 81.0)]
+        for before, after in pairs:
+            msg = self._msg(before, after, "en")
+            candidates = self._all_candidates(before, after, "en")
+            self.assertIn(msg, candidates, f"{before}→{after} en not in candidates")
+
+    def test_multi_level_jump_uses_generic_fallback(self):
+        # distant→close: no specific entry; falls back to generic level_up
+        from mood import _MILESTONE_MESSAGES, _TRANSITION_MESSAGES
+        result = check_level_milestone(10.0, 85.0, lang="ja")
+        key = f"{result['from_level']}→{result['to_level']}"
+        if key not in _TRANSITION_MESSAGES:
+            self.assertIn(result["message"], _MILESTONE_MESSAGES["level_up"]["ja"])
+
+    def test_messages_are_nonempty_strings(self):
+        pairs = [(19.0, 21.0), (39.0, 41.0), (59.0, 61.0), (79.0, 81.0),
+                 (81.0, 79.0), (61.0, 59.0), (41.0, 39.0), (21.0, 19.0)]
+        for b, a in pairs:
+            self.assertGreater(len(self._msg(b, a)), 0, f"{b}→{a}")
+
+
+class ConfessionEventTests(unittest.TestCase):
+    """check_confession_event fires once on first friendly→close crossing."""
+
+    def _tracker(self, affinity=79.0, confession_done=False):
+        t = MoodTracker(affinity=affinity)
+        t._confession_done = confession_done
+        return t
+
+    def test_returns_none_when_not_friendly_to_close(self):
+        t = self._tracker(affinity=59.0)
+        self.assertIsNone(check_confession_event(t, 59.0, 61.0))  # neutral→friendly
+
+    def test_returns_none_when_already_done(self):
+        t = self._tracker(affinity=80.0, confession_done=True)
+        result = check_confession_event(t, 79.0, 81.0)
+        self.assertIsNone(result)
+
+    def test_returns_message_on_first_crossing_ja(self):
+        t = self._tracker(affinity=79.0)
+        from mood import _CONFESSION_MESSAGES
+        msg = check_confession_event(t, 79.0, 81.0, lang="ja")
+        self.assertIsNotNone(msg)
+        self.assertIn(msg, _CONFESSION_MESSAGES["ja"])
+
+    def test_returns_message_on_first_crossing_en(self):
+        t = self._tracker(affinity=79.0)
+        from mood import _CONFESSION_MESSAGES
+        msg = check_confession_event(t, 79.0, 81.0, lang="en")
+        self.assertIsNotNone(msg)
+        self.assertIn(msg, _CONFESSION_MESSAGES["en"])
+
+    def test_marks_confession_done_after_first_call(self):
+        t = self._tracker(affinity=79.0)
+        self.assertFalse(t._confession_done)
+        check_confession_event(t, 79.0, 81.0)
+        self.assertTrue(t._confession_done)
+
+    def test_returns_none_on_second_call(self):
+        t = self._tracker(affinity=79.0)
+        check_confession_event(t, 79.0, 81.0)
+        result = check_confession_event(t, 79.0, 81.0)
+        self.assertIsNone(result)
+
+    def test_returns_none_when_level_down(self):
+        t = self._tracker(affinity=81.0)
+        result = check_confession_event(t, 81.0, 79.0)  # close→friendly (down)
+        self.assertIsNone(result)
+
+    def test_confession_done_roundtrips(self):
+        import tempfile, os
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "mood.json")
+        try:
+            t = MoodTracker(affinity=80.0, confession_done=True)
+            t.save(path)
+            t2 = MoodTracker.load(path)
+            self.assertTrue(t2._confession_done)
+        finally:
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_confession_default_is_false(self):
+        t = MoodTracker(affinity=30.0)
+        self.assertFalse(t._confession_done)
+
+    def test_confession_done_false_roundtrips(self):
+        import tempfile, os
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "mood.json")
+        try:
+            t = MoodTracker(affinity=50.0, confession_done=False)
+            t.save(path)
+            t2 = MoodTracker.load(path)
+            self.assertFalse(t2._confession_done)
+        finally:
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
 
 
 class LevelTransitionHistoryTests(unittest.TestCase):

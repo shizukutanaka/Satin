@@ -40,6 +40,9 @@ try:
         absence_message as _absence_message_fn,
         anniversary_message as _anniversary_message_fn,
         check_level_milestone as _check_level_milestone,
+        check_confession_event as _check_confession_event,
+        affinity_level,
+        affinity_label as _affinity_label,
     )
 except Exception:  # pragma: no cover - defensive
     MoodTracker = None  # type: ignore
@@ -47,6 +50,9 @@ except Exception:  # pragma: no cover - defensive
     _absence_message_fn = None  # type: ignore
     _anniversary_message_fn = None  # type: ignore
     _check_level_milestone = None  # type: ignore
+    _check_confession_event = None  # type: ignore
+    affinity_level = None  # type: ignore
+    _affinity_label = None  # type: ignore
 
 try:
     from user_profile import (
@@ -268,10 +274,31 @@ def run_chat(
             try:
                 before_affinity = mood.affinity
                 mood.register(text)
-                if _check_level_milestone is not None:
-                    ms = _check_level_milestone(before_affinity, mood.affinity, lang=lang)
+                after_affinity = mood.affinity
+                # 告白イベント（friendly→close の初回のみ）
+                if _check_confession_event is not None:
+                    confession = _check_confession_event(mood, before_affinity, after_affinity, lang=lang)
+                    if confession:
+                        milestone_msg = confession
+                # 関係ステージ変化（告白でない場合は通常マイルストーン）
+                if not milestone_msg and _check_level_milestone is not None:
+                    ms = _check_level_milestone(before_affinity, after_affinity, lang=lang)
                     if ms and ms.get("message"):
                         milestone_msg = ms["message"]
+                # 視覚的バナー（ステージ変化時）
+                if milestone_msg and _affinity_label is not None and callable(affinity_level):
+                    new_level = affinity_level(after_affinity) if after_affinity != before_affinity else None
+                    if new_level and affinity_level(before_affinity) != new_level:
+                        fl = _affinity_label(before_affinity, lang)
+                        tl = _affinity_label(after_affinity, lang)
+                        arrow = "↑" if after_affinity > before_affinity else "↓"
+                        output_fn(f"── 関係: {fl} {arrow} {tl} ──")
+                # save confession_done persistently
+                if milestone_msg and getattr(mood, "_confession_done", False):
+                    try:
+                        mood.save(mood._path) if hasattr(mood, "_path") else None
+                    except Exception:
+                        pass
             except Exception:  # pragma: no cover - defensive
                 pass
 
