@@ -373,7 +373,9 @@ def run_chat(
             continue
         if text.lower().startswith("/gift"):
             item = text[len("/gift"):].strip()
-            _give_gift(item, mood, name, lang, output_fn)
+            gift_reply = _give_gift(item, mood, name, lang, output_fn)
+            if conv_log is not None and gift_reply:
+                conv_log.log_exchange(text, gift_reply)
             continue
         if text.lower().startswith("/like"):
             thing = text[len("/like"):].strip()
@@ -502,7 +504,8 @@ def run_chat(
         if hurt_msg:
             reply = hurt_msg
         else:
-            reply = respond_to(text, persona, conv_log, level=level)
+            # conv_log=None: suppress internal logging so we log the full composed reply below
+            reply = respond_to(text, persona, None, level=level)
         if milestone_msg:
             reply = (reply + " " + milestone_msg).strip() if reply else milestone_msg
         # 一問一答の回答を覚えたら、その確認をすぐ前置きして「ちゃんと聞いてる」を示す
@@ -540,6 +543,12 @@ def run_chat(
             if question:
                 reply = (reply + " " + question).strip() if reply else question
         _say(reply)
+        # Log the fully-composed reply (hurt override + milestone + ack + follow-up included)
+        if conv_log is not None:
+            try:
+                conv_log.log_exchange(text, reply)
+            except Exception:  # pragma: no cover - defensive: log failure must not stop chat
+                pass
 
     return exchanges
 
@@ -755,8 +764,11 @@ def _set_birthday(profile, new_bday: str, avatar_name: str, lang: str,
 
 
 def _give_gift(item: str, mood, avatar_name: str, lang: str,
-               output_fn: Callable[[str], None]) -> None:
-    """ユーザーがアバターにプレゼントを贈り、好感度ボーナスと反応台詞を返す。"""
+               output_fn: Callable[[str], None]) -> str:
+    """ユーザーがアバターにプレゼントを贈り、好感度ボーナスと反応台詞を返す。
+
+    アバターの返事テキストを返す（ログ用）。交換が発生しなかった場合は空文字。
+    """
     if not item or item.lower() == "list":
         if _gift_catalog_text is not None:
             cat = _gift_catalog_text(lang)
@@ -767,10 +779,10 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
             output_fn(cat)
         else:
             output_fn("使用方法: /gift <プレゼント>")
-        return
+        return ""
     if _lookup_gift is None:
         output_fn("(プレゼント機能は利用できません)")
-        return
+        return ""
     current_level = mood.level if mood is not None and hasattr(mood, "level") else None
     # デイリークールダウン: 同じギフトを今日すでに贈った場合は断る
     if mood is not None and _lookup_gift_key is not None:
@@ -781,7 +793,7 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
                 if not msg:
                     msg = "また明日ね。" if lang != "en" else "Come back tomorrow!"
                 output_fn(f"{avatar_name}: {msg}")
-                return
+                return ""
         except Exception:
             pass
     result = _lookup_gift(item, lang=lang, level=current_level)
@@ -790,13 +802,13 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
             output_fn(f"Hmm, I'm not sure about {item}. Try /gift list to see options.")
         else:
             output_fn(f"「{item}」はよく分からないな。/gift list で確認してね。")
-        return
+        return ""
     bonus, reply = result
     _say_fn = lambda text: output_fn(f"{avatar_name}: {text}")  # noqa: E731
     _say_fn(reply)
     if bonus <= 0.0:
         # min_level 未達: 断り文句のみ、ボーナス表示・保存なし
-        return
+        return reply
     # デイリームードの倍率を好感度ボーナスに適用（energetic は +20% など）
     effective_bonus = bonus
     if _get_daily_mood is not None and _mood_affinity_multiplier is not None:
@@ -829,6 +841,7 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
         output_fn(f"(+{int(effective_bonus)} affinity)")
     else:
         output_fn(f"（好感度 +{int(effective_bonus)}）")
+    return reply
 
 
 def _add_interest(profile, thing: str, avatar_name: str, lang: str,

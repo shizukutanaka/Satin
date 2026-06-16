@@ -1434,5 +1434,171 @@ class LikeForgetLoggingTests(unittest.TestCase):
             import shutil; shutil.rmtree(tmp, ignore_errors=True)
 
 
+class GiftLoggingTests(unittest.TestCase):
+    """/gift logs the avatar's reply exchange to conv_log."""
+
+    def _avatar_texts(self, log):
+        from conversation_log import EVENT_AVATAR_REPLY
+        return [e.get("details", {}).get("text", e.get("text", ""))
+                for e in log.recent(20)
+                if e.get("event_type") == EVENT_AVATAR_REPLY]
+
+    def _make_log(self):
+        import tempfile, os
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "c.jsonl")
+        from conversation_log import ConversationLog
+        return ConversationLog(path), tmp
+
+    def test_gift_logs_avatar_reply(self):
+        """/gift with a known item logs the avatar's reaction text."""
+        from unittest import mock
+        import persona_cli as pc
+
+        log, tmp = self._make_log()
+        try:
+            # Stub lookup_gift to return (bonus=5.0, reply="GIFT_REPLY")
+            with mock.patch.object(pc, "_lookup_gift",
+                                   lambda item, lang="ja", level=None: (5.0, "GIFT_REPLY")), \
+                 mock.patch.object(pc, "_lookup_gift_key",
+                                   lambda item, lang="ja": "flower"):
+                it = iter(["/gift flower", "/quit"])
+                pc.run_chat(
+                    persona=_persona(), conv_log=log,
+                    input_fn=lambda _: next(it),
+                    output_fn=lambda _: None, greet=False,
+                )
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("GIFT_REPLY" in t for t in avatar_texts),
+                            f"Expected GIFT_REPLY in log; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_gift_list_does_not_log(self):
+        """/gift list (catalog display) does not create a log entry."""
+        import persona_cli as pc
+        log, tmp = self._make_log()
+        try:
+            it = iter(["/gift list", "/quit"])
+            pc.run_chat(
+                persona=_persona(), conv_log=log,
+                input_fn=lambda _: next(it),
+                output_fn=lambda _: None, greet=False,
+            )
+            avatar_texts = self._avatar_texts(log)
+            self.assertEqual(avatar_texts, [])
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_gift_unknown_item_does_not_log(self):
+        """Unknown gift item shows an error but does not log a gift reply."""
+        from unittest import mock
+        import persona_cli as pc
+        log, tmp = self._make_log()
+        try:
+            with mock.patch.object(pc, "_lookup_gift",
+                                   lambda item, lang="ja", level=None: None):
+                it = iter(["/gift unknown_xyz", "/quit"])
+                pc.run_chat(
+                    persona=_persona(), conv_log=log,
+                    input_fn=lambda _: next(it),
+                    output_fn=lambda _: None, greet=False,
+                )
+            avatar_texts = self._avatar_texts(log)
+            self.assertEqual(avatar_texts, [])
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+
+class FullReplyLoggingTests(unittest.TestCase):
+    """run_chat() logs the fully-composed reply including hurt, milestone, and follow-up."""
+
+    def _avatar_texts(self, log):
+        from conversation_log import EVENT_AVATAR_REPLY
+        return [e.get("details", {}).get("text", e.get("text", ""))
+                for e in log.recent(20)
+                if e.get("event_type") == EVENT_AVATAR_REPLY]
+
+    def test_hurt_message_is_logged(self):
+        """When hurt_msg overrides the normal reply, the logged text is the hurt message."""
+        from unittest import mock
+        import persona_cli as pc
+        from mood import MoodTracker
+        import tempfile, os
+        from conversation_log import ConversationLog
+
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            tracker = MoodTracker(affinity=80.0, interactions=1, negative_delta=6.0)
+            # Stub _check_hurt_event to always return a fixed message
+            with mock.patch.object(pc, "_check_hurt_event",
+                                   lambda delta, lang="ja": "HURT_REPLY" if delta < -3 else ""):
+                it = iter(["嫌い うざい ばか", "/quit"])
+                pc.run_chat(
+                    persona=_persona(), conv_log=log, mood=tracker,
+                    input_fn=lambda _: next(it),
+                    output_fn=lambda _: None, greet=False,
+                )
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("HURT_REPLY" in t for t in avatar_texts),
+                            f"Expected HURT_REPLY in log; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_follow_up_question_included_in_log(self):
+        """Follow-up question appended to reply is captured in the logged text."""
+        from unittest import mock
+        import persona_cli as pc
+        import tempfile, os
+        from conversation_log import ConversationLog
+
+        data = {
+            "name": "Mimi", "default_lang": "en",
+            "responses": {"en": {
+                "rules": [{"keywords": ["hello"], "replies": ["HI"]}],
+                "fallback": ["FB"],
+                "follow_up": ["FOLLOW_Q"],
+            }},
+        }
+        persona = __import__("persona").Persona.from_dict(data, lang="en")
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            n = pc._FOLLOW_UP_EVERY
+            it = iter(["hello"] * n + ["/quit"])
+            pc.run_chat(
+                persona=persona, conv_log=log,
+                input_fn=lambda _: next(it),
+                output_fn=lambda _: None, greet=False,
+            )
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("FOLLOW_Q" in t for t in avatar_texts),
+                            f"Expected FOLLOW_Q in logged text; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_normal_reply_still_logged_without_extras(self):
+        """Without hurt/milestone/follow-up, the plain reply is still logged."""
+        import tempfile, os
+        from conversation_log import ConversationLog
+        import persona_cli as pc
+
+        tmp = tempfile.mkdtemp()
+        try:
+            log = ConversationLog(os.path.join(tmp, "c.jsonl"))
+            it = iter(["hello", "/quit"])
+            pc.run_chat(
+                persona=_persona(), conv_log=log,
+                input_fn=lambda _: next(it),
+                output_fn=lambda _: None, greet=False,
+            )
+            avatar_texts = self._avatar_texts(log)
+            self.assertTrue(any("HI" in t for t in avatar_texts),
+                            f"Expected HI in log; got: {avatar_texts}")
+        finally:
+            import shutil; shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
