@@ -86,10 +86,17 @@ except Exception:  # pragma: no cover - defensive
     _BIRTHDAY_BONUS = 0.0
 
 try:
-    from gifts import lookup_gift as _lookup_gift, gift_catalog_text as _gift_catalog_text
+    from gifts import (
+        lookup_gift as _lookup_gift,
+        lookup_gift_key as _lookup_gift_key,
+        gift_catalog_text as _gift_catalog_text,
+        cooldown_message as _gift_cooldown_message,
+    )
 except Exception:  # pragma: no cover - defensive
     _lookup_gift = None  # type: ignore
+    _lookup_gift_key = None  # type: ignore
     _gift_catalog_text = None  # type: ignore
+    _gift_cooldown_message = None  # type: ignore
 
 try:
     from daily_summary import summary_greeting as _summary_greeting
@@ -738,6 +745,18 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
         output_fn("(プレゼント機能は利用できません)")
         return
     current_level = mood.level if mood is not None and hasattr(mood, "level") else None
+    # デイリークールダウン: 同じギフトを今日すでに贈った場合は断る
+    if mood is not None and _lookup_gift_key is not None:
+        try:
+            gift_key = _lookup_gift_key(item, lang=lang)
+            if gift_key and hasattr(mood, "gift_received_today") and mood.gift_received_today(gift_key):
+                msg = _gift_cooldown_message(lang) if _gift_cooldown_message else ""
+                if not msg:
+                    msg = "また明日ね。" if lang != "en" else "Come back tomorrow!"
+                output_fn(f"{avatar_name}: {msg}")
+                return
+        except Exception:
+            pass
     result = _lookup_gift(item, lang=lang, level=current_level)
     if result is None:
         if lang == "en":
@@ -755,6 +774,14 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
     if mood is not None:
         try:
             mood.adjust(bonus)
+            # 受け取り記録（デイリークールダウン用）
+            if hasattr(mood, "record_gift") and _lookup_gift_key is not None:
+                try:
+                    gk = _lookup_gift_key(item, lang=lang)
+                    if gk:
+                        mood.record_gift(gk)
+                except Exception:
+                    pass
             try:
                 from mood import _default_mood_path, _default_mood_history_path
                 mood.save(_default_mood_path())

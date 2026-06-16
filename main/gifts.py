@@ -34,6 +34,11 @@ _DECLINE_MESSAGES = {
         "friendly": "…I'm touched, but this feels a little soon. Maybe when we're closer?",
     },
 }
+
+_COOLDOWN_MESSAGES = {
+    "ja": "もう今日はもらったよ？また明日ね。",
+    "en": "I already got one today! Come back tomorrow?",
+}
 _GIFTS: List[Dict] = [
     {
         "key": "flowers",
@@ -227,6 +232,33 @@ def lookup_gift(item: str, lang: str = "ja",
     replies = list(gift[lang_key]["replies"])
     reply = _pick(replies)
     return affinity_bonus, reply
+
+
+def lookup_gift_key(item: str, lang: str = "ja") -> Optional[str]:
+    """アイテム名から canonical gift キーを返す（一致しなければ None）。
+
+    クールダウンチェックなど、全属性ではなくキーだけが必要な場合に使う。
+    """
+    if not item:
+        return None
+    norm = item.strip().lower()
+    lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+    alias_map = _ALIAS_MAP_EN if lang_key == "en" else _ALIAS_MAP_JA
+    idx = alias_map.get(norm)
+    if idx is None:
+        for alias, i in alias_map.items():
+            if alias in norm or norm in alias:
+                idx = i
+                break
+    if idx is None:
+        return None
+    return str(_GIFTS[idx]["key"])
+
+
+def cooldown_message(lang: str = "ja") -> str:
+    """同じギフトを今日すでに受け取っているときの断り文句を返す。"""
+    lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+    return _COOLDOWN_MESSAGES.get(lang_key, _COOLDOWN_MESSAGES["ja"])
 
 
 def all_gift_keys() -> List[str]:

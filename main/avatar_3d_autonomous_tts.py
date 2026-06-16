@@ -65,11 +65,15 @@ except Exception:  # pragma: no cover - defensive
 try:
     from gifts import (  # noqa: E402
         lookup_gift as _lookup_gift_gui,
+        lookup_gift_key as _lookup_gift_key_gui,
         gift_catalog_text as _gift_catalog_text_gui,
+        cooldown_message as _gift_cooldown_message_gui,
     )
 except Exception:  # pragma: no cover - defensive
     _lookup_gift_gui = None
+    _lookup_gift_key_gui = None
     _gift_catalog_text_gui = None
+    _gift_cooldown_message_gui = None
 
 try:
     from break_reminder import maybe_start_break_reminder  # noqa: E402
@@ -343,6 +347,20 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             self._speak_reply("(プレゼント機能は利用できません)")
             return
 
+        # デイリークールダウン: 同じギフトを今日すでに贈った場合は断る
+        if get_mood_tracker is not None and _lookup_gift_key_gui is not None:
+            try:
+                tracker = get_mood_tracker()
+                gift_key = _lookup_gift_key_gui(item, lang=lang)
+                if (gift_key and hasattr(tracker, "gift_received_today")
+                        and tracker.gift_received_today(gift_key)):
+                    msg = (_gift_cooldown_message_gui(lang)
+                           if _gift_cooldown_message_gui else "また明日ね。")
+                    self._speak_reply(msg)
+                    return
+            except Exception as e:
+                logger.debug("ギフトクールダウンの確認に失敗（GUI）: %s", e)
+
         result = _lookup_gift_gui(item, lang=lang, level=level)
         if result is None:
             if lang == "en":
@@ -357,6 +375,14 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             try:
                 tracker = get_mood_tracker()
                 tracker.adjust(bonus)
+                # 受け取り記録（デイリークールダウン用）
+                if _lookup_gift_key_gui is not None and hasattr(tracker, "record_gift"):
+                    try:
+                        gk = _lookup_gift_key_gui(item, lang=lang)
+                        if gk:
+                            tracker.record_gift(gk)
+                    except Exception:
+                        pass
                 if _default_mood_path is not None:
                     tracker.save(_default_mood_path())
                 if _default_mood_history_path is not None:

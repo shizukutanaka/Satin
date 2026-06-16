@@ -340,5 +340,87 @@ class GiftPersistenceTests(unittest.TestCase):
         self.assertTrue(any("花" in l or "+" in l or "Avatar" in l for l in logs))
 
 
+class GiftCooldownTests(unittest.TestCase):
+    """MoodTracker gift_received_today / record_gift, and _give_gift() cooldown enforcement."""
+
+    def test_gift_received_today_false_initially(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        self.assertFalse(tracker.gift_received_today("flowers"))
+
+    def test_record_gift_marks_as_received(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        tracker.record_gift("flowers")
+        self.assertTrue(tracker.gift_received_today("flowers"))
+
+    def test_different_gift_not_marked(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        tracker.record_gift("flowers")
+        self.assertFalse(tracker.gift_received_today("chocolate"))
+
+    def test_gift_history_persists_in_to_dict(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        tracker.record_gift("cake")
+        d = tracker.to_dict()
+        self.assertIn("gift_history", d)
+        import datetime
+        self.assertEqual(d["gift_history"]["cake"], datetime.date.today().isoformat())
+
+    def test_gift_history_loads_from_dict(self):
+        from mood import MoodTracker
+        import datetime
+        today = datetime.date.today().isoformat()
+        tracker = MoodTracker.from_dict({"gift_history": {"flowers": today}})
+        self.assertTrue(tracker.gift_received_today("flowers"))
+
+    def test_old_date_in_history_is_not_today(self):
+        from mood import MoodTracker
+        tracker = MoodTracker.from_dict({"gift_history": {"flowers": "2000-01-01"}})
+        self.assertFalse(tracker.gift_received_today("flowers"))
+
+    def test_give_gift_cooldown_blocks_second_gift(self):
+        """Giving the same gift twice in one session should block the second."""
+        import persona_cli
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+        tracker = MoodTracker(affinity=50.0)
+        logs1 = []
+        logs2 = []
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"):
+            # First gift should succeed
+            try:
+                persona_cli._give_gift("花", tracker, "Avatar", "ja", logs1.append)
+            except Exception:
+                pass
+            # Second gift of the same item should be blocked by cooldown
+            persona_cli._give_gift("花", tracker, "Avatar", "ja", logs2.append)
+
+        # If cooldown fired, the second output should NOT include "+" bonus
+        # but SHOULD include some message from the avatar
+        self.assertTrue(len(logs2) > 0)
+        second_output = " ".join(logs2)
+        self.assertNotIn("+", second_output, "Cooldown should prevent bonus on repeat gift")
+
+    def test_lookup_gift_key_returns_canonical_key(self):
+        from gifts import lookup_gift_key
+        self.assertEqual(lookup_gift_key("花", lang="ja"), "flowers")
+        self.assertEqual(lookup_gift_key("flowers", lang="en"), "flowers")
+        self.assertEqual(lookup_gift_key("チョコ", lang="ja"), "chocolate")
+
+    def test_lookup_gift_key_unknown_returns_none(self):
+        from gifts import lookup_gift_key
+        self.assertIsNone(lookup_gift_key("xyz_unknown_xyzzy", lang="ja"))
+
+    def test_cooldown_message_nonempty(self):
+        from gifts import cooldown_message
+        self.assertGreater(len(cooldown_message("ja")), 0)
+        self.assertGreater(len(cooldown_message("en")), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

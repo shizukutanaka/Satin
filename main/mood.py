@@ -119,6 +119,7 @@ class MoodTracker:
         confession_done: bool = False,
         last_login_date: str = "",
         login_streak: int = 0,
+        gift_history: Optional[Dict[str, str]] = None,
     ):
         self.affinity = _clamp(float(affinity))
         self.interactions = int(interactions)
@@ -126,6 +127,10 @@ class MoodTracker:
         # デイリーログイン（最後にログインした日付 YYYY-MM-DD と連続日数）
         self._last_login_date = str(last_login_date or "")
         self._login_streak = int(login_streak or 0)
+        # ギフト履歴: gift_key → 最後に受け取った日付 (YYYY-MM-DD)
+        self._gift_history: Dict[str, str] = (
+            dict(gift_history) if isinstance(gift_history, dict) else {}
+        )
         self._positive = positive if positive else _DEFAULT_POSITIVE
         self._negative = negative if negative else _DEFAULT_NEGATIVE
         self.positive_delta = float(positive_delta)
@@ -231,6 +236,17 @@ class MoodTracker:
         return delta
 
     # ---- 永続化 ---------------------------------------------------------- #
+    def gift_received_today(self, gift_key: str) -> bool:
+        """今日すでに gift_key のプレゼントを受け取っているか判定する。"""
+        import datetime
+        today = datetime.date.today().isoformat()
+        return self._gift_history.get(str(gift_key)) == today
+
+    def record_gift(self, gift_key: str) -> None:
+        """gift_key のプレゼントを今日受け取ったとして記録する。"""
+        import datetime
+        self._gift_history[str(gift_key)] = datetime.date.today().isoformat()
+
     def to_dict(self) -> Dict:
         return {
             "affinity": self.affinity,
@@ -241,6 +257,7 @@ class MoodTracker:
             "confession_done": self._confession_done,
             "last_login_date": self._last_login_date,
             "login_streak": self._login_streak,
+            "gift_history": dict(self._gift_history),
         }
 
     def save(self, path: str) -> bool:
@@ -329,6 +346,7 @@ class MoodTracker:
     def from_dict(cls, data: Dict, **kwargs) -> "MoodTracker":
         if not isinstance(data, dict):
             data = {}
+        raw_gh = data.get("gift_history", {})
         return cls(
             affinity=data.get("affinity", AFFINITY_START),
             interactions=data.get("interactions", 0),
@@ -338,6 +356,7 @@ class MoodTracker:
             confession_done=bool(data.get("confession_done", False)),
             last_login_date=data.get("last_login_date", ""),
             login_streak=data.get("login_streak", 0),
+            gift_history=raw_gh if isinstance(raw_gh, dict) else {},
             **kwargs,
         )
 
