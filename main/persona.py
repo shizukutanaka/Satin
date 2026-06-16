@@ -311,13 +311,21 @@ class Persona:
         fallback = list(block.get("fallback") or [])
 
         # 好感度レベル専用ルールを先に評価
+        level_fallback: list = []
         if level:
             by_affinity = block.get("respond_by_affinity") or {}
             level_rules = by_affinity.get(level) or []
             for idx, rule in enumerate(level_rules):
                 if not isinstance(rule, dict):
                     continue
-                for kw in rule.get("keywords") or []:
+                keywords = rule.get("keywords")
+                if not keywords:
+                    # keywords なし = レベル専用 fallback エントリ
+                    fb = list(rule.get("fallback") or [])
+                    if fb:
+                        level_fallback.extend(fb)
+                    continue
+                for kw in keywords:
                     if kw and str(kw).strip().lower() in norm:
                         replies = list(rule.get("replies") or [])
                         if replies:
@@ -335,6 +343,10 @@ class Persona:
                     if replies:
                         # ルールごとに直前重複を避ける（キーはルール順インデックス）
                         return self._pick(f"respond:{lang or self.lang}:rule:{idx}", replies)
+        # レベル専用 fallback → グローバル fallback の順でフォールバック
+        if level_fallback:
+            return self._pick(f"respond_affinity:{level}:{lang or self.lang}:fallback",
+                              level_fallback)
         if fallback:
             return self._pick(f"respond:{lang or self.lang}:fallback", fallback)
         return ""

@@ -353,6 +353,77 @@ class RespondWithLevelTests(unittest.TestCase):
         # close reply should differ from the generic one
         self.assertNotEqual(close_reply, generic_reply)
 
+    def test_bundled_config_level_specific_fallback(self):
+        """config/persona.json level-specific fallbacks differ across levels."""
+        repo_cfg = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "persona.json",
+        )
+        p_close = Persona.load(config_path=repo_cfg, lang="ja")
+        p_distant = Persona.load(config_path=repo_cfg, lang="ja")
+        # "今日映画を見た" matches no keyword — exercises level fallback
+        r_close = p_close.respond("今日映画を見た", level="close")
+        r_distant = p_distant.respond("今日映画を見た", level="distant")
+        self.assertTrue(r_close, "close level fallback should return non-empty")
+        self.assertTrue(r_distant, "distant level fallback should return non-empty")
+        self.assertNotEqual(r_close, r_distant,
+                            "close and distant fallbacks should produce different text")
+
+
+class PerLevelFallbackTests(unittest.TestCase):
+    """respond() picks per-level fallback before global fallback."""
+
+    def _persona_with_level_fb(self):
+        data = {
+            "default_lang": "en",
+            "responses": {
+                "en": {
+                    "rules": [{"keywords": ["generic"], "replies": ["GENERIC_RULE"]}],
+                    "fallback": ["GLOBAL_FB"],
+                    "respond_by_affinity": {
+                        "close": [
+                            {"keywords": ["hello"], "replies": ["CLOSE_HELLO"]},
+                            {"fallback": ["CLOSE_FB_1", "CLOSE_FB_2"]},
+                        ],
+                        "friendly": [
+                            {"fallback": ["FRIENDLY_FB"]},
+                        ],
+                    },
+                },
+            },
+        }
+        return Persona.from_dict(data, lang="en")
+
+    def test_level_fallback_used_when_no_keyword_match(self):
+        p = self._persona_with_level_fb()
+        result = p.respond("something random", level="close")
+        self.assertIn(result, ["CLOSE_FB_1", "CLOSE_FB_2"])
+
+    def test_level_fallback_not_used_when_keyword_matches(self):
+        p = self._persona_with_level_fb()
+        self.assertEqual(p.respond("hello", level="close"), "CLOSE_HELLO")
+
+    def test_level_fallback_friendly(self):
+        p = self._persona_with_level_fb()
+        self.assertEqual(p.respond("unknown", level="friendly"), "FRIENDLY_FB")
+
+    def test_global_fallback_used_when_no_level_fallback(self):
+        p = self._persona_with_level_fb()
+        # level="distant" has no rules/fallback → global fallback
+        result = p.respond("xyz", level="distant")
+        self.assertEqual(result, "GLOBAL_FB")
+
+    def test_global_fallback_used_when_no_level(self):
+        p = self._persona_with_level_fb()
+        result = p.respond("xyz")
+        self.assertEqual(result, "GLOBAL_FB")
+
+    def test_level_fallback_generic_rule_still_checked(self):
+        p = self._persona_with_level_fb()
+        # "generic" matches the top-level rule, not the level fallback
+        result = p.respond("generic", level="close")
+        self.assertEqual(result, "GENERIC_RULE")
+
 
 class FollowUpQuestionTests(unittest.TestCase):
     """persona.follow_up_question() returns curiosity prompts, level-gated."""

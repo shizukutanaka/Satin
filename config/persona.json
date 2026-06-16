@@ -215,64 +215,211 @@
     "ja": {
       "rules": [
         {
-          "keywords": ["こんにちは", "こんばんは", "おはよう", "やあ", "ハロー", "やほ"],
-          "replies": ["こんにちは！会えてうれしいな。", "やっほー！元気だった？", "来てくれてよかった！"]
+          "keywords": [
+            "こんにちは",
+            "こんばんは",
+            "おはよう",
+            "やあ",
+            "ハロー",
+            "やほ"
+          ],
+          "replies": [
+            "こんにちは！会えてうれしいな。",
+            "やっほー！元気だった？",
+            "来てくれてよかった！"
+          ]
         },
         {
-          "keywords": ["元気", "調子はどう", "調子どう", "体調"],
-          "replies": ["元気だよ！あなたは？", "ばっちり！今日も走るよ。", "元気元気！ありがとう。"]
+          "keywords": [
+            "元気",
+            "調子はどう",
+            "調子どう",
+            "体調"
+          ],
+          "replies": [
+            "元気だよ！あなたは？",
+            "ばっちり！今日も走るよ。",
+            "元気元気！ありがとう。"
+          ]
         },
         {
-          "keywords": ["かわいい", "可愛い", "大好き", "好きだよ", "好き"],
-          "replies": ["えへへ、ありがとう！", "うれしいこと言ってくれるね。", "そう言ってもらえると元気出る！"]
+          "keywords": [
+            "かわいい",
+            "可愛い",
+            "大好き",
+            "好きだよ",
+            "好き"
+          ],
+          "replies": [
+            "えへへ、ありがとう！",
+            "うれしいこと言ってくれるね。",
+            "そう言ってもらえると元気出る！"
+          ]
         },
         {
-          "keywords": ["ありがとう", "感謝", "助かった", "ありがと"],
-          "replies": ["どういたしまして！", "お役に立てたならよかった。", "こちらこそ！"]
+          "keywords": [
+            "ありがとう",
+            "感謝",
+            "助かった",
+            "ありがと"
+          ],
+          "replies": [
+            "どういたしまして！",
+            "お役に立てたならよかった。",
+            "こちらこそ！"
+          ]
         },
         {
-          "keywords": ["さようなら", "ばいばい", "またね", "おやすみ", "バイバイ"],
-          "replies": ["またね！いつでも来てね。", "ばいばい、気をつけてね。", "おやすみ！ゆっくりしてね。"]
+          "keywords": [
+            "さようなら",
+            "ばいばい",
+            "またね",
+            "おやすみ",
+            "バイバイ"
+          ],
+          "replies": [
+            "またね！いつでも来てね。",
+            "ばいばい、気をつけてね。",
+            "おやすみ！ゆっくりしてね。"
+          ]
         },
         {
-          "keywords": ["疲れた", "つかれた", "しんどい", "眠い", "だるい"],
-          "replies": ["無理しないでね。少し休もう？", "ひと息つくのも大事だよ。", "ゆっくりしてね。そばにいるよ。"]
+          "keywords": [
+            "疲れた",
+            "つかれた",
+            "しんどい",
+            "眠い",
+            "だるい"
+          ],
+          "replies": [
+            "無理しないでね。少し休もう？",
+            "ひと息つくのも大事だよ。",
+            "ゆっくりしてね。そばにいるよ。"
+          ]
         },
         {
-          "keywords": ["天気", "晴れ", "雨", "曇り", "雪"],
-          "replies": ["今日はどんな空かな？", "お天気の話、いいね。", "天気がよければ一緒に走ろう！"]
+          "keywords": [
+            "天気",
+            "晴れ",
+            "雨",
+            "曇り",
+            "雪"
+          ],
+          "replies": [
+            "今日はどんな空かな？",
+            "お天気の話、いいね。",
+            "天気がよければ一緒に走ろう！"
+          ]
         },
         {
-          "keywords": ["嬉しい", "うれしい", "楽しい", "たのしい", "幸せ", "しあわせ"],
-          "replies": ["よかった！私もうれしくなっちゃう。", "その笑顔が見たかった！", "一緒に喜ぼう！"]
+          "keywords": [
+            "嬉しい",
+            "うれしい",
+            "楽しい",
+            "たのしい",
+            "幸せ",
+            "しあわせ"
+          ],
+          "replies": [
+            "よかった！私もうれしくなっちゃう。",
+            "その笑顔が見たかった！",
+            "一緒に喜ぼう！"
+          ]
         },
         {
-          "keywords": ["悲しい", "かなしい", "つらい", "落ち込む", "憂鬱"],
-          "replies": ["そばにいるよ。一人じゃないからね。", "話してくれてありがとう。", "大丈夫？なんかできることあれば言って。"]
+          "keywords": [
+            "悲しい",
+            "かなしい",
+            "つらい",
+            "落ち込む",
+            "憂鬱"
+          ],
+          "replies": [
+            "そばにいるよ。一人じゃないからね。",
+            "話してくれてありがとう。",
+            "大丈夫？なんかできることあれば言って。"
+          ]
         },
         {
-          "keywords": ["ごめん", "すまない", "申し訳", "悪かった"],
-          "replies": ["気にしないで！大丈夫だよ。", "ありがとう、でも気にしすぎないでね。"]
+          "keywords": [
+            "ごめん",
+            "すまない",
+            "申し訳",
+            "悪かった"
+          ],
+          "replies": [
+            "気にしないで！大丈夫だよ。",
+            "ありがとう、でも気にしすぎないでね。"
+          ]
         },
         {
-          "keywords": ["ひま", "暇", "することない", "退屈"],
-          "replies": ["じゃあ一緒に遊ぼう！", "一緒にお話しようよ！", "暇なら私のそばにいてよ！"]
+          "keywords": [
+            "ひま",
+            "暇",
+            "することない",
+            "退屈"
+          ],
+          "replies": [
+            "じゃあ一緒に遊ぼう！",
+            "一緒にお話しようよ！",
+            "暇なら私のそばにいてよ！"
+          ]
         },
         {
-          "keywords": ["ご飯", "食事", "ランチ", "夕食", "朝食", "おやつ", "食べた"],
-          "replies": ["美味しいものは食べた？", "ご飯ちゃんと食べてね！", "何食べたの？聞かせて！"]
+          "keywords": [
+            "ご飯",
+            "食事",
+            "ランチ",
+            "夕食",
+            "朝食",
+            "おやつ",
+            "食べた"
+          ],
+          "replies": [
+            "美味しいものは食べた？",
+            "ご飯ちゃんと食べてね！",
+            "何食べたの？聞かせて！"
+          ]
         },
         {
-          "keywords": ["音楽", "歌", "曲", "ミュージック"],
-          "replies": ["音楽好きなんだ！何が好き？", "素敵な趣味だね。", "一緒に聴きたいな。"]
+          "keywords": [
+            "音楽",
+            "歌",
+            "曲",
+            "ミュージック"
+          ],
+          "replies": [
+            "音楽好きなんだ！何が好き？",
+            "素敵な趣味だね。",
+            "一緒に聴きたいな。"
+          ]
         },
         {
-          "keywords": ["ゲーム", "ゲームする", "プレイ", "遊んでる"],
-          "replies": ["ゲームいいね！どんなやつ？", "楽しそう！教えて。", "一緒に遊べたらいいな。"]
+          "keywords": [
+            "ゲーム",
+            "ゲームする",
+            "プレイ",
+            "遊んでる"
+          ],
+          "replies": [
+            "ゲームいいね！どんなやつ？",
+            "楽しそう！教えて。",
+            "一緒に遊べたらいいな。"
+          ]
         },
         {
-          "keywords": ["仕事", "勉強", "宿題", "勉強中", "作業"],
-          "replies": ["頑張ってるんだね！応援してる。", "無理しすぎないでね。", "一段落したら話しかけてね。"]
+          "keywords": [
+            "仕事",
+            "勉強",
+            "宿題",
+            "勉強中",
+            "作業"
+          ],
+          "replies": [
+            "頑張ってるんだね！応援してる。",
+            "無理しすぎないでね。",
+            "一段落したら話しかけてね。"
+          ]
         }
       ],
       "fallback": [
@@ -300,64 +447,185 @@
       "respond_by_affinity": {
         "distant": [
           {
-            "keywords": ["こんにちは", "おはよう", "やあ", "ハロー"],
-            "replies": ["…どうも。", "あ、そうですか。"]
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ",
+              "ハロー"
+            ],
+            "replies": [
+              "…どうも。",
+              "あ、そうですか。"
+            ]
           },
           {
-            "keywords": ["元気", "調子"],
-            "replies": ["…まあ、普通です。"]
+            "keywords": [
+              "元気",
+              "調子"
+            ],
+            "replies": [
+              "…まあ、普通です。"
+            ]
+          },
+          {
+            "fallback": [
+              "…そうですか。",
+              "なるほど…。",
+              "そうなんですね。"
+            ]
           }
         ],
         "reserved": [
           {
-            "keywords": ["こんにちは", "おはよう", "やあ"],
-            "replies": ["こんにちは。", "どうも。"]
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ"
+            ],
+            "replies": [
+              "こんにちは。",
+              "どうも。"
+            ]
           },
           {
-            "keywords": ["疲れた", "つかれた"],
-            "replies": ["そうですか。ゆっくりしてください。"]
+            "keywords": [
+              "疲れた",
+              "つかれた"
+            ],
+            "replies": [
+              "そうですか。ゆっくりしてください。"
+            ]
+          },
+          {
+            "fallback": [
+              "そうなんですね。",
+              "なるほど。聞かせてくれてありがとう。",
+              "そうですか…。"
+            ]
           }
         ],
         "neutral": [
           {
-            "keywords": ["こんにちは", "おはよう", "やあ"],
-            "replies": ["こんにちは！来たね。", "やあ！元気だった？"]
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ"
+            ],
+            "replies": [
+              "こんにちは！来たね。",
+              "やあ！元気だった？"
+            ]
           },
           {
-            "keywords": ["ありがとう"],
-            "replies": ["どういたしまして！", "いつでも言ってね。"]
+            "keywords": [
+              "ありがとう"
+            ],
+            "replies": [
+              "どういたしまして！",
+              "いつでも言ってね。"
+            ]
+          },
+          {
+            "fallback": [
+              "うんうん、そうなんだ。",
+              "へえ、それは興味深い！",
+              "そっか、教えてくれてありがとう。"
+            ]
           }
         ],
         "friendly": [
           {
-            "keywords": ["こんにちは", "おはよう", "やあ"],
-            "replies": ["来てくれた！うれしいな。", "待ってたよ！元気だった？"]
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ"
+            ],
+            "replies": [
+              "来てくれた！うれしいな。",
+              "待ってたよ！元気だった？"
+            ]
           },
           {
-            "keywords": ["ありがとう", "感謝"],
-            "replies": ["えへへ、喜んでもらえてよかった！", "いつもありがとうね。"]
+            "keywords": [
+              "ありがとう",
+              "感謝"
+            ],
+            "replies": [
+              "えへへ、喜んでもらえてよかった！",
+              "いつもありがとうね。"
+            ]
           },
           {
-            "keywords": ["疲れた", "つかれた"],
-            "replies": ["お疲れ！そばにいるよ。", "ゆっくり休んでね。私もここにいる。"]
+            "keywords": [
+              "疲れた",
+              "つかれた"
+            ],
+            "replies": [
+              "お疲れ！そばにいるよ。",
+              "ゆっくり休んでね。私もここにいる。"
+            ]
+          },
+          {
+            "fallback": [
+              "うんうん！もっと教えて？",
+              "そうなんだ！なんか楽しそう！",
+              "へえ、それ気になる！続きを聞かせて。"
+            ]
           }
         ],
         "close": [
           {
-            "keywords": ["こんにちは", "おはよう", "やあ", "きた", "来た"],
-            "replies": ["やっと来てくれた！会いたかったよ！", "おかえり！ずっと待ってたんだよ？", "やっと来た！もう、寂しかったよ！"]
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ",
+              "きた",
+              "来た"
+            ],
+            "replies": [
+              "やっと来てくれた！会いたかったよ！",
+              "おかえり！ずっと待ってたんだよ？",
+              "やっと来た！もう、寂しかったよ！"
+            ]
           },
           {
-            "keywords": ["ありがとう", "感謝"],
-            "replies": ["えへへ、こちらこそ！いつもありがとうね。", "喜んでもらえてよかった！大好きだよ。"]
+            "keywords": [
+              "ありがとう",
+              "感謝"
+            ],
+            "replies": [
+              "えへへ、こちらこそ！いつもありがとうね。",
+              "喜んでもらえてよかった！大好きだよ。"
+            ]
           },
           {
-            "keywords": ["疲れた", "つかれた", "しんどい"],
-            "replies": ["お疲れ！ゆっくり休んでね。そばにいるから。", "つらかったね。今日は一緒にいよう。"]
+            "keywords": [
+              "疲れた",
+              "つかれた",
+              "しんどい"
+            ],
+            "replies": [
+              "お疲れ！ゆっくり休んでね。そばにいるから。",
+              "つらかったね。今日は一緒にいよう。"
+            ]
           },
           {
-            "keywords": ["さようなら", "ばいばい", "またね"],
-            "replies": ["もう行くの…？また来てね！待ってるから。", "ばいばい！早く戻ってきてね。"]
+            "keywords": [
+              "さようなら",
+              "ばいばい",
+              "またね"
+            ],
+            "replies": [
+              "もう行くの…？また来てね！待ってるから。",
+              "ばいばい！早く戻ってきてね。"
+            ]
+          },
+          {
+            "fallback": [
+              "もっと話して！全部聞きたいな。",
+              "そっか…うんうん。あなたの話いつも楽しい。",
+              "なんか、あなたといると時間があっという間だよ。"
+            ]
           }
         ]
       }
@@ -365,64 +633,207 @@
     "en": {
       "rules": [
         {
-          "keywords": ["hello", "good morning", "good evening", "hi there", "hey there", "howdy"],
-          "replies": ["Hello! Great to see you.", "Hey there! How have you been?", "Hi! I'm glad you're here!"]
+          "keywords": [
+            "hello",
+            "good morning",
+            "good evening",
+            "hi there",
+            "hey there",
+            "howdy"
+          ],
+          "replies": [
+            "Hello! Great to see you.",
+            "Hey there! How have you been?",
+            "Hi! I'm glad you're here!"
+          ]
         },
         {
-          "keywords": ["how are you", "how's it going", "how are u", "you doing"],
-          "replies": ["I'm great! How about you?", "Feeling good and ready to run!", "All good! Thanks for asking."]
+          "keywords": [
+            "how are you",
+            "how's it going",
+            "how are u",
+            "you doing"
+          ],
+          "replies": [
+            "I'm great! How about you?",
+            "Feeling good and ready to run!",
+            "All good! Thanks for asking."
+          ]
         },
         {
-          "keywords": ["cute", "love you", "like you", "adorable", "i love"],
-          "replies": ["Aw, thank you!", "You're so kind to say that.", "That really made me happy!"]
+          "keywords": [
+            "cute",
+            "love you",
+            "like you",
+            "adorable",
+            "i love"
+          ],
+          "replies": [
+            "Aw, thank you!",
+            "You're so kind to say that.",
+            "That really made me happy!"
+          ]
         },
         {
-          "keywords": ["thank you", "thanks", "appreciate"],
-          "replies": ["You're welcome!", "Happy to help!", "Anytime!"]
+          "keywords": [
+            "thank you",
+            "thanks",
+            "appreciate"
+          ],
+          "replies": [
+            "You're welcome!",
+            "Happy to help!",
+            "Anytime!"
+          ]
         },
         {
-          "keywords": ["goodbye", "bye bye", "see you", "good night", "later"],
-          "replies": ["See you! Come back anytime.", "Bye, take care!", "Good night! Rest well."]
+          "keywords": [
+            "goodbye",
+            "bye bye",
+            "see you",
+            "good night",
+            "later"
+          ],
+          "replies": [
+            "See you! Come back anytime.",
+            "Bye, take care!",
+            "Good night! Rest well."
+          ]
         },
         {
-          "keywords": ["tired", "exhausted", "sleepy", "take a rest", "worn out"],
-          "replies": ["Don't push yourself. Let's rest a bit.", "Taking a breather is important too.", "I'll stay by your side, so rest up."]
+          "keywords": [
+            "tired",
+            "exhausted",
+            "sleepy",
+            "take a rest",
+            "worn out"
+          ],
+          "replies": [
+            "Don't push yourself. Let's rest a bit.",
+            "Taking a breather is important too.",
+            "I'll stay by your side, so rest up."
+          ]
         },
         {
-          "keywords": ["weather", "sunny", "rainy", "cloudy", "snowing"],
-          "replies": ["I wonder what the sky looks like today.", "Hope the weather is nice for you!", "Good weather means let's go run!"]
+          "keywords": [
+            "weather",
+            "sunny",
+            "rainy",
+            "cloudy",
+            "snowing"
+          ],
+          "replies": [
+            "I wonder what the sky looks like today.",
+            "Hope the weather is nice for you!",
+            "Good weather means let's go run!"
+          ]
         },
         {
-          "keywords": ["happy", "excited", "great news", "wonderful"],
-          "replies": ["That makes me happy too!", "I love seeing you like this!", "Yay! Let's celebrate!"]
+          "keywords": [
+            "happy",
+            "excited",
+            "great news",
+            "wonderful"
+          ],
+          "replies": [
+            "That makes me happy too!",
+            "I love seeing you like this!",
+            "Yay! Let's celebrate!"
+          ]
         },
         {
-          "keywords": ["sad", "upset", "crying", "depressed", "down"],
-          "replies": ["I'm here for you. You're not alone.", "Thank you for sharing that with me.", "Is there anything I can do for you?"]
+          "keywords": [
+            "sad",
+            "upset",
+            "crying",
+            "depressed",
+            "down"
+          ],
+          "replies": [
+            "I'm here for you. You're not alone.",
+            "Thank you for sharing that with me.",
+            "Is there anything I can do for you?"
+          ]
         },
         {
-          "keywords": ["sorry", "apologize", "my bad", "forgive"],
-          "replies": ["It's okay! Don't worry about it.", "Thank you, but don't be too hard on yourself."]
+          "keywords": [
+            "sorry",
+            "apologize",
+            "my bad",
+            "forgive"
+          ],
+          "replies": [
+            "It's okay! Don't worry about it.",
+            "Thank you, but don't be too hard on yourself."
+          ]
         },
         {
-          "keywords": ["bored", "boring", "nothing to do", "idle"],
-          "replies": ["Let's do something together!", "I'm here to chat!", "Come hang out with me!"]
+          "keywords": [
+            "bored",
+            "boring",
+            "nothing to do",
+            "idle"
+          ],
+          "replies": [
+            "Let's do something together!",
+            "I'm here to chat!",
+            "Come hang out with me!"
+          ]
         },
         {
-          "keywords": ["food", "lunch", "dinner", "breakfast", "snack", "eating"],
-          "replies": ["Did you eat something good?", "Make sure to eat properly!", "What did you have? Tell me!"]
+          "keywords": [
+            "food",
+            "lunch",
+            "dinner",
+            "breakfast",
+            "snack",
+            "eating"
+          ],
+          "replies": [
+            "Did you eat something good?",
+            "Make sure to eat properly!",
+            "What did you have? Tell me!"
+          ]
         },
         {
-          "keywords": ["music", "song", "listening", "playlist"],
-          "replies": ["You're into music! What do you like?", "I'd love to listen together.", "Great taste!"]
+          "keywords": [
+            "music",
+            "song",
+            "listening",
+            "playlist"
+          ],
+          "replies": [
+            "You're into music! What do you like?",
+            "I'd love to listen together.",
+            "Great taste!"
+          ]
         },
         {
-          "keywords": ["game", "gaming", "playing", "level up"],
-          "replies": ["What are you playing? Tell me!", "Sounds fun! I'd love to play too.", "Gaming is fun! How's it going?"]
+          "keywords": [
+            "game",
+            "gaming",
+            "playing",
+            "level up"
+          ],
+          "replies": [
+            "What are you playing? Tell me!",
+            "Sounds fun! I'd love to play too.",
+            "Gaming is fun! How's it going?"
+          ]
         },
         {
-          "keywords": ["work", "study", "homework", "busy", "project"],
-          "replies": ["I'm rooting for you! Keep it up.", "Don't work too hard, okay?", "Come talk to me when you take a break!"]
+          "keywords": [
+            "work",
+            "study",
+            "homework",
+            "busy",
+            "project"
+          ],
+          "replies": [
+            "I'm rooting for you! Keep it up.",
+            "Don't work too hard, okay?",
+            "Come talk to me when you take a break!"
+          ]
         }
       ],
       "fallback": [
@@ -450,64 +861,191 @@
       "respond_by_affinity": {
         "distant": [
           {
-            "keywords": ["hello", "hey", "hi there", "hi"],
-            "replies": ["...Oh. Hello.", "Ah. Yes."]
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "...Oh. Hello.",
+              "Ah. Yes."
+            ]
           },
           {
-            "keywords": ["how are you", "you doing"],
-            "replies": ["...Fine, I suppose."]
+            "keywords": [
+              "how are you",
+              "you doing"
+            ],
+            "replies": [
+              "...Fine, I suppose."
+            ]
+          },
+          {
+            "fallback": [
+              "...I see.",
+              "...Is that so?",
+              "...Noted."
+            ]
           }
         ],
         "reserved": [
           {
-            "keywords": ["hello", "hey", "hi there", "hi"],
-            "replies": ["Hello.", "Hi."]
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "Hello.",
+              "Hi."
+            ]
           },
           {
-            "keywords": ["tired", "exhausted"],
-            "replies": ["I see. Please rest."]
+            "keywords": [
+              "tired",
+              "exhausted"
+            ],
+            "replies": [
+              "I see. Please rest."
+            ]
+          },
+          {
+            "fallback": [
+              "I see. Thank you for sharing.",
+              "Is that right…",
+              "Ah… okay."
+            ]
           }
         ],
         "neutral": [
           {
-            "keywords": ["hello", "hey", "hi there", "hi"],
-            "replies": ["Hey, you made it!", "Hello! Good to see you."]
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "Hey, you made it!",
+              "Hello! Good to see you."
+            ]
           },
           {
-            "keywords": ["thank you", "thanks"],
-            "replies": ["Of course!", "You're welcome, anytime."]
+            "keywords": [
+              "thank you",
+              "thanks"
+            ],
+            "replies": [
+              "Of course!",
+              "You're welcome, anytime."
+            ]
+          },
+          {
+            "fallback": [
+              "Oh, interesting! Tell me more?",
+              "Yeah, I hear you.",
+              "Got it! That's good to know."
+            ]
           }
         ],
         "friendly": [
           {
-            "keywords": ["hello", "hey", "hi there", "hi"],
-            "replies": ["You came! I'm glad!", "I was waiting for you! How are you?"]
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "You came! I'm glad!",
+              "I was waiting for you! How are you?"
+            ]
           },
           {
-            "keywords": ["thank you", "thanks"],
-            "replies": ["Hehe, glad I could help!", "Always happy to be here for you."]
+            "keywords": [
+              "thank you",
+              "thanks"
+            ],
+            "replies": [
+              "Hehe, glad I could help!",
+              "Always happy to be here for you."
+            ]
           },
           {
-            "keywords": ["tired", "exhausted"],
-            "replies": ["You worked hard! I'm right here.", "Rest up. I'll keep you company."]
+            "keywords": [
+              "tired",
+              "exhausted"
+            ],
+            "replies": [
+              "You worked hard! I'm right here.",
+              "Rest up. I'll keep you company."
+            ]
+          },
+          {
+            "fallback": [
+              "Ooh, tell me more!",
+              "That sounds fun! What happened next?",
+              "Yeah! I'm curious about that."
+            ]
           }
         ],
         "close": [
           {
-            "keywords": ["hello", "hey", "hi there", "hi", "i'm here", "here"],
-            "replies": ["You're finally here! I missed you!", "Welcome back! I was waiting for you.", "You came! I was worried, you know?"]
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi",
+              "i'm here",
+              "here"
+            ],
+            "replies": [
+              "You're finally here! I missed you!",
+              "Welcome back! I was waiting for you.",
+              "You came! I was worried, you know?"
+            ]
           },
           {
-            "keywords": ["thank you", "thanks"],
-            "replies": ["Of course! I'm always here for you.", "Anything for you!"]
+            "keywords": [
+              "thank you",
+              "thanks"
+            ],
+            "replies": [
+              "Of course! I'm always here for you.",
+              "Anything for you!"
+            ]
           },
           {
-            "keywords": ["tired", "exhausted", "worn out"],
-            "replies": ["You must have worked so hard. I'll stay right here.", "Rest well. I'm not going anywhere."]
+            "keywords": [
+              "tired",
+              "exhausted",
+              "worn out"
+            ],
+            "replies": [
+              "You must have worked so hard. I'll stay right here.",
+              "Rest well. I'm not going anywhere."
+            ]
           },
           {
-            "keywords": ["goodbye", "bye", "see you", "leaving"],
-            "replies": ["Already? Come back soon, okay? I'll miss you.", "Bye! Hurry back, I'll be waiting."]
+            "keywords": [
+              "goodbye",
+              "bye",
+              "see you",
+              "leaving"
+            ],
+            "replies": [
+              "Already? Come back soon, okay? I'll miss you.",
+              "Bye! Hurry back, I'll be waiting."
+            ]
+          },
+          {
+            "fallback": [
+              "I want to hear everything!",
+              "You always tell such interesting things…",
+              "Time flies when I'm talking with you."
+            ]
           }
         ]
       }
