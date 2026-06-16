@@ -16,7 +16,7 @@
   /callme <名前>       アバターに呼んでほしい名前を覚えさせる
   /birthday MM-DD      誕生日を覚えさせる（当日に祝ってくれる）
   /whoami             今記憶している呼び名・誕生日を表示
-  /mood               好感度レベルを表示
+  /mood               好感度レベルと今日のアバターの気分を表示
   /reset-mood         好感度をニュートラルにリセット
   /stats              会話統計を表示
   /name               ペルソナ名を表示
@@ -74,6 +74,19 @@ except Exception:  # pragma: no cover - defensive
     _seasonal_greeting = None  # type: ignore
     _birthday_greeting = None  # type: ignore
     _BIRTHDAY_BONUS = 0.0
+
+try:
+    from daily_mood import (
+        get_daily_mood as _get_daily_mood,
+        mood_label as _mood_label,
+        mood_description as _mood_description,
+        mood_emoji as _mood_emoji,
+    )
+except Exception:  # pragma: no cover - defensive
+    _get_daily_mood = None  # type: ignore
+    _mood_label = None  # type: ignore
+    _mood_description = None  # type: ignore
+    _mood_emoji = None  # type: ignore
 
 
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
@@ -212,6 +225,17 @@ def run_chat(
                     _say(season)
             except Exception:  # pragma: no cover - defensive
                 pass
+
+        # デイリームード（その日のアバターの気質を一言で添える）
+        if _get_daily_mood is not None and _mood_description is not None:
+            try:
+                salt = profile.name if profile is not None else ""
+                dmood = _get_daily_mood(salt=salt)
+                desc = _mood_description(dmood, lang=lang)
+                if desc:
+                    _say(desc)
+            except Exception:  # pragma: no cover - defensive
+                pass
     output_fn(_help_text())
 
     exchanges = 0
@@ -255,7 +279,7 @@ def run_chat(
             _print_history(conv_log, output_fn)
             continue
         if text.lower() == "/mood":
-            _print_mood(mood, lang, output_fn)
+            _print_mood(mood, lang, output_fn, profile=profile)
             continue
         if text.lower() in _MOOD_RESET_COMMANDS:
             _reset_mood(mood, lang, output_fn)
@@ -334,8 +358,9 @@ def _absence_message(mood, name: str, lang: str) -> str:  # name is kept for API
     return ""
 
 
-def _print_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
-    """現在の好感度レベルを表示する。"""
+def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
+                profile=None) -> None:
+    """現在の好感度レベルとデイリームードを表示する。"""
     if mood is None:
         output_fn("(好感度は無効です)")
         return
@@ -347,6 +372,17 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
         return
     prefix = "Affinity" if lang == "en" else "好感度"
     output_fn(f"{prefix}: {label} ({score}/100)")
+    # デイリームードを添える
+    if _get_daily_mood is not None and _mood_label is not None and _mood_emoji is not None:
+        try:
+            salt = profile.name if profile is not None else ""
+            dmood = _get_daily_mood(salt=salt)
+            emoji = _mood_emoji(dmood)
+            dlabel = _mood_label(dmood, lang)
+            dmood_prefix = "Today's mood" if lang == "en" else "今日の気分"
+            output_fn(f"{dmood_prefix}: {emoji} {dlabel}")
+        except Exception:  # pragma: no cover - defensive
+            pass
 
 
 def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
