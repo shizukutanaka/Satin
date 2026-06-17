@@ -806,17 +806,29 @@ class GUISlashCommandTests(unittest.TestCase):
     # --- /callme tests ---
 
     def test_callme_sets_profile_name(self):
-        class _FakeProfile:
-            name = None
-            def save(self, p): pass
-
-        prof = _FakeProfile()
+        from user_profile import UserProfile
+        prof = UserProfile()
         v = _make_viewer()
         with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
              mock.patch.object(_mod, "_default_profile_path_gui", None):
             v.speak_comment("/callme Haruki")
 
         self.assertEqual(prof.name, "Haruki")
+
+    def test_callme_sanitizes_name(self):
+        """GUI /callme must sanitize (strip control chars / cap length) like the CLI."""
+        from user_profile import UserProfile, _MAX_NAME_LEN
+        prof = UserProfile()
+        v = _make_viewer()
+        # Embedded newline + over-length name
+        raw = "Ha\nru" + "x" * 100
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment(f"/callme {raw}")
+        self.assertNotIn("\n", prof.name)
+        self.assertLessEqual(len(prof.name), _MAX_NAME_LEN)
+        # The spoken confirmation echoes the sanitized name, not the raw input
+        self.assertNotIn("\n", v.comment_text)
 
     def test_callme_reply_contains_name(self):
         v = _make_viewer()

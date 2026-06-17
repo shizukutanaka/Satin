@@ -452,18 +452,21 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                               else "Usage: /callme <your name>")
             return
 
+        # set_name() でサニタイズ（長さ上限・制御文字除去）した値を採用する。
+        # 直接 prof.name = name すると未検証の文字列が TTS/あいさつに混入する。
+        saved = name
         if _get_user_profile_gui is not None:
             try:
                 prof = _get_user_profile_gui()
                 if prof is not None:
-                    prof.name = name
+                    saved = prof.set_name(name) or name
                     if _default_profile_path_gui is not None:
                         prof.save(_default_profile_path_gui())
             except Exception as e:
                 logger.debug("/callme プロフィール保存に失敗（GUI）: %s", e)
 
-        reply = (f"{name}? That's a lovely name! I'll remember it." if lang == "en"
-                 else f"{name}って呼べばいいんだね！覚えたよ。")
+        reply = (f"{saved}? That's a lovely name! I'll remember it." if lang == "en"
+                 else f"{saved}って呼べばいいんだね！覚えたよ。")
         if get_conversation_log is not None:
             try:
                 get_conversation_log().log_exchange(f"/callme {name}", reply)
