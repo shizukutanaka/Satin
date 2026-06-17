@@ -477,6 +477,11 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if saved:
             reply = (f"Oh, you like {saved}? I'll remember that!" if lang == "en"
                      else f"{saved}が好きなんだね！覚えておくよ。")
+            if get_conversation_log is not None:
+                try:
+                    get_conversation_log().log_exchange(f"/like {thing}", reply)
+                except Exception:
+                    pass
         else:
             reply = ("Couldn't save that (list may be full)." if lang == "en"
                      else "うまく覚えられなかったよ（リストがいっぱいかも）。")
@@ -503,6 +508,11 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if removed:
             reply = (f"Got it, I'll forget about {thing}." if lang == "en"
                      else f"{thing}のこと、忘れたよ。")
+            if get_conversation_log is not None:
+                try:
+                    get_conversation_log().log_exchange(f"/forget {thing}", reply)
+                except Exception:
+                    pass
         else:
             reply = (f"I don't think I had {thing} on my list." if lang == "en"
                      else f"{thing}はリストにないみたい。")
@@ -666,6 +676,11 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if saved:
             reply = (f"Got it! Your birthday is {saved}. I won't forget!" if lang == "en"
                      else f"覚えた、誕生日は{saved}だね。忘れないよ！")
+            if get_conversation_log is not None:
+                try:
+                    get_conversation_log().log_exchange(f"/birthday {date_str}", reply)
+                except Exception:
+                    pass
         else:
             reply = ("Hmm, that date doesn't look right. Try MM-DD format." if lang == "en"
                      else "日付の形式が違うみたい。MM-DD の形で教えてね。")

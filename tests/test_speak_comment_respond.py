@@ -1160,6 +1160,81 @@ class GUIWhoamiTests(unittest.TestCase):
         self.assertEqual(v.mode, "comment")
 
 
+class GUICommandLoggingTests(unittest.TestCase):
+    """GUI /like, /forget, /birthday log their exchange to the conversation log
+    (parity with /gift and /callme, and with the CLI)."""
+
+    def setUp(self):
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def _capture_log(self):
+        logged = []
+
+        class _Log:
+            def log_exchange(self, comment, reply):
+                logged.append((comment, reply))
+
+        return _Log(), logged
+
+    def test_like_logs_exchange(self):
+        from user_profile import UserProfile
+        prof = UserProfile()
+        log, logged = self._capture_log()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod, "get_conversation_log", lambda: log):
+            v.speak_comment("/like アニメ")
+        self.assertTrue(any("アニメ" in c and "アニメ" in r for c, r in logged),
+                        f"Expected /like exchange logged; got: {logged}")
+
+    def test_forget_logs_exchange(self):
+        from user_profile import UserProfile
+        prof = UserProfile(interests=["ゲーム"])
+        log, logged = self._capture_log()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod, "get_conversation_log", lambda: log):
+            v.speak_comment("/forget ゲーム")
+        self.assertTrue(any("ゲーム" in c for c, r in logged),
+                        f"Expected /forget exchange logged; got: {logged}")
+
+    def test_birthday_logs_exchange(self):
+        from user_profile import UserProfile
+        prof = UserProfile()
+        log, logged = self._capture_log()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod, "get_conversation_log", lambda: log):
+            v.speak_comment("/birthday 06-15")
+        self.assertTrue(any("06-15" in r for c, r in logged),
+                        f"Expected /birthday exchange logged; got: {logged}")
+
+    def test_like_failure_does_not_log(self):
+        """When the interest can't be saved, no exchange is logged."""
+        class _FullProfile:
+            interests = []
+            def add_interest(self, t):
+                return ""  # simulate full list / rejected
+            def save(self, p): pass
+
+        log, logged = self._capture_log()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FullProfile()), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod, "get_conversation_log", lambda: log):
+            v.speak_comment("/like something")
+        self.assertEqual(logged, [])
+
+
 class GUIForgetMeTests(unittest.TestCase):
     """Tests for the /forget-me GUI command (erase stored personal data)."""
 
