@@ -351,7 +351,22 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l.startswith("reset-mood") or cmd_l == "resetmood":
             self._cmd_reset_mood_gui(lang)
             return True
+        if cmd_l.startswith("help"):
+            self._cmd_help_gui(lang)
+            return True
         return False  # 未知のコマンドは通常の respond() へ
+
+    def _cmd_help_gui(self, lang: str) -> None:
+        """GUI の /help コマンドを処理する（利用可能なコマンド一覧を表示）。"""
+        if lang == "en":
+            reply = ("Commands: /gift <item>, /callme <name>, /birthday MM-DD, "
+                     "/like <thing>, /forget <thing>, /whoami, /forget-me, "
+                     "/mood, /reset-mood, /stats, /help")
+        else:
+            reply = ("コマンド: /gift <プレゼント>、/callme <名前>、/birthday MM-DD、"
+                     "/like <好きなもの>、/forget <好きなもの>、/whoami、/forget-me、"
+                     "/mood、/reset-mood、/stats、/help")
+        self._speak_reply(reply)
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
         """GUI の /gift <item> コマンドを処理する。"""

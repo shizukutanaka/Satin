@@ -1160,6 +1160,44 @@ class GUIWhoamiTests(unittest.TestCase):
         self.assertEqual(v.mode, "comment")
 
 
+class GUIHelpTests(unittest.TestCase):
+    """Tests for the /help GUI command (lists available slash commands)."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def test_help_lists_commands_ja(self):
+        v = _make_viewer()
+        v.speak_comment("/help")
+        self.assertIn("/gift", v.comment_text)
+        self.assertIn("/forget-me", v.comment_text)
+
+    def test_help_lists_commands_en(self):
+        from persona import Persona
+        v = _make_viewer()
+        _persona_mod._persona_singleton = Persona.from_dict(
+            {"name": "T", "default_lang": "en"}, lang="en")
+        try:
+            v.speak_comment("/help")
+        finally:
+            _persona_mod.reset_persona()
+        self.assertIn("/gift", v.comment_text)
+
+    def test_help_sets_mode_comment(self):
+        v = _make_viewer()
+        v.speak_comment("/help")
+        self.assertEqual(v.mode, "comment")
+
+
 class GUICommandLoggingTests(unittest.TestCase):
     """GUI /like, /forget, /birthday log their exchange to the conversation log
     (parity with /gift and /callme, and with the CLI)."""
