@@ -578,6 +578,13 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 joined = "、".join(prof.interests) if lang != "en" else ", ".join(prof.interests)
                 parts.append(f"好きなもの: {joined}" if lang != "en"
                              else f"Interests: {joined}")
+            # 一問一答で覚えた事実（CLI の /whoami と同等の表示）
+            facts = getattr(prof, "facts", {})
+            if facts:
+                parts.append("覚えていること:" if lang != "en"
+                             else "Things I remember about you:")
+                for value in facts.values():
+                    parts.append(f"  - {value}")
             reply = "\n".join(parts) if parts else (
                 "まだ何も知らないよ。教えてね！" if lang != "en"
                 else "I don't know anything about you yet. Tell me!")

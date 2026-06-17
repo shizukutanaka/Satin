@@ -1138,6 +1138,15 @@ class GUIWhoamiTests(unittest.TestCase):
             v.speak_comment("/whoami")
         self.assertGreater(len(v.comment_text), 0)
 
+    def test_whoami_shows_remembered_facts(self):
+        from user_profile import UserProfile
+        prof = UserProfile(name="Ken")
+        prof.set_fact("favorite_food", "ラーメン")
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof):
+            v.speak_comment("/whoami")
+        self.assertIn("ラーメン", v.comment_text)
+
     def test_whoami_no_profile_no_crash(self):
         v = _make_viewer()
         with mock.patch.object(_mod, "_get_user_profile_gui", None):
