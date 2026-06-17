@@ -329,6 +329,10 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l.startswith("like"):
             self._cmd_like_gui(cmd_text[4:].strip(), lang)
             return True
+        # /forget-me は /forget より具体的なので先に判定する（前方一致の誤爆防止）
+        if cmd_l.startswith("forget-me") or cmd_l == "forgetme":
+            self._cmd_forget_me_gui(lang)
+            return True
         if cmd_l.startswith("forget"):
             self._cmd_forget_gui(cmd_text[6:].strip(), lang)
             return True
@@ -502,6 +506,34 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         else:
             reply = (f"I don't think I had {thing} on my list." if lang == "en"
                      else f"{thing}はリストにないみたい。")
+        self._speak_reply(reply)
+
+    def _cmd_forget_me_gui(self, lang: str) -> None:
+        """GUI の /forget-me コマンドを処理する（個人情報を全消去）。
+
+        呼び名・誕生日・趣味・会話で覚えた事実をすべて消す（プライバシー配慮）。
+        好感度（関係の深さ）はここでは消さない（/reset-mood が担当）。
+        """
+        if _get_user_profile_gui is None:
+            self._speak_reply("(プロファイルは利用できません)" if lang != "en"
+                              else "(Profile unavailable)")
+            return
+        try:
+            prof = _get_user_profile_gui()
+            if prof is None:
+                self._speak_reply("(プロファイルは利用できません)" if lang != "en"
+                                  else "(Profile unavailable)")
+                return
+            prof.clear()
+            if _default_profile_path_gui is not None:
+                prof.save(_default_profile_path_gui())
+            reply = ("Okay — I've forgotten everything personal about you. "
+                     "We can start fresh whenever you like." if lang == "en"
+                     else "わかった、あなたのことは全部忘れたよ。また、いつでも教えてね。")
+        except Exception as e:
+            logger.debug("/forget-me に失敗（GUI）: %s", e)
+            reply = ("(Couldn't erase your data)" if lang == "en"
+                     else "(個人情報の消去に失敗しました)")
         self._speak_reply(reply)
 
     def _cmd_mood_gui(self, lang: str) -> None:

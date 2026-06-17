@@ -1151,6 +1151,82 @@ class GUIWhoamiTests(unittest.TestCase):
         self.assertEqual(v.mode, "comment")
 
 
+class GUIForgetMeTests(unittest.TestCase):
+    """Tests for the /forget-me GUI command (erase stored personal data)."""
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def test_forget_me_clears_profile(self):
+        from user_profile import UserProfile
+        prof = UserProfile(name="Taro", birthday="06-15", interests=["アニメ"])
+        prof.set_fact("favorite_food", "ラーメン")
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/forget-me")
+        self.assertEqual(prof.name, "")
+        self.assertEqual(prof.birthday, "")
+        self.assertEqual(prof.interests, [])
+        self.assertEqual(prof.facts, {})
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_forget_me_not_parsed_as_forget_interest(self):
+        """/forget-me must dispatch to clear(), not remove_interest('-me')."""
+        calls = {"clear": 0, "remove": 0}
+
+        class _FakeProfile:
+            name = "X"
+            birthday = ""
+            interests = []
+            facts = {}
+            def clear(self):
+                calls["clear"] += 1
+                self.name = ""
+            def remove_interest(self, t):
+                calls["remove"] += 1
+                return False
+            def save(self, p): pass
+
+        prof = _FakeProfile()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/forget-me")
+        self.assertEqual(calls["clear"], 1)
+        self.assertEqual(calls["remove"], 0)
+
+    def test_forgetme_alias_without_hyphen(self):
+        from user_profile import UserProfile
+        prof = UserProfile(name="Hana")
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/forgetme")
+        self.assertEqual(prof.name, "")
+
+    def test_forget_me_no_profile_no_crash(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/forget-me")
+        self.assertGreater(len(v.comment_text), 0)
+
+    def test_forget_me_sets_mode_comment(self):
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v.speak_comment("/forget-me")
+        self.assertEqual(v.mode, "comment")
+
+
 class InterestMentionWiringTests(unittest.TestCase):
     """persona.interest_mention() is appended to reply at 15% probability."""
 
