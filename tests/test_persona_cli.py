@@ -1600,5 +1600,86 @@ class FullReplyLoggingTests(unittest.TestCase):
             import shutil; shutil.rmtree(tmp, ignore_errors=True)
 
 
+class ForgetMeTests(unittest.TestCase):
+    """/forget-me erases personal data with a two-step confirmation."""
+
+    def setUp(self):
+        import user_profile
+        self._up = user_profile
+        self._tmp = tempfile.mkdtemp()
+        self._ppath = os.path.join(self._tmp, "up.json")
+        self._patcher = mock.patch.object(persona_cli, "_profile_path",
+                                          lambda: self._ppath)
+        self._patcher.start()
+
+    def tearDown(self):
+        import shutil
+        self._patcher.stop()
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _profile(self, **kw):
+        return self._up.UserProfile(**kw)
+
+    def _run(self, inputs, profile):
+        d = _Driver(inputs)
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=profile,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        return d.out
+
+    def test_two_step_confirm_clears_profile(self):
+        prof = self._profile(name="Taro", birthday="06-15",
+                             interests=["アニメ"])
+        prof.set_fact("favorite_food", "ラーメン")
+        self._run(["/forget-me", "/forget-me"], prof)
+        self.assertEqual(prof.name, "")
+        self.assertEqual(prof.birthday, "")
+        self.assertEqual(prof.interests, [])
+        self.assertEqual(prof.facts, {})
+
+    def test_first_call_shows_confirmation_only(self):
+        prof = self._profile(name="Taro", interests=["アニメ"])
+        out = self._run(["/forget-me"], prof)
+        # Data still intact after a single call
+        self.assertEqual(prof.name, "Taro")
+        self.assertIn("アニメ", prof.interests)
+        # A confirmation prompt was shown
+        self.assertTrue(any("/forget-me" in line for line in out))
+
+    def test_cancelled_by_intervening_input(self):
+        prof = self._profile(name="Taro")
+        # /forget-me then a different command cancels the pending confirm
+        self._run(["/forget-me", "/whoami", "/forget-me"], prof)
+        # Name survives because the second /forget-me starts a fresh confirm
+        self.assertEqual(prof.name, "Taro")
+
+    def test_persists_cleared_profile_to_disk(self):
+        prof = self._profile(name="Hana", interests=["音楽"])
+        self._run(["/forget-me", "/forget-me"], prof)
+        loaded = self._up.UserProfile.load(self._ppath)
+        self.assertEqual(loaded.name, "")
+        self.assertEqual(loaded.interests, [])
+
+    def test_forget_me_does_not_reset_affinity(self):
+        """/forget-me clears personal data but leaves the relationship affinity."""
+        from mood import MoodTracker
+        prof = self._profile(name="Taro")
+        m = MoodTracker(affinity=80)
+        d = _Driver(["/forget-me", "/forget-me"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof, mood=m,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertEqual(prof.name, "")
+        self.assertEqual(m.affinity, 80)
+
+    def test_forget_me_no_profile_no_crash(self):
+        # _forget_me() with no profile reports gracefully (doesn't crash)
+        out = []
+        persona_cli._forget_me(None, "ja", out.append)
+        self.assertTrue(any("プロファイル" in line for line in out))
+
+
 if __name__ == "__main__":
     unittest.main()

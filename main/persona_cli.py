@@ -19,6 +19,7 @@
   /forget <好きなもの>  覚えた好きなものを忘れさせる
   /gift <プレゼント>    アバターにプレゼントを贈る（/gift list でカタログ表示）
   /whoami             今記憶している呼び名・誕生日・好きなものを表示
+  /forget-me          覚えた個人情報（呼び名・誕生日・趣味・記憶）を全消去
   /mood               好感度レベルと今日のアバターの気分を表示
   /reset-mood         好感度をニュートラルにリセット
   /recap              今日の会話サマリーと直近のやりとりを表示
@@ -133,6 +134,8 @@ except Exception:  # pragma: no cover - defensive
 _QUIT_COMMANDS = {"/quit", "/exit", "/q"}
 _HISTORY_DEFAULT = 10
 _MOOD_RESET_COMMANDS = {"/reset-mood", "/resetmood"}
+# 個人情報（呼び名・誕生日・趣味・記憶）を消去するプライバシーコマンド
+_FORGET_ME_COMMANDS = {"/forget-me", "/forgetme"}
 # N 回ごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
 _FOLLOW_UP_EVERY = 4
 
@@ -198,7 +201,7 @@ def _help_text() -> str:
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
         "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | "
         "/like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | "
-        "/gift <プレゼント> 贈る | /whoami 確認 | "
+        "/gift <プレゼント> 贈る | /whoami 確認 | /forget-me 記憶を全消去 | "
         "/mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /stats 統計 | /name 名前 | /quit 終了"
     )
 
@@ -330,6 +333,8 @@ def run_chat(
     pending_fact_key: Optional[str] = None
     # /reset-mood の二段階確認フラグ（誤操作による好感度全消しを防ぐ）
     _reset_mood_pending: bool = False
+    # /forget-me の二段階確認フラグ（誤操作による個人情報全消去を防ぐ）
+    _forget_me_pending: bool = False
     while True:
         try:
             raw = input_fn("You: ")
@@ -347,6 +352,9 @@ def run_chat(
         # /reset-mood の確認待ちが他のコマンド/テキストでキャンセルされた場合
         if _reset_mood_pending and text.lower() not in _MOOD_RESET_COMMANDS:
             _reset_mood_pending = False
+        # /forget-me の確認待ちが他のコマンド/テキストでキャンセルされた場合
+        if _forget_me_pending and text.lower() not in _FORGET_ME_COMMANDS:
+            _forget_me_pending = False
 
         # コマンド処理
         if text.lower() in _QUIT_COMMANDS:
@@ -382,6 +390,21 @@ def run_chat(
             reply = _add_interest(profile, thing, name, lang, output_fn)
             if conv_log is not None and reply:
                 conv_log.log_exchange(text, reply)
+            continue
+        # /forget-me は /forget より具体的なので先に判定する（前方一致の誤爆防止）
+        if text.lower() in _FORGET_ME_COMMANDS:
+            if not _forget_me_pending:
+                if lang == "en":
+                    output_fn(f"{name}: This will erase everything I remember about you "
+                              "(name, birthday, interests, and answers). "
+                              "Type /forget-me again to confirm.")
+                else:
+                    output_fn(f"{name}: 覚えている個人情報（呼び名・誕生日・趣味・会話で覚えたこと）を"
+                              "すべて消去します。本当によければ、もう一度 /forget-me を入力してください。")
+                _forget_me_pending = True
+            else:
+                _forget_me(profile, lang, output_fn)
+                _forget_me_pending = False
             continue
         if text.lower().startswith("/forget"):
             thing = text[len("/forget"):].strip()
@@ -704,6 +727,30 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
             output_fn(f"好感度をニュートラル（{int(AFFINITY_START)}/100）にリセットしました。")
     except Exception:  # pragma: no cover - defensive
         output_fn("(好感度のリセットに失敗しました)")
+
+
+def _forget_me(profile, lang: str, output_fn: Callable[[str], None]) -> None:
+    """覚えた個人情報（呼び名・誕生日・趣味・記憶）をすべて消去し、永続化する。
+
+    プライバシー配慮: ユーザーがいつでも自分のデータを消せるようにする。
+    好感度（関係の深さ）はここでは消さない（/reset-mood が担当）。
+    """
+    if profile is None:
+        output_fn("(プロファイルは利用できません)")
+        return
+    try:
+        profile.clear()
+        if _profile_path is not None:
+            profile.save(_profile_path())
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(個人情報の消去に失敗しました)")
+        return
+    if lang == "en":
+        output_fn("Okay — I've forgotten everything personal about you. "
+                  "We can start fresh whenever you like.")
+    else:
+        output_fn("わかった、あなたのことは全部忘れたよ。"
+                  "また、いつでも教えてね。")
 
 
 def _set_user_name(profile, new_name: str, avatar_name: str, lang: str,
