@@ -241,7 +241,7 @@ python main/persona_cli.py --lang en     # force a language, skip dep checks
 
 ```text
 Satin: Taro、こんにちは！調子はどう？
-コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | /callme <名前> 呼び名設定 | /whoami 呼び名確認 | /mood 好感度 | /reset-mood リセット | /stats 統計 | /name 名前 | /quit 終了
+コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | /callme <名前> 呼び名設定 | /birthday MM-DD 誕生日 | /like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | /gift <プレゼント> 贈る | /whoami 確認 | /forget-me 記憶を全消去 | /mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /stats 統計 | /name 名前 | /quit 終了
 You: /callme Taro
 Satin: わかった、これからはTaroって呼ぶね！
 You: こんにちは
@@ -252,10 +252,17 @@ Satin: またね！いつでも来てね。
 
 Commands: `/help`, `/history` (recent conversation), `/search <keyword>` (search
 history including rotated archives), `/callme <name>` (teach the avatar what to
-call you), `/whoami` (show the remembered name), `/mood` (current affinity),
-`/reset-mood` (reset to neutral), `/stats` (conversation totals), `/name`,
-`/quit` (`/exit`, `/q`). EOF (Ctrl-D) or Ctrl-C also ends the session cleanly.
-The loop accepts injectable input/output functions, so it is fully unit-testable.
+call you), `/birthday MM-DD` (teach your birthday), `/like <thing>` /
+`/forget <thing>` (remember/forget an interest), `/gift <item>` (give a gift —
+`/gift list` shows the catalog), `/whoami` (show what the avatar remembers),
+`/forget-me` (erase all stored personal data — name, birthday, interests, and
+remembered facts; two-step confirm), `/mood` (current affinity),
+`/reset-mood` (reset to neutral), `/recap` (today's summary), `/stats`
+(conversation totals), `/name`, `/quit` (`/exit`, `/q`). EOF (Ctrl-D) or Ctrl-C
+also ends the session cleanly. The loop accepts injectable input/output
+functions, so it is fully unit-testable. The 3D GUI accepts the same slash
+commands typed as comments (`/gift`, `/callme`, `/birthday`, `/like`,
+`/forget`, `/whoami`, `/forget-me`, `/mood`, `/reset-mood`, `/stats`, `/help`).
 
 #### The avatar remembers who you are
 
@@ -263,7 +270,10 @@ The loop accepts injectable input/output functions, so it is fully unit-testable
 `config/user_profile.json` (a private, git-ignored file). Once set, the avatar
 greets you by name and weaves it into its follow-up questions via a `{user}`
 placeholder in the persona's `follow_up`/reply lines (falling back to a neutral
-"you" / "きみ" when no name is known). The profile is wiped by
+"you" / "きみ" when no name is known). You can erase everything the avatar
+remembers about you at any time with the in-app `/forget-me` command (name,
+birthday, interests, and remembered facts; the relationship affinity is kept —
+use `/reset-mood` for that). The profile is also wiped by
 `manage_satin data purge` along with the rest of your personal data.
 
 #### Special days (dating-sim inspired)
