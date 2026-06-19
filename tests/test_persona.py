@@ -307,6 +307,21 @@ class RespondTests(unittest.TestCase):
         # Unmatched input reaches the fallback, not the blank rule
         self.assertEqual(p.respond("xyzzy"), "FB")
 
+    def test_nfd_keyword_matches_nfc_input(self):
+        """A keyword stored in NFD form must still match NFC-normalized input
+        (respond() NFC-normalizes the input, so keywords need the same)."""
+        import unicodedata
+        # "がっこう" with the dakuten decomposed (NFD) as the configured keyword
+        kw_nfd = unicodedata.normalize("NFD", "がっこう")
+        self.assertNotEqual(kw_nfd, "がっこう")  # sanity: actually decomposed
+        data = {"responses": {"ja": {
+            "rules": [{"keywords": [kw_nfd], "replies": ["SCHOOL"]}],
+            "fallback": ["FB"],
+        }}}
+        p = Persona.from_dict(data, lang="ja")
+        # User types the composed (NFC) form
+        self.assertEqual(p.respond("がっこうにいく"), "SCHOOL")
+
     def test_whitespace_only_affinity_keyword_does_not_hijack(self):
         data = {"responses": {"en": {
             "rules": [{"keywords": ["hello"], "replies": ["GENERIC"]}],

@@ -472,9 +472,11 @@ class Persona:
                         level_fallback.extend(fb)
                     continue
                 for kw in keywords:
-                    # 空白のみのキーワードは strip 後に "" となり全入力へ誤マッチ
+                    # 入力は NFC 正規化済みなのでキーワードも同じく正規化して
+                    # 比較する（片側だけだと NFD のキーワードが永久に一致しない）。
+                    # 空白のみのキーワードは strip 後 "" となり全入力へ誤マッチ
                     # するため、正規化後が非空のときだけ部分一致を判定する。
-                    kw_norm = str(kw).strip().lower()
+                    kw_norm = _ud.normalize("NFC", str(kw).strip().lower())
                     if kw_norm and kw_norm in norm:
                         replies = list(rule.get("replies") or [])
                         if replies:
@@ -487,8 +489,9 @@ class Persona:
             if not isinstance(rule, dict):
                 continue
             for kw in rule.get("keywords") or []:
-                # 空白のみのキーワードは strip 後 "" となり全入力に誤マッチするので除外
-                kw_norm = str(kw).strip().lower()
+                # 入力と同じ NFC 正規化を施す（片側だけだと NFD キーワードが一致しない）。
+                # 空白のみのキーワードは strip 後 "" となり全入力に誤マッチするので除外。
+                kw_norm = _ud.normalize("NFC", str(kw).strip().lower())
                 if kw_norm and kw_norm in norm:
                     replies = list(rule.get("replies") or [])
                     if replies:

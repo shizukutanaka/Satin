@@ -420,7 +420,7 @@ def run_chat(
             _print_history(conv_log, output_fn)
             continue
         if text.lower() == "/mood":
-            _print_mood(mood, lang, output_fn, profile=profile)
+            _print_mood(mood, lang, output_fn)
             continue
         if text.lower() in _MOOD_RESET_COMMANDS:
             if not _reset_mood_pending:
@@ -625,8 +625,7 @@ def _next_interaction_milestone(interactions: int) -> Optional[int]:
     return None
 
 
-def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
-                profile=None) -> None:
+def _print_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
     """現在の好感度レベルとデイリームードを表示する。"""
     if mood is None:
         output_fn("(好感度は無効です)")
