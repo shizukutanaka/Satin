@@ -291,6 +291,35 @@ class RespondTests(unittest.TestCase):
         p = Persona.from_dict(data, lang="en")
         self.assertEqual(p.respond("no keywords here"), "")
 
+    def test_whitespace_only_keyword_does_not_hijack_all_input(self):
+        """A whitespace-only keyword strips to '' and must NOT match everything,
+        which would otherwise starve later rules and the fallback."""
+        data = {"responses": {"en": {
+            "rules": [
+                {"keywords": ["   "], "replies": ["HIJACK"]},   # malformed rule
+                {"keywords": ["hello"], "replies": ["HELLO"]},
+            ],
+            "fallback": ["FB"],
+        }}}
+        p = Persona.from_dict(data, lang="en")
+        # A real keyword still wins (the blank rule is skipped)
+        self.assertEqual(p.respond("hello"), "HELLO")
+        # Unmatched input reaches the fallback, not the blank rule
+        self.assertEqual(p.respond("xyzzy"), "FB")
+
+    def test_whitespace_only_affinity_keyword_does_not_hijack(self):
+        data = {"responses": {"en": {
+            "rules": [{"keywords": ["hello"], "replies": ["GENERIC"]}],
+            "fallback": ["FB"],
+            "respond_by_affinity": {
+                "close": [{"keywords": ["  "], "replies": ["HIJACK"]}],
+            },
+        }}}
+        p = Persona.from_dict(data, lang="en")
+        # Blank affinity keyword is skipped → falls through to the generic rule
+        self.assertEqual(p.respond("hello", level="close"), "GENERIC")
+        self.assertEqual(p.respond("xyzzy", level="close"), "FB")
+
 
 class RespondWithLevelTests(unittest.TestCase):
     """respond(text, level=...) uses respond_by_affinity rules first."""

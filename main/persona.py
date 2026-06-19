@@ -472,7 +472,10 @@ class Persona:
                         level_fallback.extend(fb)
                     continue
                 for kw in keywords:
-                    if kw and str(kw).strip().lower() in norm:
+                    # 空白のみのキーワードは strip 後に "" となり全入力へ誤マッチ
+                    # するため、正規化後が非空のときだけ部分一致を判定する。
+                    kw_norm = str(kw).strip().lower()
+                    if kw_norm and kw_norm in norm:
                         replies = list(rule.get("replies") or [])
                         if replies:
                             return self._pick(
@@ -484,7 +487,9 @@ class Persona:
             if not isinstance(rule, dict):
                 continue
             for kw in rule.get("keywords") or []:
-                if kw and str(kw).strip().lower() in norm:
+                # 空白のみのキーワードは strip 後 "" となり全入力に誤マッチするので除外
+                kw_norm = str(kw).strip().lower()
+                if kw_norm and kw_norm in norm:
                     replies = list(rule.get("replies") or [])
                     if replies:
                         # ルールごとに直前重複を避ける（キーはルール順インデックス）
