@@ -195,9 +195,9 @@ class AutonomousBehaviorMixin:
             # デイリームード（その日の気質を一言で添える）
             if _get_daily_mood is not None and _mood_description is not None:
                 try:
-                    prof = _get_user_profile() if _get_user_profile is not None else None
-                    salt = prof.name if prof is not None else ""
-                    dmood = _get_daily_mood(salt=salt)
+                    # 日付のみで決定（可変の呼び名 salt は使わない）。日中に名前を
+                    # 設定/消去しても気分が変わらず、ギフト倍率とも一致する。
+                    dmood = _get_daily_mood()
                     desc = _mood_description(dmood, lang=lang)
                     if desc:
                         greeting = (greeting + " " + desc).strip() if greeting else desc
@@ -294,9 +294,8 @@ class AutonomousBehaviorMixin:
         mood_key = None
         if _get_daily_mood is not None:
             try:
-                prof = _get_user_profile() if _get_user_profile is not None else None
-                salt = prof.name if prof is not None else ""
-                mood_key = _get_daily_mood(salt=salt)
+                # 日付のみで決定（可変の呼び名 salt は使わない）— 全経路で同じ気分にする
+                mood_key = _get_daily_mood()
             except Exception as e:
                 logger.debug("デイリームードキーの取得に失敗しました: %s", e)
 

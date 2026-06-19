@@ -318,8 +318,9 @@ def run_chat(
         # デイリームード（その日のアバターの気質を一言で添える）
         if _get_daily_mood is not None and _mood_description is not None:
             try:
-                salt = profile.name if profile is not None else ""
-                dmood = _get_daily_mood(salt=salt)
+                # 日付のみで決定（名前 salt は使わない）。可変の呼び名で日中に
+                # 気分が変わったり、ギフト経路と食い違ったりするのを防ぐ。
+                dmood = _get_daily_mood()
                 desc = _mood_description(dmood, lang=lang)
                 if desc:
                     _say(desc)
@@ -470,8 +471,8 @@ def run_chat(
                 # デイリームードによる好感度感度変調（明るい日は上がりやすい）
                 if raw_delta != 0 and _get_daily_mood is not None and _mood_affinity_multiplier is not None:
                     try:
-                        salt = profile.name if profile is not None else ""
-                        dmood = _get_daily_mood(salt=salt)
+                        # 日付のみで決定（名前 salt は使わない）— 全経路で同じ気分にする
+                        dmood = _get_daily_mood()
                         multiplier = _mood_affinity_multiplier(dmood)
                         if multiplier != 1.0:
                             extra = raw_delta * (multiplier - 1.0)
@@ -675,8 +676,8 @@ def _print_mood(mood, lang: str, output_fn: Callable[[str], None],
     # デイリームードを添える（好感度変調倍率も表示して効果を見える化）
     if _get_daily_mood is not None and _mood_label is not None and _mood_emoji is not None:
         try:
-            salt = profile.name if profile is not None else ""
-            dmood = _get_daily_mood(salt=salt)
+            # 日付のみで決定（名前 salt は使わない）— /mood 表示とギフト倍率を一致させる
+            dmood = _get_daily_mood()
             emoji = _mood_emoji(dmood)
             dlabel = _mood_label(dmood, lang)
             dmood_prefix = "Today's mood" if lang == "en" else "今日の気分"

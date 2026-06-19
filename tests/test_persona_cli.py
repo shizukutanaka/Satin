@@ -1098,6 +1098,72 @@ class RitualEventTests(unittest.TestCase):
         self.assertTrue(any("T:" in o for o in outputs))
 
 
+class DailyMoodSaltIndependenceTests(unittest.TestCase):
+    """The daily mood must not depend on the (mutable) user name, so it stays
+    stable within a day and consistent across greeting / mood / gift paths."""
+
+    def setUp(self):
+        import user_profile
+        self._up = user_profile
+        self._tmp = tempfile.mkdtemp()
+        self._ppath = os.path.join(self._tmp, "up.json")
+        self._patcher = mock.patch.object(persona_cli, "_profile_path",
+                                          lambda: self._ppath)
+        self._patcher.start()
+
+    def tearDown(self):
+        import shutil
+        self._patcher.stop()
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _captured_salts(self, profile):
+        """Run /mood with a profile and record every salt passed to get_daily_mood."""
+        import persona_cli as pc
+        from mood import MoodTracker
+        salts = []
+
+        def _spy(*args, **kwargs):
+            salts.append(kwargs.get("salt", args[1] if len(args) > 1 else ""))
+            return "calm"
+
+        d = _Driver(["/mood"])
+        with mock.patch.object(pc, "_get_daily_mood", _spy):
+            pc.run_chat(
+                persona=_persona(), conv_log=None, profile=profile,
+                mood=MoodTracker(affinity=50),
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+            )
+        return salts
+
+    def test_mood_does_not_use_name_as_salt(self):
+        prof = self._up.UserProfile(name="Taro")
+        salts = self._captured_salts(prof)
+        self.assertTrue(salts, "expected get_daily_mood to be called")
+        self.assertNotIn("Taro", salts,
+                         f"daily mood must not be salted with the name; got {salts}")
+
+    def test_mood_identical_with_and_without_name(self):
+        """The mood key shown is the same whether or not a name is set."""
+        import persona_cli as pc
+        from mood import MoodTracker
+
+        def _run(profile):
+            d = _Driver(["/mood"])
+            # Use the real get_daily_mood (date-only) — no patching
+            pc.run_chat(
+                persona=_persona(), conv_log=None, profile=profile,
+                mood=MoodTracker(affinity=50),
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+            return [l for l in d.out if "Today's mood" in l or "今日の気分" in l]
+
+        named = _run(self._up.UserProfile(name="Taro"))
+        anon = _run(self._up.UserProfile())
+        self.assertTrue(named, "expected a daily mood line to be shown")
+        self.assertEqual(named, anon,
+                         "daily mood line should be identical regardless of name")
+
+
 class MoodMultiplierDisplayTests(unittest.TestCase):
     """The /mood command shows the daily mood affinity multiplier effect."""
 
