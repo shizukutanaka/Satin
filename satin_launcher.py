@@ -105,11 +105,14 @@ def _launch_avatar_loader() -> None:
         sys.exit(1)
 
 
-def _launch_dashboard(host: str = "127.0.0.1", port: int = 5000) -> None:
+def _launch_dashboard(host: str = "127.0.0.1", port: int | None = None) -> None:
     try:
-        from dashboard import app
-        print(f"[INFO] ダッシュボードを http://{host}:{port} で起動します")
-        app.run(host=host, port=port, debug=False)
+        from dashboard import app, DEFAULT_DASHBOARD_PORT, _resolve_port
+        # port 明示時はそれを使い、未指定なら dashboard.py 直接実行と同じ解決
+        # （SATIN_DASHBOARD_PORT → DEFAULT_DASHBOARD_PORT=5003）に揃える。
+        resolved = port if port is not None else _resolve_port(DEFAULT_DASHBOARD_PORT)
+        print(f"[INFO] ダッシュボードを http://{host}:{resolved} で起動します")
+        app.run(host=host, port=resolved, debug=False)
     except ImportError as e:
         print(f"[ERROR] Flask ダッシュボード起動失敗: {e}", file=sys.stderr)
         sys.exit(1)
@@ -159,7 +162,7 @@ def main() -> None:
     parser.add_argument("--manage",    action="store_true", help="CLI 管理バッチツールを起動")
     parser.add_argument("--validate",  action="store_true", help="設定バリデーションのみ実行して終了")
     parser.add_argument("--host",      default="127.0.0.1", help="ダッシュボードのホスト (default: 127.0.0.1)")
-    parser.add_argument("--port",      type=int, default=5000, help="ダッシュボードのポート (default: 5000)")
+    parser.add_argument("--port",      type=int, default=None, help="ダッシュボードのポート (default: 5003 / 環境変数 SATIN_DASHBOARD_PORT)")
     parser.add_argument("--lang",      default=None, help="会話言語 (例: ja, en) — --chat と併用")
     parser.add_argument("--no-greet",  action="store_true", help="--chat 時: 開始あいさつを省略")
     parser.add_argument("--no-mood",   action="store_true", help="--chat 時: 好感度トラッキングを無効化")

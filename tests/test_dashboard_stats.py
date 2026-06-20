@@ -360,5 +360,55 @@ class CoerceAffinityTests(unittest.TestCase):
                          "mood_history must not call float() directly on a null-able field")
 
 
+class DashboardPortResolutionTests(unittest.TestCase):
+    """Regression: launcher (--dashboard) and dashboard.py __main__ must resolve
+    to the SAME default port. Previously the launcher defaulted to 5000 while
+    dashboard.py ran on 5003, diverging from the README and direct execution."""
+
+    def setUp(self):
+        self._saved = os.environ.pop("SATIN_DASHBOARD_PORT", None)
+
+    def tearDown(self):
+        if self._saved is None:
+            os.environ.pop("SATIN_DASHBOARD_PORT", None)
+        else:
+            os.environ["SATIN_DASHBOARD_PORT"] = self._saved
+
+    def test_default_port_is_5003(self):
+        self.assertEqual(dashboard.DEFAULT_DASHBOARD_PORT, 5003)
+
+    def test_resolve_port_default(self):
+        self.assertEqual(dashboard._resolve_port(), 5003)
+
+    def test_resolve_port_env_override(self):
+        os.environ["SATIN_DASHBOARD_PORT"] = "6001"
+        self.assertEqual(dashboard._resolve_port(), 6001)
+
+    def test_resolve_port_invalid_env_falls_back(self):
+        os.environ["SATIN_DASHBOARD_PORT"] = "not-a-number"
+        self.assertEqual(dashboard._resolve_port(), 5003)
+
+    def test_launcher_uses_shared_default(self):
+        """satin_launcher._launch_dashboard with no explicit port must resolve to
+        the dashboard module's default (5003), not a hardcoded 5000."""
+        import importlib
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        launcher = importlib.import_module("satin_launcher")
+
+        captured = {}
+
+        class _FakeApp:
+            def run(self, host=None, port=None, debug=None):
+                captured["host"] = host
+                captured["port"] = port
+
+        import unittest.mock as mock
+        with mock.patch.object(dashboard, "app", _FakeApp()):
+            launcher._launch_dashboard(host="127.0.0.1", port=None)
+        self.assertEqual(captured["port"], 5003)
+
+
 if __name__ == "__main__":
     unittest.main()

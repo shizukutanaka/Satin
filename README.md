@@ -1,6 +1,14 @@
 # Satin
 
-Satin is a powerful and flexible configuration management system designed for managing complex applications and services.
+Satin is a 3D avatar desktop companion. It responds to what you type or say
+using offline, rule-based dialogue (no LLM or network required), speaks via
+text-to-speech, and tracks a growing relationship (affinity, memories, special
+days). It runs as a GUI avatar, a headless CLI chat, or a web dashboard. A
+flexible configuration-management subsystem (layered config, validation,
+versioning, backups, plugins) underpins it.
+
+See [`SPECIFICATION.md`](SPECIFICATION.md) for the full specification,
+architecture, and a strengths / weaknesses / improvements analysis.
 
 ## Features
 

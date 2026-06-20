@@ -90,6 +90,25 @@ else:
 event_log_path = 'avatar_event_log.jsonl'
 backup_dir = 'event_report'
 
+# ダッシュボードの既定ポート。satin_launcher.py と dashboard.py の __main__ が
+# 同じ値を参照することで、起動経路によるポート不整合（5000 vs 5003）を防ぐ。
+# 環境変数 SATIN_DASHBOARD_PORT で上書き可能。
+DEFAULT_DASHBOARD_PORT = 5003
+
+
+def _resolve_port(default: int = DEFAULT_DASHBOARD_PORT) -> int:
+    """SATIN_DASHBOARD_PORT を優先してポート番号を解決する。
+
+    値が未設定／非数値なら default にフォールバックする（不正値で起動失敗しない）。
+    """
+    raw = os.environ.get('SATIN_DASHBOARD_PORT')
+    if raw:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    return default
+
 
 def _build_sync_backup(zip_path, config_dir, log_path):
     """設定一式（config/ 配下を再帰的に）と会話ログ（アーカイブ含む）を zip にまとめる。
@@ -902,4 +921,4 @@ if __name__ == '__main__':
     # debug=True は Werkzeug デバッガ経由の任意コード実行を許すため、
     # 既定では無効。SATIN_DASHBOARD_DEBUG=1 のときのみ有効化する。
     _debug = os.environ.get('SATIN_DASHBOARD_DEBUG') == '1'
-    app.run(debug=_debug, port=5003)
+    app.run(debug=_debug, port=_resolve_port())
