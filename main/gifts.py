@@ -210,10 +210,12 @@ def lookup_gift(item: str, lang: str = "ja",
     alias_map = _ALIAS_MAP_EN if lang_key == "en" else _ALIAS_MAP_JA
 
     # 完全一致を優先、次に部分一致
+    # norm in alias の方向（ユーザー入力がエイリアスの部分文字列）は
+    # 3 文字以上のとき限定。それ以下では「a」が全ての英単語に一致するため。
     idx = alias_map.get(norm)
     if idx is None:
         for alias, i in alias_map.items():
-            if alias in norm or norm in alias:
+            if alias in norm or (len(norm) >= 3 and norm in alias):
                 idx = i
                 break
     if idx is None:
@@ -251,7 +253,7 @@ def lookup_gift_key(item: str, lang: str = "ja") -> Optional[str]:
     idx = alias_map.get(norm)
     if idx is None:
         for alias, i in alias_map.items():
-            if alias in norm or norm in alias:
+            if alias in norm or (len(norm) >= 3 and norm in alias):
                 idx = i
                 break
     if idx is None:

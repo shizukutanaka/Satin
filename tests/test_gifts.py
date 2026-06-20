@@ -58,6 +58,21 @@ class LookupTests(unittest.TestCase):
         self.assertIsNone(lookup_gift("   ", lang="en"))
         self.assertIsNone(lookup_gift("\t", lang="ja"))
 
+    def test_single_char_does_not_match(self):
+        """Single ASCII characters are substrings of every word — must not match.
+
+        Before the len>=3 guard, lookup_gift('a') matched 'chocolate' via
+        'a' in 'chocolate', giving a free gift for a trivially short input.
+        """
+        for ch in list("aeiouflnkct"):
+            self.assertIsNone(lookup_gift(ch, lang="en"), f"single char {ch!r} should not match")
+
+    def test_three_char_prefix_still_matches(self):
+        """3-character prefix inputs should still work after the guard."""
+        self.assertIsNotNone(lookup_gift("cho", lang="en"))   # chocolate
+        self.assertIsNotNone(lookup_gift("flo", lang="en"))   # flowers
+        self.assertIsNotNone(lookup_gift("boo", lang="en"))   # book
+
     def test_all_ja_aliases_resolve(self):
         from gifts import _GIFTS
         for gift in _GIFTS:
