@@ -37,6 +37,7 @@ class I18N:
         try:
             with open(path, encoding='utf-8') as f:
                 data = json.load(f)
+                data = data if isinstance(data, dict) else {}
                 self._translation_cache[lang] = data
                 return data
         except Exception:

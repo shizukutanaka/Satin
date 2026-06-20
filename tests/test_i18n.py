@@ -132,5 +132,36 @@ class EnLocaleTests(unittest.TestCase):
         self.assertEqual(i.t("you", "fallback"), "You")
 
 
+class NullLocaleFileTests(unittest.TestCase):
+    """load_translation must handle locale files containing null/non-dict JSON."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self._module = _load_i18n_module()
+        self._module.I18N._translation_cache.clear()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        self._module.I18N._translation_cache.clear()
+
+    def test_null_locale_file_falls_back_to_empty_dict(self):
+        import json
+        null_path = os.path.join(self.tmp, "xx.json")
+        with open(null_path, "w") as f:
+            json.dump(None, f)
+        original = self._module.LOCALES_DIR
+        self._module.LOCALES_DIR = self.tmp
+        try:
+            result = self._module.I18N(lang="xx")
+            self.assertIsInstance(result.translations, dict,
+                                  "translations must be dict even for null locale file")
+            val = result.t("any_key", "fallback")
+            self.assertEqual(val, "fallback")
+        finally:
+            self._module.LOCALES_DIR = original
+
+
 if __name__ == "__main__":
     unittest.main()
