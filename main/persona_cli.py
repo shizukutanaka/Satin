@@ -160,7 +160,8 @@ def _detect_ritual_event(text: str):
     複数のイベントが同一発話に含まれる場合はより大きいボーナスを優先。
     何も検出しなければ None。
     """
-    norm = text.strip().lower()
+    import unicodedata as _ud
+    norm = _ud.normalize("NFC", text.strip().lower())
     found_apology = any(kw in norm for kw in _APOLOGY_KEYWORDS)
     found_goodnight = any(kw in norm for kw in _GOODNIGHT_KEYWORDS)
     if found_apology and found_goodnight:
