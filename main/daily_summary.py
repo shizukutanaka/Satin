@@ -190,7 +190,8 @@ def daily_summary(
         # 履歴は 1 日 1 エントリ（同日は上書き）なので同日内差分は取れず、
         # 旧実装の len(day_moods) >= 2 は決して成立せず affinity_change が常に
         # None になっていた（あいさつの増減メッセージが発火しないバグ）。
-        prior_moods = [e for e in mood_entries if e.get("date", "") < date_key]
+        # date が null/欠落でも "" 扱いにする（None < str は TypeError）
+        prior_moods = [e for e in mood_entries if (e.get("date") or "") < date_key]
         if prior_moods and affinity is not None:
             prev_affinity = prior_moods[-1].get("affinity")
             if prev_affinity is not None:

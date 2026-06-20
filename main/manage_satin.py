@@ -176,7 +176,8 @@ def cmd_mood_show() -> None:
         if transitions:
             print("関係の節目    :")
             for t in transitions[-5:]:  # 最近 5 件
-                arrow = "↑" if t.get("prev_level", "") < t.get("level", "") else "↓"
+                # null/欠落レベルでも "" 扱い（None < str は TypeError）
+                arrow = "↑" if (t.get("prev_level") or "") < (t.get("level") or "") else "↓"
                 print(f"  {t.get('date', '?')} {arrow} {t.get('prev_level', '?')} → {t.get('level', '?')}")
         print(f"保存先        : {_default_mood_path()}")
     except ImportError:

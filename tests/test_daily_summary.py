@@ -377,6 +377,27 @@ class NullTimestampRobustnessTests(unittest.TestCase):
         result = daily_summary(**self._kwargs())  # must not raise TypeError
         self.assertIsInstance(result, dict)
 
+    def test_null_date_in_mood_history_does_not_crash(self):
+        """A mood entry with "date": null must not crash daily_summary.
+
+        The prior-day diff did `e.get("date", "") < date_key`, but get returns
+        None (not "") for a present-but-null key, and None < str raises
+        TypeError.  daily_summary is called from greetings, the dashboard and
+        the CLI, so this would propagate widely.
+        """
+        today = date.today()
+        date_key = today.strftime("%Y-%m-%d")
+        # One valid prior entry, one with a null date (must be skipped, not crash)
+        _write_mood(self._mood_path, [
+            {"date": None, "affinity": 40.0, "level": "neutral"},
+            {"date": "2000-01-01", "affinity": 45.0, "level": "neutral"},
+            {"date": date_key, "affinity": 60.0, "level": "friendly"},
+        ])
+        result = daily_summary(**self._kwargs())  # must not raise
+        self.assertIsInstance(result, dict)
+        # The valid prior entry (2000-01-01, affinity 45) drives the change calc
+        self.assertAlmostEqual(result["affinity_change"], 60.0 - 45.0, places=1)
+
 
 class LegacyAliasConsistencyTests(unittest.TestCase):
     """daily_summary must count legacy 'user'/'avatar' event aliases the same
