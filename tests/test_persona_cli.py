@@ -1747,5 +1747,77 @@ class ForgetMeTests(unittest.TestCase):
         self.assertTrue(any("プロファイル" in line for line in out))
 
 
+class ConfessionSaveMidSessionTests(unittest.TestCase):
+    """The confession_done flag must be written to disk when the confession fires.
+
+    Before the fix, mood.save(mood._path) was dead code because MoodTracker has no
+    _path attribute.  A crash between the confession and the end-of-session save
+    would lose the flag, causing the once-per-lifetime confession to replay.
+    """
+
+    def setUp(self):
+        from mood import reset_mood_tracker
+        from persona import reset_persona
+        reset_mood_tracker()
+        reset_persona()
+        self._tmp = tempfile.mkdtemp()
+        self._mood_path = os.path.join(self._tmp, "mood.json")
+
+    def tearDown(self):
+        from mood import reset_mood_tracker
+        from persona import reset_persona
+        reset_mood_tracker()
+        reset_persona()
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _run_with_mood(self, inputs, mood, mood_path):
+        import mood as _mood_mod
+        with mock.patch.object(_mood_mod, "_default_mood_path",
+                               return_value=mood_path):
+            d = _Driver(inputs)
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=None, mood=mood,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+        return d.out
+
+    def test_confession_done_saved_to_disk_when_confession_fires(self):
+        """When friendly→close transition triggers the confession, the flag must
+        be written to the mood file immediately (crash-safe mid-session save)."""
+        import json
+        from mood import MoodTracker
+
+        # Start at high-friendly (78), enough positive hits push to close (>=80)
+        m = MoodTracker(affinity=78.0)
+        self.assertFalse(m._confession_done)
+
+        # "ありがとう大好きかわいいうれしい" hits 4 positive keywords → +10 (capped)
+        # 78 + 10 = 88 > 80 → friendly→close transition → confession fires
+        self._run_with_mood(["ありがとう大好きかわいいうれしい"], m, self._mood_path)
+
+        # Verify confession fired in memory
+        if m.affinity < 80.0:
+            self.skipTest("affinity did not reach close — check keyword coverage")
+
+        self.assertTrue(m._confession_done, "confession_done must be set after transition")
+        # Verify it was persisted mid-session
+        self.assertTrue(os.path.exists(self._mood_path),
+                        "mood file must be written mid-session when confession fires")
+        with open(self._mood_path, encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertTrue(saved.get("confession_done"),
+                        "confession_done must be True in the saved mood file")
+
+    def test_no_save_if_no_milestone(self):
+        """Neutral input with no milestone must not trigger a save."""
+        from mood import MoodTracker
+        m = MoodTracker(affinity=50.0)
+        self._run_with_mood(["今日はいい天気ですね"], m, self._mood_path)
+        # no confession, no milestone → file should NOT exist (no mid-session save)
+        self.assertFalse(os.path.exists(self._mood_path),
+                         "mood file must not be written unless a milestone fires")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -513,10 +513,12 @@ def run_chat(
                     )
                     if inter_ms:
                         milestone_msg = inter_ms
-                # save confession_done persistently
+                # save confession_done persistently so a mid-session crash
+                # does not allow the once-per-lifetime confession to replay
                 if milestone_msg and getattr(mood, "_confession_done", False):
                     try:
-                        mood.save(mood._path) if hasattr(mood, "_path") else None
+                        from mood import _default_mood_path as _mp
+                        mood.save(_mp())
                     except Exception:
                         pass
             except Exception:  # pragma: no cover - defensive
