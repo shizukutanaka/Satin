@@ -272,5 +272,65 @@ class LoadConfigFileTests(unittest.TestCase):
         self.assertIn("enabled", result)
 
 
+class BreakReminderSessionClampTests(unittest.TestCase):
+    """Zero/negative config values must not cause ZeroDivisionError or infinite loops.
+
+    Before the fix, cycles_before_long=0 caused ZeroDivisionError in
+    current_break_minutes and is_long_break_due (modulo by zero).
+    work_minutes=0 caused the timer to fire immediately, spinning forever.
+    """
+
+    def test_cycles_before_long_zero_does_not_crash(self):
+        from break_reminder import BreakReminderSession
+        s = BreakReminderSession(cycles_before_long=0)
+        # Should not raise — clamped to 1
+        _ = s.current_break_minutes
+        _ = s.is_long_break_due
+
+    def test_cycles_before_long_zero_clamped_to_one(self):
+        from break_reminder import BreakReminderSession
+        s = BreakReminderSession(cycles_before_long=0)
+        self.assertEqual(s.cycles_before_long, 1)
+
+    def test_cycles_before_long_negative_clamped(self):
+        from break_reminder import BreakReminderSession
+        s = BreakReminderSession(cycles_before_long=-5)
+        self.assertGreaterEqual(s.cycles_before_long, 1)
+        _ = s.current_break_minutes  # must not raise
+
+    def test_work_minutes_zero_clamped_to_one(self):
+        from break_reminder import BreakReminderSession
+        s = BreakReminderSession(work_minutes=0)
+        self.assertGreaterEqual(s.work_minutes, 1)
+
+    def test_work_minutes_negative_clamped(self):
+        from break_reminder import BreakReminderSession
+        s = BreakReminderSession(work_minutes=-10)
+        self.assertGreaterEqual(s.work_minutes, 1)
+
+    def test_short_break_zero_clamped(self):
+        from break_reminder import BreakReminderSession
+        s = BreakReminderSession(short_break_minutes=0)
+        self.assertGreaterEqual(s.short_break_minutes, 1)
+
+    def test_long_break_zero_clamped(self):
+        from break_reminder import BreakReminderSession
+        s = BreakReminderSession(long_break_minutes=0)
+        self.assertGreaterEqual(s.long_break_minutes, 1)
+
+    def test_from_config_zero_cycles_clamped(self):
+        from break_reminder import BreakReminder
+        r = BreakReminder.from_config({"cycles_before_long": 0})
+        self.assertGreaterEqual(r.session.cycles_before_long, 1)
+        # And the properties must work without raising
+        _ = r.session.current_break_minutes
+        _ = r.session.is_long_break_due
+
+    def test_from_config_zero_work_minutes_clamped(self):
+        from break_reminder import BreakReminder
+        r = BreakReminder.from_config({"work_minutes": 0})
+        self.assertGreaterEqual(r.session.work_minutes, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

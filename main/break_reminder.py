@@ -52,10 +52,12 @@ class BreakReminderSession:
         long_break_minutes: int = _DEFAULT_LONG_BREAK,
         cycles_before_long: int = _DEFAULT_CYCLES_BEFORE_LONG,
     ):
-        self.work_minutes = work_minutes
-        self.short_break_minutes = short_break_minutes
-        self.long_break_minutes = long_break_minutes
-        self.cycles_before_long = cycles_before_long
+        # Clamp to safe minimums: 0 or negative values cause division-by-zero or
+        # immediate-fire loops. 1 is the smallest meaningful value for each.
+        self.work_minutes = max(1, int(work_minutes))
+        self.short_break_minutes = max(1, int(short_break_minutes))
+        self.long_break_minutes = max(1, int(long_break_minutes))
+        self.cycles_before_long = max(1, int(cycles_before_long))
 
         self.completed_cycles: int = 0
         self.is_on_break: bool = False
