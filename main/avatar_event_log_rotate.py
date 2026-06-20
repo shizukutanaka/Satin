@@ -40,12 +40,13 @@ def rotate_log(logfile, max_size=5*1024*1024, max_backups=5, quiet=False):
          if f.startswith(os.path.basename(logfile) + '.') and f.endswith('.gz')],
         key=_backup_sort_key,
     )
-    if len(backups) > max_backups:
-        for old in backups[:-max_backups]:
-            try:
-                os.remove(os.path.join(log_dir, old))
-            except Exception:
-                pass
+    # max_backups=0 means keep none; list[:-0] == list[:0] == [] so guard explicitly.
+    to_remove = backups[:-max_backups] if max_backups > 0 else backups
+    for old in to_remove:
+        try:
+            os.remove(os.path.join(log_dir, old))
+        except Exception:
+            pass
     if not quiet:
         print(f"ログローテート: {rotated}")
 

@@ -99,5 +99,52 @@ class RotateLogBasicTests(unittest.TestCase):
             os.chdir(orig_cwd)
 
 
+class MaxBackupsZeroBugTests(unittest.TestCase):
+    """max_backups=0 must delete ALL archives (keep none).
+
+    Before the fix, backups[:-0] evaluated to [] (empty slice in Python),
+    so setting max_backups=0 accidentally kept ALL archives forever instead
+    of deleting them.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_max_backups_zero_deletes_all_existing_archives(self):
+        """After rotation with max_backups=0, no gz archives should remain."""
+        logfile = os.path.join(self._tmp, "events.jsonl")
+        # Pre-populate 3 old archives
+        for i in range(3):
+            fake = os.path.join(self._tmp, f"events.jsonl.2024010{i+1}_000000.gz")
+            with gzip.open(fake, "wb") as gf:
+                gf.write(b"old data")
+        _write_logfile(logfile, 200)
+
+        rotate_log(logfile, max_size=100, max_backups=0)
+
+        gz_files = [f for f in os.listdir(self._tmp) if f.endswith(".gz")]
+        self.assertEqual(gz_files, [],
+                         f"max_backups=0 must keep no archives; found: {gz_files}")
+
+    def test_max_backups_one_keeps_only_latest(self):
+        """max_backups=1 must keep exactly 1 archive (the most recent)."""
+        logfile = os.path.join(self._tmp, "events.jsonl")
+        for i in range(3):
+            fake = os.path.join(self._tmp, f"events.jsonl.2024010{i+1}_000000.gz")
+            with gzip.open(fake, "wb") as gf:
+                gf.write(b"old")
+        _write_logfile(logfile, 200)
+
+        rotate_log(logfile, max_size=100, max_backups=1)
+
+        gz_files = [f for f in os.listdir(self._tmp) if f.endswith(".gz")]
+        self.assertEqual(len(gz_files), 1,
+                         f"max_backups=1 must keep 1 archive; found: {gz_files}")
+
+
 if __name__ == "__main__":
     unittest.main()
