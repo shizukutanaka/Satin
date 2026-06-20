@@ -136,6 +136,7 @@ class ConversationLog:
             return []
         # まずライブファイルから収集する
         live_entries: List[Dict] = []
+        _conv_types = USER_EVENT_TYPES | AVATAR_EVENT_TYPES
         if os.path.exists(self.logfile):
             try:
                 with open(self.logfile, encoding="utf-8") as f:
@@ -146,7 +147,7 @@ class ConversationLog:
                             ev = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        if ev.get("event_type") in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
+                        if ev.get("event_type") in _conv_types:
                             live_entries.append(ev)
             except Exception as e:  # pragma: no cover - defensive
                 logger.warning("会話ログの読み出しに失敗しました: %s", e)
@@ -168,7 +169,7 @@ class ConversationLog:
                     ev = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if ev.get("event_type") in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
+                if ev.get("event_type") in _conv_types:
                     block.append(ev)
             archive_blocks.insert(0, block)  # 先頭挿入で古→新順を維持
             total_archive += len(block)
@@ -198,7 +199,7 @@ class ConversationLog:
             try:
                 dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
                 lines.append(f"[{dt_str}] {prefix}: {text}")
-            except (OSError, OverflowError, ValueError):
+            except (OSError, OverflowError, ValueError, TypeError):
                 lines.append(f"{prefix}: {text}")
         return lines
 
@@ -278,7 +279,7 @@ class ConversationLog:
             ts = ev.get("timestamp", 0)
             try:
                 dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
-            except (OSError, OverflowError, ValueError):
+            except (OSError, OverflowError, ValueError, TypeError):
                 dt_str = ""
             et = ev.get("event_type", "")
             speaker = user_label if et in USER_EVENT_TYPES else avatar_label

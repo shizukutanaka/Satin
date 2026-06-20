@@ -152,6 +152,27 @@ class RecentTests(_TmpLogBase):
         self.assertTrue(texts[0].endswith("User: hello"), texts[0])
         self.assertTrue(texts[1].endswith("Satin: Hi!"), texts[1])
 
+    def test_recent_includes_legacy_user_events(self):
+        """Regression: recent() used (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY) tuple,
+        missing legacy 'user'/'avatar' event types that search() includes."""
+        legacy = {"timestamp": 1.0, "event_type": "user",
+                  "details": {"text": "legacy user"}}
+        with open(self.logfile, "w", encoding="utf-8") as f:
+            f.write(json.dumps(legacy) + "\n")
+        entries = self.log.recent(10)
+        self.assertEqual(len(entries), 1, "Legacy 'user' events must appear in recent()")
+        self.assertEqual(entries[0]["event_type"], "user")
+
+    def test_recent_texts_null_timestamp_does_not_crash(self):
+        """Regression: null timestamp caused uncaught TypeError in recent_texts()."""
+        event = {"timestamp": None, "event_type": EVENT_USER_COMMENT,
+                 "details": {"text": "null ts"}}
+        with open(self.logfile, "w", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+        texts = self.log.recent_texts()  # must not raise TypeError
+        self.assertEqual(len(texts), 1)
+        self.assertIn("null ts", texts[0])
+
 
 class ToCsvTests(_TmpLogBase):
     """ConversationLog.to_csv() produces valid CSV output."""
@@ -250,6 +271,18 @@ class ToCsvTests(_TmpLogBase):
         rows = list(csv.DictReader(io.StringIO(self.log.to_csv(include_archives=False))))
         texts = [r["text"] for r in rows]
         self.assertNotIn("only in archive", texts)
+
+    def test_csv_null_timestamp_does_not_crash(self):
+        """Regression: null timestamp caused uncaught TypeError in to_csv()."""
+        event = {"timestamp": None, "event_type": EVENT_USER_COMMENT,
+                 "details": {"text": "no ts"}}
+        with open(self.logfile, "w", encoding="utf-8") as f:
+            f.write(json.dumps(event) + "\n")
+        import csv, io
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv())))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["datetime"], "",
+                         "Null timestamp should produce empty datetime, not crash")
 
     def test_csv_legacy_user_event_type_labeled_as_user(self):
         """Legacy 'user' event_type must be labeled as user, not avatar, in CSV.
