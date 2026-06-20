@@ -345,7 +345,7 @@ class MoodTracker:
                     prev_day_entry = json.loads(lines[-1])
                 else:
                     prev_day_entry = None
-                if prev_day_entry is not None:
+                if prev_day_entry is not None and isinstance(prev_day_entry, dict):
                     prev_level = prev_day_entry.get("level")
                     if prev_level and prev_level != self.level:
                         entry["level_changed"] = True

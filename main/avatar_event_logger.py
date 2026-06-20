@@ -57,7 +57,9 @@ class AvatarEventLogger:
                 if not line.strip():
                     continue
                 try:
-                    events.append(json.loads(line))
+                    data = json.loads(line)
+                    if isinstance(data, dict):
+                        events.append(data)
                 except json.JSONDecodeError:
                     # 壊れた行（クラッシュで途中まで書かれた等）はスキップ
                     continue
