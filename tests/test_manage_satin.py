@@ -459,6 +459,47 @@ class MoodImportTests(unittest.TestCase):
         finally:
             _mood.reset_mood_tracker()
 
+    def test_import_null_values_use_defaults(self):
+        """Null JSON values must not raise TypeError — dict.get(key, default) returns
+        None (not the default) when the key is present with a null value."""
+        import mood as _mood
+        _mood.reset_mood_tracker()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                src = os.path.join(tmp, "mood_null.json")
+                with open(src, "w") as f:
+                    json.dump({"affinity": None, "interactions": None, "last_interaction_time": None}, f)
+                mood_path = os.path.join(tmp, "mood.json")
+                from unittest import mock
+                with mock.patch.object(_mood, "_default_mood_path", lambda: mood_path):
+                    # Must not raise TypeError
+                    manage_satin.cmd_mood_import(src)
+                tracker = _mood.get_mood_tracker()
+                # Falls back to AFFINITY_START and 0
+                from mood import AFFINITY_START
+                self.assertAlmostEqual(tracker.affinity, float(AFFINITY_START), places=1)
+                self.assertEqual(tracker.interactions, 0)
+        finally:
+            _mood.reset_mood_tracker()
+
+    def test_import_string_affinity_exits(self):
+        """Non-numeric string affinity must call sys.exit(1) gracefully."""
+        import mood as _mood
+        _mood.reset_mood_tracker()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                src = os.path.join(tmp, "mood_bad.json")
+                with open(src, "w") as f:
+                    json.dump({"affinity": "not_a_number"}, f)
+                mood_path = os.path.join(tmp, "mood.json")
+                from unittest import mock
+                with mock.patch.object(_mood, "_default_mood_path", lambda: mood_path):
+                    with self.assertRaises(SystemExit) as cm:
+                        manage_satin.cmd_mood_import(src)
+                    self.assertEqual(cm.exception.code, 1)
+        finally:
+            _mood.reset_mood_tracker()
+
 
 class LogCsvTests(unittest.TestCase):
     def test_csv_export_creates_file(self):

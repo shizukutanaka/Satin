@@ -594,7 +594,7 @@ def conversation_search(i18n):
             text = details.get('text', '') if isinstance(details, dict) else str(details)
             try:
                 ts = datetime.fromtimestamp(ev.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S')
-            except (ValueError, OSError, OverflowError):
+            except (ValueError, OSError, OverflowError, TypeError):
                 ts = ''
             speaker = i18n.t('you', 'You') if et in _USER_TYPES else avatar_name
             matches.append({'ts': ts, 'speaker': speaker, 'text': text})

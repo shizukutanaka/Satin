@@ -308,5 +308,24 @@ class SyncBackupContentsTests(unittest.TestCase):
         self.assertIn("config/persona.json", names)
 
 
+class ConversationSearchNullTimestampTests(unittest.TestCase):
+    """Regression: conversation_search route must catch TypeError from
+    datetime.fromtimestamp(None) when an event has "timestamp": null.
+
+    The original except clause was (ValueError, OSError, OverflowError) —
+    missing TypeError — so a null timestamp caused an unhandled exception
+    and a 500 error for the search route.
+    """
+
+    def test_conversation_search_catches_type_error(self):
+        """Source of conversation_search must include TypeError in the
+        fromtimestamp except to guard against null/string timestamps."""
+        import inspect
+        src = inspect.getsource(dashboard.conversation_search)
+        self.assertIn("TypeError", src,
+                      "conversation_search must catch TypeError from "
+                      "datetime.fromtimestamp(None) on null timestamps")
+
+
 if __name__ == "__main__":
     unittest.main()

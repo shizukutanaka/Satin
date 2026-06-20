@@ -431,17 +431,20 @@ def cmd_mood_import(src: str) -> None:
         with open(src, encoding="utf-8") as f:
             data = json.load(f)
         tracker = get_mood_tracker()
-        tracker.affinity = float(data.get("affinity", AFFINITY_START))
-        tracker.interactions = int(data.get("interactions", 0))
-        tracker._last_interaction_time = float(data.get("last_interaction_time", 0.0))
-        if _default_mood_path is not None:
-            tracker.save(_default_mood_path())
+        def _f(val, default):
+            return float(val) if val is not None else float(default)
+        def _i(val, default):
+            return int(val) if val is not None else int(default)
+        tracker.affinity = _f(data.get("affinity"), AFFINITY_START)
+        tracker.interactions = _i(data.get("interactions"), 0)
+        tracker._last_interaction_time = _f(data.get("last_interaction_time"), 0.0)
+        tracker.save(_default_mood_path())
         print(f"好感度を '{src}' からインポートしました: affinity={tracker.affinity:.1f}")
     except ImportError:
         print("[ERROR] mood モジュールが見つかりません。")
         sys.exit(1)
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        print(f"[ERROR] ファイルの読み込みに失敗しました: {exc}")
+    except (FileNotFoundError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        print(f"[ERROR] インポートに失敗しました: {exc}")
         sys.exit(1)
 
 
