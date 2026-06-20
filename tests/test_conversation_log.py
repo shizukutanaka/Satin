@@ -455,5 +455,77 @@ class ArchiveSearchTests(unittest.TestCase):
         self.assertEqual(archives, [p1, p2])
 
 
+class RecentMultiArchiveOrderingTests(unittest.TestCase):
+    """recent() must return entries in chronological order even when they span
+    multiple archive files.  Bug: the old code appended entries newest-archive-
+    first then reversed the flat list, mixing up blocks from different archives."""
+
+    def setUp(self):
+        import gzip
+        self._tmp = tempfile.mkdtemp()
+        self.logfile = os.path.join(self._tmp, "events.jsonl")
+        self._gzip = gzip
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_gz_archive(self, ts_tag, events):
+        basename = os.path.basename(self.logfile)
+        path = os.path.join(self._tmp, f"{basename}.{ts_tag}.gz")
+        with self._gzip.open(path, "wt", encoding="utf-8") as fh:
+            for ev in events:
+                fh.write(json.dumps(ev) + "\n")
+        return path
+
+    def _ev(self, text, ts, et=EVENT_USER_COMMENT):
+        return {"timestamp": ts, "event_type": et, "details": {"text": text}}
+
+    def test_two_archives_no_live_chronological_order(self):
+        """Entries from an older archive must come before those from a newer archive."""
+        old_events = [self._ev("o1", 1.0), self._ev("o2", 2.0), self._ev("o3", 3.0)]
+        new_events = [self._ev("n1", 4.0), self._ev("n2", 5.0), self._ev("n3", 6.0)]
+        self._write_gz_archive("20260101_000000", old_events)
+        self._write_gz_archive("20260102_000000", new_events)
+        # empty live file
+        open(self.logfile, "w").close()
+
+        entries = ConversationLog(self.logfile).recent(5)
+        texts = [e["details"]["text"] for e in entries]
+        # Most recent 5 of 6 total, oldest first → [o2, o3, n1, n2, n3]
+        self.assertEqual(texts, ["o2", "o3", "n1", "n2", "n3"])
+
+    def test_two_archives_no_live_timestamps_ascending(self):
+        """Timestamps in the result must be monotonically non-decreasing."""
+        old_events = [self._ev(f"o{i}", float(i)) for i in range(1, 4)]
+        new_events = [self._ev(f"n{i}", float(i + 10)) for i in range(1, 4)]
+        self._write_gz_archive("20260101_000000", old_events)
+        self._write_gz_archive("20260102_000000", new_events)
+        open(self.logfile, "w").close()
+
+        entries = ConversationLog(self.logfile).recent(5)
+        timestamps = [e["timestamp"] for e in entries]
+        self.assertEqual(timestamps, sorted(timestamps))
+
+    def test_two_archives_plus_live_chronological_order(self):
+        """Ordering must be correct when live file also contributes entries."""
+        old_events = [self._ev("o1", 1.0), self._ev("o2", 2.0)]
+        new_events = [self._ev("n1", 3.0), self._ev("n2", 4.0)]
+        self._write_gz_archive("20260101_000000", old_events)
+        self._write_gz_archive("20260102_000000", new_events)
+
+        log = ConversationLog(self.logfile)
+        log.log_user_comment("live1")
+
+        entries = log.recent(6)
+        texts = [e["details"]["text"] for e in entries]
+        # oldest archive first, then newer archive, then live
+        old_idx = texts.index("o1")
+        new_idx = texts.index("n1")
+        live_idx = texts.index("live1")
+        self.assertLess(old_idx, new_idx)
+        self.assertLess(new_idx, live_idx)
+
+
 if __name__ == "__main__":
     unittest.main()

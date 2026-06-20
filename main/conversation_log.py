@@ -151,9 +151,13 @@ class ConversationLog:
         if len(live_entries) >= n:
             return live_entries[-n:]
         # 不足分をアーカイブ（新しい順）から補完する
+        # 各アーカイブのエントリをブロック単位で先頭に挿入し、古→新の時系列順を保つ。
+        # フラットに追記して後で逆順にする方法はアーカイブ境界をまたぐと順序が崩れる。
         need = n - len(live_entries)
-        archive_entries: List[Dict] = []
+        archive_blocks: List[List[Dict]] = []
+        total_archive = 0
         for gz_path in reversed(_find_archives(self.logfile)):
+            block: List[Dict] = []
             for line in _iter_gz_lines(gz_path):
                 if not line.strip():
                     continue
@@ -162,11 +166,14 @@ class ConversationLog:
                 except json.JSONDecodeError:
                     continue
                 if ev.get("event_type") in (EVENT_USER_COMMENT, EVENT_AVATAR_REPLY):
-                    archive_entries.append(ev)
-            if len(archive_entries) >= need:
+                    block.append(ev)
+            archive_blocks.insert(0, block)  # 先頭挿入で古→新順を維持
+            total_archive += len(block)
+            if total_archive >= need:
                 break
-        # アーカイブは新→旧の順に読んでいるので反転して古→新に並べ直す
-        archive_tail = list(reversed(archive_entries[-need:]))
+        # ブロックを結合して古→新の連続リストにし、末尾 need 件を取る
+        archive_entries: List[Dict] = [ev for blk in archive_blocks for ev in blk]
+        archive_tail = archive_entries[-need:]
         return archive_tail + live_entries
 
     def recent_texts(
