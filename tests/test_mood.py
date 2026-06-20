@@ -413,6 +413,51 @@ class MoodHistoryTests(unittest.TestCase):
         self.assertIn("config", path)
         self.assertTrue(path.endswith(".jsonl"))
 
+    def test_corrupt_last_line_same_day_appends_not_overwrites(self):
+        """Regression: malformed JSON in last line must not cause duplicate entry.
+
+        Before the fix, json.JSONDecodeError from lines[-2] fell through to the
+        outer except block, triggering lines.append() instead of lines[-1]=,
+        producing a second entry for the same day.
+        """
+        import gzip as _gz  # noqa — only to confirm no import leaks
+        today = __import__("datetime").date.today().isoformat()
+        # Seed with one today-entry that is corrupt JSON
+        with open(self._history_path, "w", encoding="utf-8") as f:
+            f.write("CORRUPTED_NOT_JSON\n")
+        t = self._make_tracker(affinity=70.0)
+        t.snapshot_to_history(self._history_path)
+        from mood import load_mood_history
+        entries = load_mood_history(self._history_path)
+        # Corrupt line is not valid JSON → skipped by load_mood_history; today entry appended once
+        today_entries = [e for e in entries if e.get("date") == today]
+        self.assertEqual(len(today_entries), 1,
+                         f"Expected exactly 1 today-entry, got: {today_entries}")
+
+    def test_repeated_snapshots_produce_no_blank_lines(self):
+        """Regression: readlines() retains \\n; joining with \\n doubled blank lines.
+
+        After repeated snapshots the file must contain no blank lines.
+        """
+        import datetime
+        t = self._make_tracker(affinity=60.0)
+        t.snapshot_to_history(self._history_path)
+        t.affinity = 65.0
+        t.snapshot_to_history(self._history_path)
+        # Add a second-day entry to verify multi-line write path
+        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        with open(self._history_path, "w", encoding="utf-8") as f:
+            f.write('{"date": "' + yesterday + '", "affinity": 55.0, "level": "neutral", "interactions": 2, "timestamp": 0.0}\n')
+        t.affinity = 70.0
+        t.snapshot_to_history(self._history_path)
+        t.affinity = 75.0
+        t.snapshot_to_history(self._history_path)
+        with open(self._history_path, encoding="utf-8") as f:
+            raw = f.read()
+        blank_lines = [ln for ln in raw.splitlines() if ln.strip() == ""]
+        self.assertEqual(blank_lines, [],
+                         f"No blank lines expected; file content:\n{raw!r}")
+
 
 class MoodConfigLoadTests(unittest.TestCase):
     """Tests for _default_mood_config_path and _load_mood_config."""

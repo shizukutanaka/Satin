@@ -322,35 +322,42 @@ class MoodTracker:
             lines: List[str] = []
             if os.path.exists(history_path):
                 with open(history_path, encoding="utf-8") as f:
-                    lines = [l for l in f.readlines() if l.strip()]
+                    # rstrip('\n') so "\n".join(lines) doesn't insert blank lines
+                    lines = [l.rstrip("\n") for l in f.readlines() if l.strip()]
 
-            # 最終行が今日なら上書き、それ以外なら追記
-            # レベル変化検出: 同日上書き時は前日以前のエントリと比較して
-            # 初回記録時の遷移フラグを失わないようにする
+            # 最終行が今日なら上書き、それ以外なら追記。
+            # 「最終行が今日かどうか」の判定は lines[-1] のパース結果に依存するが、
+            # レベル変化検出 (lines[-2]) のパースに失敗しても上書き判定は影響させない。
+            is_same_day = False
             if lines:
                 try:
                     last = json.loads(lines[-1])
                     is_same_day = last.get("date") == today
-                    # 比較対象は「今日以前の最後の別日エントリ」
-                    if is_same_day:
-                        # 同日上書き: 2 行前（前日以前）のエントリとレベルを比較
-                        prev_day_entry = json.loads(lines[-2]) if len(lines) >= 2 else None
-                    else:
-                        prev_day_entry = last
-                    if prev_day_entry is not None:
-                        prev_level = prev_day_entry.get("level")
-                        if prev_level and prev_level != self.level:
-                            entry["level_changed"] = True
-                            entry["prev_level"] = prev_level
-                    new_line = json.dumps(entry, ensure_ascii=False)
-                    if is_same_day:
-                        lines[-1] = new_line
-                    else:
-                        lines.append(new_line)
-                except (json.JSONDecodeError, IndexError):
-                    lines.append(json.dumps(entry, ensure_ascii=False))
+                except json.JSONDecodeError:
+                    pass  # 最終行が壊れている→同日上書きできないので追記扱い
+
+            # レベル変化検出: ベストエフォート（失敗しても上書き/追記ロジックは継続）
+            try:
+                if is_same_day:
+                    # 比較対象: 前日以前の最後のエントリ（lines[-2]）
+                    prev_day_entry = json.loads(lines[-2]) if len(lines) >= 2 else None
+                elif lines:
+                    prev_day_entry = json.loads(lines[-1])
+                else:
+                    prev_day_entry = None
+                if prev_day_entry is not None:
+                    prev_level = prev_day_entry.get("level")
+                    if prev_level and prev_level != self.level:
+                        entry["level_changed"] = True
+                        entry["prev_level"] = prev_level
+            except (json.JSONDecodeError, IndexError):
+                pass  # レベル変化検出に失敗しても以降の書き込みは実行する
+
+            new_line = json.dumps(entry, ensure_ascii=False)
+            if is_same_day:
+                lines[-1] = new_line
             else:
-                lines.append(json.dumps(entry, ensure_ascii=False))
+                lines.append(new_line)
 
             tmp = f"{history_path}.tmp"
             with open(tmp, "w", encoding="utf-8") as f:
