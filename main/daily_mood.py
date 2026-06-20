@@ -80,7 +80,7 @@ def get_daily_mood(today: Optional[_date] = None, salt: str = "") -> str:
     """
     if today is None:
         today = _date.today()
-    seed = f"{today.isoformat()}:{salt}".encode()
+    seed = f"{today.isoformat()}:{salt or ''}".encode()
     digest = hashlib.sha256(seed).digest()
     return _MOODS[digest[0] % len(_MOODS)]["key"]
 

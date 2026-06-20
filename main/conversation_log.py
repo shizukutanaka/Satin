@@ -51,7 +51,10 @@ def _archive_sort_key(path: str) -> tuple:
     m = re.search(r"\.(\d{8}_\d{6})\.gz$", path)
     if m:
         return (0, m.group(1))  # (優先度, タイムスタンプ文字列)
-    return (1, str(os.path.getmtime(path)))  # フォールバック: mtime
+    try:
+        return (1, os.path.getmtime(path))  # フォールバック: mtime (float 比較で正確)
+    except OSError:
+        return (1, 0.0)
 
 
 def _find_archives(logfile: str) -> List[str]:

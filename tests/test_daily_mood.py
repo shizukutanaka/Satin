@@ -204,5 +204,16 @@ class EdgeCaseTests(unittest.TestCase):
         self.assertIsInstance(result, str)
 
 
+    def test_none_salt_equals_empty_salt(self):
+        """salt=None must produce the same mood as salt='' (empty string).
+
+        Before the fix, f'...:None' and f'...:' were different seeds, causing
+        a silent mood mismatch when callers accidentally passed None.
+        """
+        d = date(2026, 6, 20)
+        self.assertEqual(get_daily_mood(d, salt=None),  # type: ignore[arg-type]
+                         get_daily_mood(d, salt=""))
+
+
 if __name__ == "__main__":
     unittest.main()
