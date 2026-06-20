@@ -207,6 +207,31 @@ class BreakReminderFromConfigTests(unittest.TestCase):
         br = BreakReminder.from_config({})
         self.assertEqual(br.session.work_minutes, _DEFAULT_WORK_MINUTES)
 
+    def test_from_config_null_values_use_defaults(self):
+        """JSON null values must fall back to defaults, not raise TypeError.
+
+        dict.get(key, default) returns None (not default) when the key is
+        present with a null value; int(None) raises TypeError, which would
+        silently disable the whole feature via the caller's try/except.
+        """
+        br = BreakReminder.from_config({
+            "work_minutes": None,
+            "short_break_minutes": None,
+            "long_break_minutes": None,
+            "cycles_before_long": None,
+        })
+        self.assertEqual(br.session.work_minutes, _DEFAULT_WORK_MINUTES)
+
+    def test_from_config_non_numeric_values_use_defaults(self):
+        """Non-numeric strings must fall back to defaults, not raise ValueError."""
+        br = BreakReminder.from_config({"work_minutes": "not_a_number"})
+        self.assertEqual(br.session.work_minutes, _DEFAULT_WORK_MINUTES)
+
+    def test_from_config_numeric_string_coerced(self):
+        """Numeric strings (common in JSON-ish configs) are coerced to int."""
+        br = BreakReminder.from_config({"work_minutes": "45"})
+        self.assertEqual(br.session.work_minutes, 45)
+
 
 class LoadBreakReminderTests(unittest.TestCase):
     def test_load_returns_break_reminder_instance(self):

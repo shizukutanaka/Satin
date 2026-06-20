@@ -134,14 +134,29 @@ class BreakReminder:
 
     @classmethod
     def from_config(cls, config: Optional[dict] = None, **kwargs) -> "BreakReminder":
-        """設定辞書（config/plugins/break_reminder.json の内容）から生成。"""
+        """設定辞書（config/plugins/break_reminder.json の内容）から生成。
+
+        値が null / 非数値の場合は既定値にフォールバックする。dict.get(key, default)
+        はキーが存在し値が null のとき default ではなく None を返すため、int(None) が
+        TypeError になり機能ごと無効化されるのを防ぐ。
+        """
         if not config:
             config = {}
+
+        def _i(key, default):
+            val = config.get(key)
+            if val is None:
+                return int(default)
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                return int(default)
+
         return cls(
-            work_minutes=int(config.get("work_minutes", _DEFAULT_WORK_MINUTES)),
-            short_break_minutes=int(config.get("short_break_minutes", _DEFAULT_SHORT_BREAK)),
-            long_break_minutes=int(config.get("long_break_minutes", _DEFAULT_LONG_BREAK)),
-            cycles_before_long=int(config.get("cycles_before_long", _DEFAULT_CYCLES_BEFORE_LONG)),
+            work_minutes=_i("work_minutes", _DEFAULT_WORK_MINUTES),
+            short_break_minutes=_i("short_break_minutes", _DEFAULT_SHORT_BREAK),
+            long_break_minutes=_i("long_break_minutes", _DEFAULT_LONG_BREAK),
+            cycles_before_long=_i("cycles_before_long", _DEFAULT_CYCLES_BEFORE_LONG),
             **kwargs,
         )
 
