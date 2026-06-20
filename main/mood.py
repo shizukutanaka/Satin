@@ -27,8 +27,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re as _re
 import threading
 import time
+import unicodedata as _ud
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -62,7 +64,7 @@ _DEFAULT_POSITIVE: Dict[str, List[str]] = {
 }
 _DEFAULT_NEGATIVE: Dict[str, List[str]] = {
     "ja": ["嫌い", "きらい", "うざい", "うるさい", "つまらない", "むかつく",
-           "ばか", "馬鹿", "最悪", "だまれ", "黙れ"],
+           "馬鹿", "最悪", "だまれ", "黙れ"],
     "en": ["hate", "annoying", "boring", "stupid", "shut up", "ugly",
            "worst", "dislike", "go away"],
 }
@@ -77,6 +79,24 @@ _LEVELS: List[Tuple[float, str, Tuple[str, str]]] = [
     (60.0, "friendly", ("なかよし", "friendly")),
     (80.0, "close",    ("親友", "close")),
 ]
+
+
+def _kw_match(kw: str, text_norm: str) -> bool:
+    """True if kw appears in text_norm as a word (ASCII) or substring (CJK/other).
+
+    ASCII keywords use \\b word boundaries so "hate" won't hit "whatever" and
+    "like" won't hit "dislike".  CJK keywords keep substring matching because
+    Japanese/Chinese text has no space-based word boundaries.
+    The keyword is NFC-normalized and lowercased before comparison.
+    """
+    if not kw:
+        return False
+    kw_n = _ud.normalize("NFC", str(kw).lower())
+    if not kw_n:
+        return False
+    if kw_n.isascii():
+        return bool(_re.search(r"\b" + _re.escape(kw_n) + r"\b", text_norm))
+    return kw_n in text_norm
 
 
 def _clamp(value: float) -> float:
@@ -165,12 +185,12 @@ class MoodTracker:
         """
         if not text or not str(text).strip():
             return 0.0
-        norm = str(text).lower()
+        norm = _ud.normalize("NFC", str(text).lower())
 
         pos_hits = sum(1 for w in self._all_words(self._positive)
-                       if w and w.lower() in norm)
+                       if _kw_match(w, norm))
         neg_hits = sum(1 for w in self._all_words(self._negative)
-                       if w and w.lower() in norm)
+                       if _kw_match(w, norm))
 
         delta = pos_hits * self.positive_delta - neg_hits * self.negative_delta
         delta = max(-_MAX_DELTA_PER_MESSAGE, min(_MAX_DELTA_PER_MESSAGE, delta))

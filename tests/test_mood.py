@@ -1267,5 +1267,84 @@ class HurtEventTests(unittest.TestCase):
         self.assertIsInstance(result, str)
 
 
+class RegisterFalsePositiveTests(unittest.TestCase):
+    """Substring false-positives in register() — bugs fixed in _kw_match."""
+
+    def test_whatever_does_not_trigger_hate(self):
+        # "w-hate-ver" contains "hate" as substring; must NOT score negative
+        m = MoodTracker()
+        delta = m.register("whatever")
+        self.assertEqual(delta, 0.0)
+        self.assertEqual(m.affinity, AFFINITY_START)
+
+    def test_dislike_does_not_trigger_like(self):
+        # "dislike" contains "like"; only the explicit negative keyword fires
+        m = MoodTracker()
+        m.register("I dislike this")
+        # affinity must decrease (dislike is negative); must NOT increase from "like"
+        self.assertLess(m.affinity, AFFINITY_START)
+
+    def test_dislike_you_does_not_trigger_like_you(self):
+        # "like you" is a substring of "dislike you" — word boundary must block it
+        m = MoodTracker()
+        before = m.affinity
+        m.register("I dislike you")
+        # Only "dislike" (negative) fires; "like you" must NOT add positive hits
+        self.assertLess(m.affinity, before)
+
+    def test_unkind_does_not_trigger_kind(self):
+        # "unkind" contains "kind"; must not yield a false positive boost
+        m = MoodTracker()
+        delta = m.register("that was unkind")
+        self.assertLessEqual(delta, 0.0)
+
+    def test_smugly_does_not_trigger_ugly(self):
+        # "sm-ugly" — "ugly" is inside "smugly"; must not score negative
+        m = MoodTracker()
+        delta = m.register("she spoke smugly")
+        self.assertEqual(delta, 0.0)
+
+    def test_bakari_does_not_trigger_baka(self):
+        # "ばかり" (grammar: only/nothing but) must NOT trigger the "馬鹿" check
+        # The hiragana-only "ばか" entry was removed from defaults to prevent this.
+        m = MoodTracker()
+        delta = m.register("仕事ばかりで疲れた")
+        self.assertEqual(delta, 0.0)
+
+    def test_hate_still_matches(self):
+        m = MoodTracker()
+        delta = m.register("I hate you so much")
+        self.assertLess(delta, 0)
+
+    def test_like_still_matches(self):
+        m = MoodTracker()
+        delta = m.register("I like you")
+        self.assertGreater(delta, 0)
+
+    def test_kind_still_matches(self):
+        m = MoodTracker()
+        delta = m.register("you are so kind")
+        self.assertGreater(delta, 0)
+
+    def test_ugly_still_matches(self):
+        m = MoodTracker()
+        delta = m.register("that is so ugly")
+        self.assertLess(delta, 0)
+
+    def test_baka_kanji_still_matches(self):
+        # "馬鹿" (kanji) must still fire as negative
+        m = MoodTracker()
+        delta = m.register("馬鹿にするな")
+        self.assertLess(delta, 0)
+
+    def test_nfc_input_matches_default_keywords(self):
+        # Input NFC-normalized; Japanese keywords in source are also NFC — must match
+        import unicodedata
+        text = unicodedata.normalize("NFC", "ありがとう")
+        m = MoodTracker()
+        delta = m.register(text)
+        self.assertGreater(delta, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
