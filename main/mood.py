@@ -332,7 +332,7 @@ class MoodTracker:
             if lines:
                 try:
                     last = json.loads(lines[-1])
-                    is_same_day = last.get("date") == today
+                    is_same_day = isinstance(last, dict) and last.get("date") == today
                 except json.JSONDecodeError:
                     pass  # 最終行が壊れている→同日上書きできないので追記扱い
 
@@ -475,7 +475,9 @@ def load_mood_history(history_path: Optional[str] = None, n: int = 30) -> List[D
                 if not line.strip():
                     continue
                 try:
-                    entries.append(json.loads(line))
+                    data = json.loads(line)
+                    if isinstance(data, dict):
+                        entries.append(data)
                 except json.JSONDecodeError:
                     continue
     except Exception:

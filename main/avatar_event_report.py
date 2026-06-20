@@ -16,7 +16,9 @@ def load_events(logfile):
             if not line.strip():
                 continue
             try:
-                events.append(json.loads(line))
+                data = json.loads(line)
+                if isinstance(data, dict):
+                    events.append(data)
             except json.JSONDecodeError:
                 continue
     return events
