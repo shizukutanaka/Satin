@@ -47,7 +47,8 @@ class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
                         continue
                     try:
                         ev = json.loads(line)
-                        self.events.append(ev)
+                        if isinstance(ev, dict):
+                            self.events.append(ev)
                     except json.JSONDecodeError:
                         continue
             for ev in self.events:

@@ -147,7 +147,7 @@ class ConversationLog:
                             ev = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        if ev.get("event_type") in _conv_types:
+                        if isinstance(ev, dict) and ev.get("event_type") in _conv_types:
                             live_entries.append(ev)
             except Exception as e:  # pragma: no cover - defensive
                 logger.warning("会話ログの読み出しに失敗しました: %s", e)
@@ -169,7 +169,7 @@ class ConversationLog:
                     ev = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if ev.get("event_type") in _conv_types:
+                if isinstance(ev, dict) and ev.get("event_type") in _conv_types:
                     block.append(ev)
             archive_blocks.insert(0, block)  # 先頭挿入で古→新順を維持
             total_archive += len(block)
@@ -230,7 +230,7 @@ class ConversationLog:
                 ev = json.loads(line)
             except json.JSONDecodeError:
                 return
-            if ev.get("event_type") not in conv_types:
+            if not isinstance(ev, dict) or ev.get("event_type") not in conv_types:
                 return
             text = ((ev.get("details") or {}).get("text") or "")
             # NFC 正規化で NFC/NFD 混在入力でも一致（日本語の濁点合字対応）
