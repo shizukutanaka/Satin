@@ -54,9 +54,9 @@ class LoggingManager:
                 "critical": logging.CRITICAL
             }
             
-            self.current_level = self.settings.get("log_level", "info")
-            self.max_bytes = self.settings.get("max_bytes", 10485760)  # 10MB
-            self.backup_count = self.settings.get("backup_count", 10)
+            self.current_level = self.settings.get("log_level") or "info"
+            self.max_bytes = int(self.settings.get("max_bytes") or 10485760)  # 10MB
+            self.backup_count = int(self.settings.get("backup_count") or 10)
             
             # ログフォーマッターの設定
             formatter = logging.Formatter(
