@@ -104,9 +104,11 @@ def _load_jsonl(path: str, include_archives: bool = False) -> List[Dict]:
 
 def _date_str(ts: float) -> str:
     """Unix タイムスタンプを "YYYY-MM-DD" 文字列に変換する。"""
+    if ts is None:
+        return ""
     try:
         return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-    except (OSError, OverflowError, ValueError):
+    except (OSError, OverflowError, ValueError, TypeError):
         return ""
 
 

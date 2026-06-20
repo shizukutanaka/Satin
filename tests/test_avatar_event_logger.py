@@ -145,6 +145,17 @@ class AvatarEventLoggerTests(unittest.TestCase):
                                   delay_factor=0.0)
         self.assertEqual(received, ["good1", "good2"])
 
+    def test_replay_event_missing_timestamp_does_not_crash(self):
+        """Valid JSON line without 'timestamp' key must not raise KeyError."""
+        self.logger.log_event("before")
+        with open(self._logfile, "a", encoding="utf-8") as f:
+            f.write('{"event_type": "no_ts", "details": {}}\n')
+        self.logger.log_event("after")
+        received = []
+        self.logger.replay_events(lambda ev: received.append(ev["event_type"]),
+                                  delay_factor=0.0)
+        self.assertEqual(received, ["before", "no_ts", "after"])
+
 
 class LogRotationTests(unittest.TestCase):
     """The write path must self-cap the log so a long-running companion does not

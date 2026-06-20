@@ -63,13 +63,14 @@ class AvatarEventLogger:
                     continue
         if not events:
             return
-        base = events[0]["timestamp"]
         for i, event in enumerate(events):
-            t = event["timestamp"]
-            if i > 0:
-                dt = (t - events[i-1]["timestamp"]) * delay_factor
-                if dt > 0:
-                    time.sleep(dt)
+            t = event.get("timestamp")
+            if t is not None and i > 0:
+                prev_t = events[i - 1].get("timestamp")
+                if prev_t is not None:
+                    dt = (t - prev_t) * delay_factor
+                    if dt > 0:
+                        time.sleep(dt)
             callback(event)
 
 # サンプル利用例

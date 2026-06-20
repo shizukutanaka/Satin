@@ -183,6 +183,14 @@ class DateStrTests(unittest.TestCase):
         result = _date_str(0)
         self.assertIsInstance(result, str)
 
+    def test_none_returns_empty_string(self):
+        """Regression: None timestamp (JSON null) must return '' not raise TypeError."""
+        self.assertEqual(_date_str(None), "")
+
+    def test_string_timestamp_returns_empty_string(self):
+        """Non-numeric timestamp must return '' not raise TypeError."""
+        self.assertEqual(_date_str("not-a-ts"), "")
+
 
 class DailySummaryNoDataTests(unittest.TestCase):
     def setUp(self):
@@ -328,6 +336,46 @@ class DailySummaryDateFilterTests(unittest.TestCase):
         yesterday = date.today() - timedelta(days=1)
         result = daily_summary(target_date=yesterday, **self._kwargs())
         self.assertEqual(result["user_messages"], 2)
+
+
+class NullTimestampRobustnessTests(unittest.TestCase):
+    """Regression: events with null/string timestamps must not crash daily_summary.
+
+    dict.get("timestamp", 0) returns None when the key is present with value null,
+    and datetime.fromtimestamp(None) raises TypeError (not OSError/ValueError).
+    Both _date_str and the hour_counts loop must guard against this.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_null_timestamp_event_does_not_crash(self):
+        today = date.today()
+        valid_ts = datetime(today.year, today.month, today.day, 12, 0, 0).timestamp()
+        events = [
+            {"event_type": "user_comment", "timestamp": valid_ts},
+            {"event_type": "avatar_reply", "timestamp": None},   # JSON null
+            {"event_type": "user_comment", "timestamp": "bad"},  # string timestamp
+        ]
+        _write_events(self._ev_path, events)
+        result = daily_summary(**self._kwargs())  # must not raise
+        self.assertEqual(result["user_messages"], 1)  # only valid-ts user event counted
+
+    def test_string_timestamp_event_does_not_crash(self):
+        events = [{"event_type": "user_comment", "timestamp": "2024-01-01T00:00:00"}]
+        _write_events(self._ev_path, events)
+        result = daily_summary(**self._kwargs())  # must not raise TypeError
+        self.assertIsInstance(result, dict)
 
 
 class LegacyAliasConsistencyTests(unittest.TestCase):
