@@ -111,7 +111,7 @@ class ConfigManager:
         try:
             # 設定から最大バックアップ数を取得
             config = get_config()
-            max_backups = config.get("settings", {}).get("backup", {}).get("max_backups", 5)
+            max_backups = ((config.get("settings") or {}).get("backup") or {}).get("max_backups", 5)
             
             # バックアップファイルを日付順にソート
             backup_files = sorted(

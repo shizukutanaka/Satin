@@ -5,6 +5,7 @@ Run: python -m unittest tests.test_config_manager -v
 """
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -119,6 +120,38 @@ class ConfigManagerBackupTests(unittest.TestCase):
             restored = json.load(f)
         self.assertTrue(restored.get("test"))
         self.assertNotIn("modified", restored)
+
+
+class CleanupNullSettingsTests(unittest.TestCase):
+    """_cleanup_old_backups must not crash when settings/backup keys are null."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.config_path = os.path.join(self.tmp, "config.json")
+        with open(self.config_path, "w") as f:
+            json.dump({}, f)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_null_settings_does_not_crash_cleanup(self):
+        """settings: null in JSON must not AttributeError during backup cleanup."""
+        cm = ConfigManager(config_path=self.config_path)
+        try:
+            with patch("config_manager.get_config", return_value={"settings": None}):
+                cm._cleanup_old_backups()
+        except AttributeError:
+            self.fail("_cleanup_old_backups raised AttributeError on null settings")
+
+    def test_null_backup_nested_does_not_crash_cleanup(self):
+        """settings.backup: null must not AttributeError during backup cleanup."""
+        cm = ConfigManager(config_path=self.config_path)
+        try:
+            with patch("config_manager.get_config",
+                       return_value={"settings": {"backup": None}}):
+                cm._cleanup_old_backups()
+        except AttributeError:
+            self.fail("_cleanup_old_backups raised AttributeError on null backup key")
 
 
 if __name__ == "__main__":
