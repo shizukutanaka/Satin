@@ -394,6 +394,8 @@ def cmd_backup_restore(zip_path: str, dest_dir: str | None = None) -> None:
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             for entry in names:
+                if entry.endswith("/"):  # skip directory-only entries
+                    continue
                 # ディレクトリトラバーサル防止
                 dest_path = os.path.realpath(os.path.join(root, entry))
                 if not dest_path.startswith(os.path.realpath(root) + os.sep):

@@ -342,6 +342,28 @@ class BackupRestoreTests(unittest.TestCase):
         evil_path = os.path.normpath(os.path.join(self._dest, "../../evil.txt"))
         self.assertFalse(os.path.exists(evil_path))
 
+    def test_directory_entries_in_zip_do_not_crash(self):
+        """Zip files with directory entries (ending in '/') must be skipped, not crash.
+
+        Standard zip tools (zip(1), Windows Explorer) add directory entries.
+        Before the fix, open(dest_path, 'wb') raised IsADirectoryError when
+        dest_path already existed as a directory.
+        """
+        import zipfile
+        dir_zip = os.path.join(self._tmp, "with_dirs.zip")
+        with zipfile.ZipFile(dir_zip, "w") as zf:
+            # Explicit directory entry (what 'zip -r' and similar tools add)
+            zf.mkdir("config") if hasattr(zf, "mkdir") else zf.writestr("config/", "")
+            zf.writestr("config/persona.json", '{"name": "Satin"}')
+            zf.writestr("avatar_event_log.jsonl", '{"event_type":"user_comment"}\n')
+
+        with mock.patch("builtins.input", return_value="y"):
+            # Must not raise IsADirectoryError
+            manage_satin.cmd_backup_restore(dir_zip, self._dest)
+
+        # Files must still be extracted correctly
+        self.assertTrue(os.path.exists(os.path.join(self._dest, "config", "persona.json")))
+
 
 # --------------------------------------------------------------------------- #
 # main() dispatcher
