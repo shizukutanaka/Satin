@@ -36,6 +36,9 @@ def validate_configs(
         try:
             with open(fname, encoding="utf-8") as f:
                 data = json.load(f)
+            if not isinstance(data, dict):
+                log_error(f"[WARN] {fname}: JSON root is not an object")
+                return f"{fname}: JSON root is not an object"
             for k in required_keys:
                 if k not in data:
                     log_error(f"[WARN] {fname}: '{k}' 未設定")
