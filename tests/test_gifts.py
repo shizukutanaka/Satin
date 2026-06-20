@@ -48,6 +48,16 @@ class LookupTests(unittest.TestCase):
         self.assertIsNone(lookup_gift("", lang="ja"))
         self.assertIsNone(lookup_gift("", lang="en"))
 
+    def test_whitespace_only_returns_none(self):
+        """Whitespace-only input must not match the first gift in the catalog.
+
+        Before the fix, ' '.strip() == '' and '' in any alias was True,
+        causing /gift <space> to award the first gift for free.
+        """
+        self.assertIsNone(lookup_gift(" ", lang="ja"))
+        self.assertIsNone(lookup_gift("   ", lang="en"))
+        self.assertIsNone(lookup_gift("\t", lang="ja"))
+
     def test_all_ja_aliases_resolve(self):
         from gifts import _GIFTS
         for gift in _GIFTS:
@@ -415,6 +425,11 @@ class GiftCooldownTests(unittest.TestCase):
     def test_lookup_gift_key_unknown_returns_none(self):
         from gifts import lookup_gift_key
         self.assertIsNone(lookup_gift_key("xyz_unknown_xyzzy", lang="ja"))
+
+    def test_lookup_gift_key_whitespace_only_returns_none(self):
+        from gifts import lookup_gift_key
+        self.assertIsNone(lookup_gift_key("   ", lang="ja"))
+        self.assertIsNone(lookup_gift_key(" ", lang="en"))
 
     def test_cooldown_message_nonempty(self):
         from gifts import cooldown_message

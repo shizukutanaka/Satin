@@ -204,6 +204,8 @@ def lookup_gift(item: str, lang: str = "ja",
     if not item:
         return None
     norm = item.strip().lower()
+    if not norm:
+        return None
     lang_key = "en" if str(lang).lower().startswith("en") else "ja"
     alias_map = _ALIAS_MAP_EN if lang_key == "en" else _ALIAS_MAP_JA
 
@@ -242,6 +244,8 @@ def lookup_gift_key(item: str, lang: str = "ja") -> Optional[str]:
     if not item:
         return None
     norm = item.strip().lower()
+    if not norm:
+        return None
     lang_key = "en" if str(lang).lower().startswith("en") else "ja"
     alias_map = _ALIAS_MAP_EN if lang_key == "en" else _ALIAS_MAP_JA
     idx = alias_map.get(norm)
