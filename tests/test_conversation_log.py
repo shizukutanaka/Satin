@@ -251,6 +251,25 @@ class ToCsvTests(_TmpLogBase):
         texts = [r["text"] for r in rows]
         self.assertNotIn("only in archive", texts)
 
+    def test_csv_legacy_user_event_type_labeled_as_user(self):
+        """Legacy 'user' event_type must be labeled as user, not avatar, in CSV.
+
+        Before the fix, to_csv() used == EVENT_USER_COMMENT ('user_comment') while
+        search() returned entries with the legacy 'user' type; those entries were
+        mis-labeled as avatar_label in the CSV output.
+        """
+        import csv, io, json
+        # Write a legacy-format event directly (event_type="user" not "user_comment")
+        legacy = {"timestamp": 1000.0, "event_type": "user",
+                  "details": {"text": "legacy user msg"}}
+        with open(self.logfile, "w", encoding="utf-8") as f:
+            f.write(json.dumps(legacy) + "\n")
+
+        rows = list(csv.DictReader(io.StringIO(self.log.to_csv())))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["speaker"], "You",
+                         f"Legacy 'user' event should be labeled 'You'; got {rows[0]['speaker']!r}")
+
 
 class SingletonTests(unittest.TestCase):
     def tearDown(self):

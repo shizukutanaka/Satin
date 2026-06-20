@@ -281,7 +281,7 @@ class ConversationLog:
             except (OSError, OverflowError, ValueError):
                 dt_str = ""
             et = ev.get("event_type", "")
-            speaker = user_label if et == EVENT_USER_COMMENT else avatar_label
+            speaker = user_label if et in USER_EVENT_TYPES else avatar_label
             text = (ev.get("details") or {}).get("text", "")
             writer.writerow([ts, dt_str, speaker, text])
         return buf.getvalue()
