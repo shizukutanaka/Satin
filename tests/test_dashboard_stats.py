@@ -327,5 +327,38 @@ class ConversationSearchNullTimestampTests(unittest.TestCase):
                       "datetime.fromtimestamp(None) on null timestamps")
 
 
+class CoerceAffinityTests(unittest.TestCase):
+    """_coerce_affinity guards the /mood/history route against null/non-numeric
+    affinity values.  Regression: float(e.get("affinity", 0)) crashed with
+    TypeError when a history entry had "affinity": null, 500-ing the route."""
+
+    def test_none_returns_default(self):
+        self.assertEqual(dashboard._coerce_affinity(None), 0.0)
+
+    def test_none_returns_custom_default(self):
+        self.assertEqual(dashboard._coerce_affinity(None, 50.0), 50.0)
+
+    def test_float_passthrough(self):
+        self.assertEqual(dashboard._coerce_affinity(75.0), 75.0)
+
+    def test_int_coerced(self):
+        self.assertEqual(dashboard._coerce_affinity(80), 80.0)
+
+    def test_numeric_string_coerced(self):
+        self.assertEqual(dashboard._coerce_affinity("80"), 80.0)
+
+    def test_non_numeric_string_returns_default(self):
+        self.assertEqual(dashboard._coerce_affinity("abc"), 0.0)
+
+    def test_used_by_mood_history_route(self):
+        """The /mood/history route must use _coerce_affinity, not raw float()."""
+        import inspect
+        src = inspect.getsource(dashboard.mood_history)
+        self.assertIn("_coerce_affinity", src,
+                      "mood_history must use _coerce_affinity to guard null affinity")
+        self.assertNotIn('float(e.get("affinity", 0))', src,
+                         "mood_history must not call float() directly on a null-able field")
+
+
 if __name__ == "__main__":
     unittest.main()

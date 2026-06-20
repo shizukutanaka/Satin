@@ -650,7 +650,10 @@ def mood_history(i18n):
             content += f'<th>{_html.escape(i18n.t("affinity_level", "Level"))}</th>'
             content += f'<th>{_html.escape(i18n.t("milestone", "Milestone"))}</th></tr>'
             for e in entries:
-                score = int(round(float(e.get("affinity", 0))))
+                # affinity が null / 非数値でも 500 にせず 0 として描画する
+                # （手編集・バックアップ復元で壊れた履歴行への防御）。
+                affinity_val = _coerce_affinity(e.get("affinity"))
+                score = int(round(affinity_val))
                 level = _html.escape(str(e.get("level", "")))
                 date = _html.escape(str(e.get("date", "")))
                 colour = f'hsl({int(score * 1.2)}, 70%, 45%)'
@@ -659,7 +662,7 @@ def mood_history(i18n):
                 milestone_html = ""
                 if e.get("level_changed"):
                     prev = _html.escape(str(e.get("prev_level", "?")))
-                    arrow = "&#8593;" if e.get("affinity", 50) >= 50 else "&#8595;"
+                    arrow = "&#8593;" if affinity_val >= 50 else "&#8595;"
                     milestone_html = (
                         f'<span style="color:#e07000;font-weight:bold">'
                         f'{arrow} {prev} &rarr; {level}'
@@ -687,6 +690,21 @@ def mood_history(i18n):
         )
 
     return _render_page(content, i18n, lang, switcher)
+
+
+def _coerce_affinity(value, default: float = 0.0) -> float:
+    """好感度値を安全に float へ変換する（Flask 非依存・テスト可能）。
+
+    JSON の ``"affinity": null`` は dict.get の既定値を経由せず None を返すため、
+    float(None) が TypeError を送出して /mood/history が 500 になる。手編集や
+    バックアップ復元で壊れた履歴行に対し、None / 非数値なら default を返す。
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _conversation_stats(log_path: str) -> dict:
