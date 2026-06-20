@@ -1391,5 +1391,46 @@ class RegisterFalsePositiveTests(unittest.TestCase):
         self.assertGreater(delta, 0)
 
 
+class FromDictNullValueTests(unittest.TestCase):
+    """Regression: null JSON values in mood.json must use defaults instead of
+    crashing with TypeError and silently resetting all user progress.
+
+    dict.get(key, default) returns None (not default) when key is present with
+    JSON null.  float(None) / int(None) raises TypeError which was previously
+    caught only by MoodTracker.load()'s outer except — discarding all saved data.
+    """
+
+    def test_null_affinity_uses_default(self):
+        data = {"affinity": None, "interactions": 5, "last_interaction_time": 0.0}
+        m = MoodTracker.from_dict(data)
+        self.assertAlmostEqual(m.affinity, float(AFFINITY_START), places=1)
+        # Other non-null fields must survive
+        self.assertEqual(m.interactions, 5)
+
+    def test_null_interactions_uses_zero(self):
+        data = {"affinity": 75.0, "interactions": None}
+        m = MoodTracker.from_dict(data)
+        self.assertEqual(m.interactions, 0)
+        self.assertAlmostEqual(m.affinity, 75.0, places=1)
+
+    def test_null_last_interaction_time_uses_zero(self):
+        data = {"affinity": 80.0, "interactions": 10, "last_interaction_time": None}
+        m = MoodTracker.from_dict(data)
+        self.assertAlmostEqual(m._last_interaction_time, 0.0, places=3)
+
+    def test_all_null_fields_use_defaults(self):
+        """Every numeric field being null must not raise TypeError."""
+        data = {
+            "affinity": None,
+            "interactions": None,
+            "last_interaction_time": None,
+            "first_interaction_time": None,
+            "last_anniversary_days": None,
+        }
+        m = MoodTracker.from_dict(data)  # must not raise
+        self.assertAlmostEqual(m.affinity, float(AFFINITY_START), places=1)
+        self.assertEqual(m.interactions, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

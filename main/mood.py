@@ -374,12 +374,19 @@ class MoodTracker:
         if not isinstance(data, dict):
             data = {}
         raw_gh = data.get("gift_history", {})
+
+        def _f(val, default):
+            return float(val) if val is not None else float(default)
+
+        def _i(val, default):
+            return int(val) if val is not None else int(default)
+
         return cls(
-            affinity=data.get("affinity", AFFINITY_START),
-            interactions=data.get("interactions", 0),
-            last_interaction_time=data.get("last_interaction_time", 0.0),
-            first_interaction_time=data.get("first_interaction_time", 0.0),
-            last_anniversary_days=data.get("last_anniversary_days", 0),
+            affinity=_f(data.get("affinity"), AFFINITY_START),
+            interactions=_i(data.get("interactions"), 0),
+            last_interaction_time=_f(data.get("last_interaction_time"), 0.0),
+            first_interaction_time=_f(data.get("first_interaction_time"), 0.0),
+            last_anniversary_days=_i(data.get("last_anniversary_days"), 0),
             confession_done=bool(data.get("confession_done", False)),
             last_login_date=data.get("last_login_date", ""),
             login_streak=data.get("login_streak", 0),
