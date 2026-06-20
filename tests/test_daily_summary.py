@@ -377,6 +377,19 @@ class NullTimestampRobustnessTests(unittest.TestCase):
         result = daily_summary(**self._kwargs())  # must not raise TypeError
         self.assertIsInstance(result, dict)
 
+    def test_string_affinity_in_mood_history_does_not_crash(self):
+        """A mood entry with a non-numeric affinity must not crash the diff calc
+        or the downstream ``:.1f`` formatting; it degrades to None."""
+        today = date.today()
+        date_key = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": "2000-01-01", "affinity": "not_a_number", "level": "neutral"},
+            {"date": date_key, "affinity": "also_bad", "level": "friendly"},
+        ])
+        result = daily_summary(**self._kwargs())  # must not raise
+        self.assertIsNone(result["affinity"])
+        self.assertIsNone(result["affinity_change"])
+
     def test_null_date_in_mood_history_does_not_crash(self):
         """A mood entry with "date": null must not crash daily_summary.
 

@@ -102,6 +102,21 @@ def _load_jsonl(path: str, include_archives: bool = False) -> List[Dict]:
     return entries
 
 
+def _as_float_or_none(value) -> Optional[float]:
+    """affinity 等の数値フィールドを安全に float へ変換する。
+
+    null / 非数値（手編集・破損した履歴行）の場合は None を返す。これにより
+    後続の減算 (affinity - prev) や ``f"{affinity:.1f}"`` 整形が TypeError /
+    ValueError でクラッシュするのを防ぐ。
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _date_str(ts: float) -> str:
     """Unix タイムスタンプを "YYYY-MM-DD" 文字列に変換する。"""
     if ts is None:
@@ -184,7 +199,7 @@ def daily_summary(
 
     if day_moods:
         last_entry = day_moods[-1]
-        affinity = last_entry.get("affinity")
+        affinity = _as_float_or_none(last_entry.get("affinity"))
         affinity_lvl = last_entry.get("level")
         # 変化量は「前日（対象日より前の最新スナップショット）」との差で算出する。
         # 履歴は 1 日 1 エントリ（同日は上書き）なので同日内差分は取れず、
@@ -193,7 +208,7 @@ def daily_summary(
         # date が null/欠落でも "" 扱いにする（None < str は TypeError）
         prior_moods = [e for e in mood_entries if (e.get("date") or "") < date_key]
         if prior_moods and affinity is not None:
-            prev_affinity = prior_moods[-1].get("affinity")
+            prev_affinity = _as_float_or_none(prior_moods[-1].get("affinity"))
             if prev_affinity is not None:
                 affinity_change = affinity - prev_affinity
 
