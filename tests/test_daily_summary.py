@@ -173,6 +173,18 @@ class LoadJsonlTests(unittest.TestCase):
         result = _load_jsonl(path)
         self.assertEqual(len(result), 2)
 
+    def test_null_jsonl_line_is_skipped(self):
+        # Regression: json.loads("null") returns None (valid JSON, no exception).
+        # Without an isinstance guard, None is appended and ev.get() later crashes.
+        path = os.path.join(self._tmp, "null_line.jsonl")
+        with open(path, "w") as f:
+            f.write('{"key": "valid"}\n')
+            f.write("null\n")
+            f.write('{"key": "also_valid"}\n')
+        result = _load_jsonl(path)
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(isinstance(e, dict) for e in result))
+
 
 class DateStrTests(unittest.TestCase):
     def test_valid_timestamp(self):

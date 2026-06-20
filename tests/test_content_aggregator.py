@@ -171,6 +171,30 @@ class RelevanceScoreTests(unittest.TestCase):
         score = self._agg.calculate_relevance_score(content, "test")
         self.assertIsInstance(score, float)
 
+    def test_null_view_count_does_not_crash(self):
+        # Regression: content_data.get('view_count', 0) returns None when the key
+        # is present but null; max(1, None) then raises TypeError.
+        content = _make_content(
+            title="test",
+            content_type=ContentType.VIDEO,
+            content_data={"view_count": None},
+        )
+        score = self._agg.calculate_relevance_score(content, "test")
+        self.assertIsInstance(score, float)
+        self.assertGreaterEqual(score, 0.0)
+
+    def test_null_citations_does_not_crash(self):
+        # Regression: content_data.get('citations', 0) returns None when the key
+        # is present but null; max(1, None) then raises TypeError.
+        content = _make_content(
+            title="test",
+            content_type=ContentType.PAPER,
+            content_data={"citations": None},
+        )
+        score = self._agg.calculate_relevance_score(content, "test")
+        self.assertIsInstance(score, float)
+        self.assertGreaterEqual(score, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

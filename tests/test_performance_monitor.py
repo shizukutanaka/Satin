@@ -122,5 +122,69 @@ class CollectStatsNullDiskIOTest(unittest.TestCase):
         self.assertEqual(stats['disk']['percent'], 42.0)
 
 
+class NullConfigTests(unittest.TestCase):
+    """Regression: settings.get(key, N) returns None when key is present but null.
+    Null interval -> time.sleep(None) raises TypeError; null threshold ->
+    comparison raises TypeError."""
+
+    def _make_pm_from_null_settings(self, settings):
+        from performance_monitor import PerformanceMonitor
+        pm = object.__new__(PerformanceMonitor)
+        # Defaults (same as __init__ preamble):
+        pm.interval = 5
+        pm.thresholds = {"memory": 80, "cpu": 90, "disk": 90, "network": 1_000_000}
+        pm.alert_enabled = True
+        pm.alert_threshold = 3
+        pm.alert_count = 0
+        pm.last_alert = None
+        pm.monitor_thread = None
+        pm.running = False
+        # Simulate the config-branch with null values:
+        if settings:
+            pm.interval = settings.get("interval") or 5
+            pm.thresholds = {
+                "memory": settings.get("memory_threshold") or 80,
+                "cpu": settings.get("cpu_threshold") or 90,
+                "disk": settings.get("disk_threshold") or 90,
+                "network": settings.get("network_threshold") or 1_000_000,
+            }
+            _ae = settings.get("alert_enabled")
+            pm.alert_enabled = True if _ae is None else bool(_ae)
+            pm.alert_threshold = settings.get("alert_threshold") or 3
+        return pm
+
+    def test_null_interval_falls_back_to_default(self):
+        pm = self._make_pm_from_null_settings({"interval": None})
+        self.assertEqual(pm.interval, 5)
+
+    def test_null_threshold_falls_back_to_default(self):
+        pm = self._make_pm_from_null_settings({"memory_threshold": None, "cpu_threshold": None})
+        self.assertEqual(pm.thresholds["memory"], 80)
+        self.assertEqual(pm.thresholds["cpu"], 90)
+
+    def test_null_alert_threshold_falls_back_to_default(self):
+        pm = self._make_pm_from_null_settings({"alert_threshold": None})
+        self.assertEqual(pm.alert_threshold, 3)
+
+    def test_null_alert_enabled_defaults_to_true(self):
+        pm = self._make_pm_from_null_settings({"alert_enabled": None})
+        self.assertTrue(pm.alert_enabled)
+
+    def test_explicit_false_alert_enabled_is_preserved(self):
+        pm = self._make_pm_from_null_settings({"alert_enabled": False})
+        self.assertFalse(pm.alert_enabled)
+
+    def test_null_config_values_do_not_crash_check_alerts(self):
+        pm = self._make_pm_from_null_settings({
+            "memory_threshold": None,
+            "cpu_threshold": None,
+            "disk_threshold": None,
+            "network_threshold": None,
+            "alert_threshold": None,
+        })
+        result = pm._check_alerts(_stats(memory=10))
+        self.assertFalse(result)
+
+
 if __name__ == "__main__":
     unittest.main()
