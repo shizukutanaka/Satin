@@ -1096,7 +1096,7 @@ def _print_search(conv_log, query: str, output_fn: Callable[[str], None]) -> Non
         ts = ev.get("timestamp", 0)
         try:
             dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
-        except (OSError, OverflowError, ValueError):
+        except (OSError, OverflowError, ValueError, TypeError):
             dt_str = "?"
         prefix = "You" if ev.get("event_type") in USER_EVENT_TYPES else "Avatar"
         text = (ev.get("details") or {}).get("text", "")

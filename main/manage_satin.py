@@ -316,7 +316,7 @@ def cmd_log_search(query: str, limit: int = 0) -> None:
             ts = ev.get("timestamp", 0)
             try:
                 dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
-            except (OSError, OverflowError, ValueError):
+            except (OSError, OverflowError, ValueError, TypeError):
                 dt_str = "?"
             event_type = ev.get("event_type", "")
             text = (ev.get("details") or {}).get("text", "")

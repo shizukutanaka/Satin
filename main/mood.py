@@ -509,7 +509,7 @@ def mood_history_to_csv(history_path: Optional[str] = None, n: int = 0) -> str:
         ts = entry.get("timestamp", 0)
         try:
             dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
-        except (OSError, OverflowError, ValueError):
+        except (OSError, OverflowError, ValueError, TypeError):
             dt_str = ""
         writer.writerow([
             entry.get("date", ""),
