@@ -90,6 +90,26 @@ class InteractionStreakTests(unittest.TestCase):
         _write_mood(self._mood, rows)
         self.assertEqual(interaction_streak(self._mood), 1)
 
+    def test_stale_streak_returns_zero(self):
+        """A consecutive run that ended 2+ days ago must return 0, not its length.
+
+        Before the fix, the function returned the run length even when the user
+        had been inactive for weeks, causing "5 days in a row!" in today's greeting
+        for a stale historical run.
+        """
+        self._write_dates([15, 16, 17, 18, 19])   # 5-day run, ended 15 days ago
+        self.assertEqual(interaction_streak(self._mood), 0)
+
+    def test_streak_broken_two_days_ago_returns_zero(self):
+        """Last activity was exactly 2 days ago — streak is broken."""
+        self._write_dates([2, 3, 4])
+        self.assertEqual(interaction_streak(self._mood), 0)
+
+    def test_streak_ending_yesterday_still_valid(self):
+        """Last activity yesterday is still a live streak (app not opened today yet)."""
+        self._write_dates([1, 2, 3])
+        self.assertEqual(interaction_streak(self._mood), 3)
+
     def test_streak_in_summary_dict(self):
         self._write_dates([1, 0])
         ev = os.path.join(self._tmp, "ev.jsonl")

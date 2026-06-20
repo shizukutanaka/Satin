@@ -229,6 +229,11 @@ def interaction_streak(mood_history_path: Optional[str] = None) -> int:
     if not dates:
         return 0
     ordered = sorted(dates)
+    # A streak is only "live" if the most recent active day is today or yesterday.
+    # Otherwise the user has been inactive for more than one day and the run ended.
+    today = date.today()
+    if (today - ordered[-1]).days > 1:
+        return 0
     streak = 1
     for i in range(len(ordered) - 1, 0, -1):
         if (ordered[i] - ordered[i - 1]).days == 1:
