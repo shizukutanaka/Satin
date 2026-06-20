@@ -513,5 +513,27 @@ class GiftDailyMoodMultiplierTests(unittest.TestCase):
         self.assertAlmostEqual(actual_bonus, 5.0, places=1)
 
 
+class DeclineMessageCompletenessTests(unittest.TestCase):
+    """Every min_level value used in the gift catalog must have a corresponding
+    entry in _DECLINE_MESSAGES for both 'ja' and 'en'.  Without it, declined
+    gifts silently return an empty reply, giving no feedback to the user."""
+
+    def test_all_min_levels_have_decline_messages(self):
+        from gifts import _GIFTS, _DECLINE_MESSAGES
+        used_levels = {g["min_level"] for g in _GIFTS if g.get("min_level")}
+        for lang in ("ja", "en"):
+            lang_msgs = _DECLINE_MESSAGES.get(lang, {})
+            for lvl in used_levels:
+                self.assertIn(
+                    lvl, lang_msgs,
+                    f"_DECLINE_MESSAGES['{lang}'] is missing an entry for min_level '{lvl}'. "
+                    f"Gifts at this level will silently return an empty decline reply.",
+                )
+                self.assertGreater(
+                    len(lang_msgs[lvl].strip()), 0,
+                    f"_DECLINE_MESSAGES['{lang}']['{lvl}'] must not be empty.",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

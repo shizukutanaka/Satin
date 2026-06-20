@@ -28,10 +28,12 @@ _DECLINE_MESSAGES = {
     "ja": {
         "neutral": "…ありがとう。でも、もう少し仲良くなってからにしてほしいかな。",
         "friendly": "…嬉しいけど、まだ少し早い気がする。もっと一緒にいてから？",
+        "close": "…これは特別なプレゼントだから、もっと絆を深めてからにしてほしいな。",
     },
     "en": {
         "neutral": "…Thank you. But I'd like to get to know you a little better first.",
         "friendly": "…I'm touched, but this feels a little soon. Maybe when we're closer?",
+        "close": "…This is such a special gift. I'd like us to be even closer before I accept it.",
     },
 }
 
