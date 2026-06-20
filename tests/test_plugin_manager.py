@@ -90,6 +90,54 @@ class MyPlugin(PluginBase):
             self.assertIn("my_plugin", pm.plugins)
 
 
+class ImportlibUtilImportTests(unittest.TestCase):
+    """plugin_manager uses importlib.util.spec_from_file_location, but
+    `import importlib` alone does NOT expose importlib.util — it must be
+    imported explicitly.  In-process tests miss this because pytest and other
+    modules import importlib.util first; a clean subprocess catches it.
+    """
+
+    def test_plugin_manager_imports_importlib_util(self):
+        import subprocess
+        code = (
+            "import importlib\n"
+            "import sys\n"
+            f"sys.path.insert(0, {_MAIN!r})\n"
+            # Importing the module must make importlib.util accessible; if the
+            # module forgot `import importlib.util`, this raises AttributeError.
+            "import plugin_manager\n"
+            "importlib.util.spec_from_file_location\n"
+            "print('OK')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0,
+                         f"clean-interpreter import failed:\n{result.stderr}")
+        self.assertIn("OK", result.stdout)
+
+    def test_config_plugins_imports_importlib_util(self):
+        import subprocess
+        _CONFIG = os.path.join(_MAIN, "config")
+        code = (
+            "import importlib\n"
+            "import sys\n"
+            f"sys.path.insert(0, {_MAIN!r})\n"
+            f"sys.path.insert(0, {_CONFIG!r})\n"
+            "import plugins\n"  # main/config/plugins.py
+            "importlib.util.spec_from_file_location\n"
+            "print('OK')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0,
+                         f"clean-interpreter import failed:\n{result.stderr}")
+        self.assertIn("OK", result.stdout)
+
+
 class PluginBaseValidationTests(unittest.TestCase):
     def test_validate_config_passes_with_required_keys(self):
         class ConcretePlugin(PluginBase):

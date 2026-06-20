@@ -3,6 +3,8 @@ Plugin configuration management for Satin
 """
 import os
 import importlib
+import importlib.util  # submodule must be imported explicitly; `import importlib`
+                       # alone does not expose importlib.util (AttributeError)
 import inspect
 import logging
 import pkgutil
