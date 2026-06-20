@@ -90,7 +90,10 @@ class AvatarLoaderApp:
         if os.path.exists(HISTORY_FILE):
             try:
                 with open(HISTORY_FILE, encoding='utf-8') as f:
-                    self.history = json.load(f)
+                    data = json.load(f)
+                # 破損ファイルが list 以外（dict/str 等）でも後続の
+                # add_history().insert() が壊れないよう list のみ採用する
+                self.history = [str(p) for p in data] if isinstance(data, list) else []
             except Exception:
                 self.history = []
         self.update_history_list()
