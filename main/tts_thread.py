@@ -28,13 +28,17 @@ class TTSThread(threading.Thread):
         while self.running:
             try:
                 text = self.tts_queue.get(timeout=0.1)
-                if text:
-                    self.is_speaking = True
-                    self.engine.say(text)
-                    self.engine.runAndWait()
-                    self.is_speaking = False
             except queue.Empty:
                 continue
+            if text:
+                self.is_speaking = True
+                try:
+                    self.engine.say(text)
+                    self.engine.runAndWait()
+                except Exception:
+                    pass
+                finally:
+                    self.is_speaking = False
 
     def stop(self) -> None:
         self.running = False

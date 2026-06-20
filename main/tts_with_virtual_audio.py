@@ -40,17 +40,24 @@ class TTSWorker(threading.Thread):
         while self.running:
             try:
                 text = self.tts_queue.get(timeout=0.1)
-                if text:
-                    # 一時wavファイルにTTS出力
+            except queue.Empty:
+                continue
+            if text:
+                tf_path = None
+                try:
                     with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tf:
                         self.engine.save_to_file(text, tf.name)
                         self.engine.runAndWait()
                         tf_path = tf.name
-                    # wavを指定デバイスで再生
                     self.play_wav_on_device(tf_path, self.device_idx_getter())
-                    os.unlink(tf_path)
-            except queue.Empty:
-                continue
+                except Exception:
+                    pass
+                finally:
+                    if tf_path and os.path.exists(tf_path):
+                        try:
+                            os.unlink(tf_path)
+                        except OSError:
+                            pass
 
     def play_wav_on_device(self, wav_path, device_idx):
         if AudioSegment is None or np is None or sd is None:

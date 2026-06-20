@@ -107,5 +107,65 @@ class IsSpeakingTests(unittest.TestCase):
         importlib.reload(_tts_mod)
 
 
+class ResilienceTests(unittest.TestCase):
+    """TTSThread must survive pyttsx3 errors and reset is_speaking correctly."""
+
+    def tearDown(self):
+        import importlib
+        importlib.reload(_tts_mod)
+
+    def _make_thread_with_engine(self, engine):
+        mock_pyttsx3 = mock.MagicMock()
+        mock_pyttsx3.init.return_value = engine
+        with mock.patch.object(_opt, "pyttsx3", mock_pyttsx3):
+            import importlib
+            importlib.reload(_tts_mod)
+            from tts_thread import TTSThread
+            return TTSThread(queue.Queue())
+
+    def test_is_speaking_reset_on_runandwait_exception(self):
+        """is_speaking must be False after runAndWait raises, not stuck True."""
+        mock_engine = mock.MagicMock()
+        mock_engine.runAndWait.side_effect = RuntimeError("tts driver crash")
+        import time
+
+        t = self._make_thread_with_engine(mock_engine)
+        t.start()
+        t.tts_queue.put("crash me")
+        time.sleep(0.3)
+        t.stop()
+        t.join(timeout=2.0)
+
+        self.assertFalse(t.is_speaking)
+
+    def test_thread_survives_runandwait_exception_and_processes_next(self):
+        """Thread must not die on pyttsx3 error; next item is processed."""
+        processed = []
+        mock_engine = mock.MagicMock()
+
+        call_count = [0]
+
+        def side_effect():
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RuntimeError("first call fails")
+            processed.append(call_count[0])
+
+        mock_engine.runAndWait.side_effect = side_effect
+        import time
+
+        t = self._make_thread_with_engine(mock_engine)
+        t.start()
+        t.tts_queue.put("fail")
+        time.sleep(0.2)
+        t.tts_queue.put("succeed")
+        time.sleep(0.3)
+        t.stop()
+        t.join(timeout=2.0)
+
+        self.assertTrue(len(processed) >= 1,
+                        "Thread should process second item after first raises")
+
+
 if __name__ == "__main__":
     unittest.main()
