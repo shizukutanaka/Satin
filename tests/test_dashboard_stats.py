@@ -163,6 +163,55 @@ class ConversationStatsTests(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_null_timestamp_does_not_abort_iteration(self):
+        """Regression: 'timestamp': null must not abort the stats loop early.
+
+        ev.get('timestamp', 0) returns None (not 0) when the key is present but
+        null. datetime.fromtimestamp(None) raises TypeError which the original
+        code did not catch, causing the outer except Exception to swallow the
+        entire remaining loop.
+
+        With the fix: the null-timestamp event is counted in total_user (the
+        increment precedes the fromtimestamp call) but skips time-based stats;
+        subsequent events continue to be processed.
+        """
+        events = [
+            {"event_type": "user_comment", "timestamp": self._ts("2024-01-01"), "details": {}},
+            {"event_type": "user_comment", "timestamp": None, "details": {}},  # JSON null
+            {"event_type": "user_comment", "timestamp": self._ts("2024-01-02"), "details": {}},
+        ]
+        path = self._write_events(events)
+        try:
+            s = dashboard._conversation_stats(path)
+            # All 3 user events counted (null-ts included; only time stats skipped).
+            self.assertEqual(s["total_user"], 3,
+                             "All events including null-ts must be counted; loop must not abort")
+            # Both valid-ts dates must appear — proves Event 3 was processed.
+            self.assertIn("2024-01-01", s["per_day"],
+                          "2024-01-01 event must be in per_day")
+            self.assertIn("2024-01-02", s["per_day"],
+                          "2024-01-02 event must be in per_day (loop must not abort at null-ts)")
+        finally:
+            os.unlink(path)
+
+    def test_string_timestamp_does_not_abort_iteration(self):
+        """Regression: non-numeric timestamp must be skipped, not abort the loop."""
+        events = [
+            {"event_type": "user_comment", "timestamp": self._ts("2024-01-01"), "details": {}},
+            {"event_type": "user_comment", "timestamp": "not-a-number", "details": {}},
+            {"event_type": "avatar_reply",  "timestamp": self._ts("2024-01-01"), "details": {}},
+        ]
+        path = self._write_events(events)
+        try:
+            s = dashboard._conversation_stats(path)
+            # Both user events counted; avatar event after the bad-ts must also count.
+            self.assertEqual(s["total_user"], 2,
+                             "User events (including bad-ts one) must be counted")
+            self.assertEqual(s["total_avatar"], 1,
+                             "Avatar event after bad-ts must be counted (loop must not abort)")
+        finally:
+            os.unlink(path)
+
 
 class BackupListZipTests(unittest.TestCase):
     """Regression: backups route must list .zip files, not just .png/.gz."""

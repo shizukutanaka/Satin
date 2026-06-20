@@ -722,7 +722,10 @@ def _conversation_stats(log_path: str) -> dict:
                     per_hour[dt.hour] += 1
                 elif et in _AVATAR_TYPES:
                     total_avatar += 1
-            except (ValueError, OSError, OverflowError):
+            except (ValueError, OSError, OverflowError, TypeError):
+                # TypeError: fromtimestamp(None) or fromtimestamp("str") when
+                # the event has "timestamp": null or a non-numeric value.
+                # The count was already incremented above; skip time-based stats.
                 continue
     except Exception:
         pass
