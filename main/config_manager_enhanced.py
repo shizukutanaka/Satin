@@ -75,7 +75,8 @@ class EnhancedConfigManager(ConfigManager):
         """config_path からJSON を直接読み込む。"""
         try:
             with open(self.config_path, encoding="utf-8") as fh:
-                self.current_config = json.load(fh)
+                data = json.load(fh)
+                self.current_config = data if isinstance(data, dict) else {}
         except (OSError, json.JSONDecodeError):
             self.current_config = {}
         return self.current_config
