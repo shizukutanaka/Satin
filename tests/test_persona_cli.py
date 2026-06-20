@@ -1819,5 +1819,73 @@ class ConfessionSaveMidSessionTests(unittest.TestCase):
                          "mood file must not be written unless a milestone fires")
 
 
+class SlashCommandPrefixBoundaryTests(unittest.TestCase):
+    """/liked, /gifts, /forgetting must NOT dispatch as /like, /gift, /forget.
+
+    Before the fix, startswith("/like") matched "/liked アニメ" and passed "d アニメ"
+    to _add_interest() — silently storing garbage into the user profile.
+    """
+
+    def setUp(self):
+        import user_profile
+        self._up = user_profile
+        self._tmp = tempfile.mkdtemp()
+        self._ppath = os.path.join(self._tmp, "up.json")
+        self._patcher = mock.patch.object(persona_cli, "_profile_path",
+                                          lambda: self._ppath)
+        self._patcher.start()
+
+    def tearDown(self):
+        import shutil
+        self._patcher.stop()
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _profile(self, **kw):
+        return self._up.UserProfile(**kw)
+
+    def test_liked_does_not_add_interest(self):
+        """/liked アニメ must not add 'd アニメ' as an interest."""
+        prof = self._profile()
+        d = _Driver(["/liked アニメ"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertEqual(prof.interests, [])
+
+    def test_gifts_does_not_dispatch_as_gift(self):
+        """/gifts must not invoke the gift handler."""
+        prof = self._profile()
+        d = _Driver(["/gifts"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        # Gift catalog lines contain "(+N)"; a normal persona reply won't
+        self.assertFalse(any("(+" in line for line in d.out))
+
+    def test_forgetting_does_not_remove_interest(self):
+        """/forgetting must not call remove_interest; interest survives."""
+        prof = self._profile(interests=["ゲーム"])
+        d = _Driver(["/forgetting ゲーム"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertIn("ゲーム", prof.interests)
+
+    def test_liked_falls_through_to_persona_respond(self):
+        """/liked reaches persona.respond() and returns a real reply."""
+        prof = self._profile()
+        d = _Driver(["/liked アニメ"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        # Persona's fallback should appear in output
+        self.assertTrue(any("FB" in line or "HI" in line or "SEEYA" in line
+                            for line in d.out))
+
+
 if __name__ == "__main__":
     unittest.main()

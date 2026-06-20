@@ -320,38 +320,38 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
     def _handle_slash_command_gui(self, cmd_text: str, lang: str, level) -> bool:
         """GUI スラッシュコマンドを処理する。認識したコマンドなら True を返す。"""
         cmd_l = cmd_text.lower()
-        if cmd_l.startswith("gift"):
+        if cmd_l == "gift" or cmd_l.startswith("gift "):
             self._cmd_gift_gui(cmd_text[4:].strip(), lang, level)
             return True
-        if cmd_l.startswith("callme"):
+        if cmd_l == "callme" or cmd_l.startswith("callme "):
             self._cmd_callme_gui(cmd_text[6:].strip(), lang)
             return True
-        if cmd_l.startswith("like"):
+        if cmd_l == "like" or cmd_l.startswith("like "):
             self._cmd_like_gui(cmd_text[4:].strip(), lang)
             return True
-        # /forget-me は /forget より具体的なので先に判定する（前方一致の誤爆防止）
-        if cmd_l.startswith("forget-me") or cmd_l == "forgetme":
+        # /forget-me は /forget より具体的なので先に判定する
+        if cmd_l == "forget-me" or cmd_l.startswith("forget-me ") or cmd_l == "forgetme":
             self._cmd_forget_me_gui(lang)
             return True
-        if cmd_l.startswith("forget"):
+        if cmd_l == "forget" or cmd_l.startswith("forget "):
             self._cmd_forget_gui(cmd_text[6:].strip(), lang)
             return True
-        if cmd_l.startswith("mood"):
+        if cmd_l == "mood":
             self._cmd_mood_gui(lang)
             return True
-        if cmd_l.startswith("birthday"):
+        if cmd_l == "birthday" or cmd_l.startswith("birthday "):
             self._cmd_birthday_gui(cmd_text[8:].strip(), lang)
             return True
-        if cmd_l.startswith("whoami"):
+        if cmd_l == "whoami":
             self._cmd_whoami_gui(lang)
             return True
-        if cmd_l.startswith("stats"):
+        if cmd_l == "stats":
             self._cmd_stats_gui(lang)
             return True
-        if cmd_l.startswith("reset-mood") or cmd_l == "resetmood":
+        if cmd_l == "reset-mood" or cmd_l == "resetmood":
             self._cmd_reset_mood_gui(lang)
             return True
-        if cmd_l.startswith("help"):
+        if cmd_l == "help":
             self._cmd_help_gui(lang)
             return True
         return False  # 未知のコマンドは通常の respond() へ

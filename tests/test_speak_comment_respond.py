@@ -1483,5 +1483,106 @@ class EmptyInputGuardTests(unittest.TestCase):
         self.assertTrue(q.empty())
 
 
+class GUISlashCommandPrefixBoundaryTests(unittest.TestCase):
+    """/liked, /gifts, /forgetting etc. must NOT dispatch as /like, /gift, /forget.
+
+    Before the fix, startswith("like") matched "liked アニメ" and extracted "d アニメ"
+    as the interest argument — silently storing garbage into the user's profile.
+    """
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+        self._mood_patcher = mock.patch.object(_mod, "get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        self._mood_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def _profile_spy(self):
+        class _FakeProfile:
+            interests = []
+            def add_interest(self, t):
+                self.interests.append(t)
+                return t
+            def save(self, p): pass
+        return _FakeProfile()
+
+    def test_liked_does_not_add_interest(self):
+        """/liked アニメ must not dispatch to /like — no 'd アニメ' in interests."""
+        prof = self._profile_spy()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)):
+            v.speak_comment("/liked アニメ")
+        self.assertEqual(prof.interests, [])
+
+    def test_gifts_does_not_dispatch_as_gift(self):
+        """/gifts must not invoke the gift handler."""
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)):
+            v = _make_viewer()
+            v.speak_comment("/gifts")
+        # Gift catalog lines contain "(+N)"; persona fallback doesn't.
+        self.assertNotIn("(+", v.comment_text)
+
+    def test_forgetting_does_not_remove_interest(self):
+        """/forgetting must not call remove_interest."""
+        calls = []
+
+        class _FakeProfile:
+            interests = ["ゲーム"]
+            def remove_interest(self, t):
+                calls.append(t)
+                return False
+            def save(self, p): pass
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: _FakeProfile()), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)):
+            v.speak_comment("/forgetting ゲーム")
+        self.assertEqual(calls, [])
+
+    def test_moody_does_not_show_mood(self):
+        """/moody must not show the mood display (exact match only)."""
+        class _FakeTracker:
+            level = "friendly"
+            affinity = 60.0
+            def label(self, lang="ja"): return "MOOD_SENTINEL_VALUE"
+
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: _FakeTracker()), \
+             mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)):
+            v = _make_viewer()
+            v.speak_comment("/moody")
+        self.assertNotIn("MOOD_SENTINEL_VALUE", v.comment_text)
+
+    def test_helpful_does_not_show_help(self):
+        """/helpful must not show the /help command list."""
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)):
+            v = _make_viewer()
+            v.speak_comment("/helpful")
+        # /help output always contains "/forget-me"; fallback reply won't
+        self.assertNotIn("/forget-me", v.comment_text)
+
+    def test_liked_falls_through_to_persona_respond(self):
+        """/liked <text> reaches persona.respond() and gets a real reply."""
+        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
+                               property(lambda self: _RESPONSE_PERSONA)), \
+             mock.patch.object(_mod, "_get_user_profile_gui", None):
+            v = _make_viewer()
+            v.speak_comment("/liked アニメ")
+        # Persona has no "liked" rule, so fallback "REPLY_FB" is returned
+        self.assertEqual(v.comment_text, "REPLY_FB")
+
+
 if __name__ == "__main__":
     unittest.main()

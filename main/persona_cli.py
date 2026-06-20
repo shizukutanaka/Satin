@@ -369,25 +369,25 @@ def run_chat(
         if text.lower() == "/name":
             output_fn(f"{name}")
             continue
-        if text.lower().startswith("/callme"):
+        if text.lower() == "/callme" or text.lower().startswith("/callme "):
             new_name = text[len("/callme"):].strip()
             reply = _set_user_name(profile, new_name, name, lang, output_fn)
             if conv_log is not None and reply:
                 conv_log.log_exchange(text, reply)
             continue
-        if text.lower().startswith("/birthday"):
+        if text.lower() == "/birthday" or text.lower().startswith("/birthday "):
             new_bday = text[len("/birthday"):].strip()
             reply = _set_birthday(profile, new_bday, name, lang, output_fn)
             if conv_log is not None and reply:
                 conv_log.log_exchange(text, reply)
             continue
-        if text.lower().startswith("/gift"):
+        if text.lower() == "/gift" or text.lower().startswith("/gift "):
             item = text[len("/gift"):].strip()
             gift_reply = _give_gift(item, mood, name, lang, output_fn)
             if conv_log is not None and gift_reply:
                 conv_log.log_exchange(text, gift_reply)
             continue
-        if text.lower().startswith("/like"):
+        if text.lower() == "/like" or text.lower().startswith("/like "):
             thing = text[len("/like"):].strip()
             reply = _add_interest(profile, thing, name, lang, output_fn)
             if conv_log is not None and reply:
@@ -408,7 +408,7 @@ def run_chat(
                 _forget_me(profile, lang, output_fn)
                 _forget_me_pending = False
             continue
-        if text.lower().startswith("/forget"):
+        if text.lower() == "/forget" or text.lower().startswith("/forget "):
             thing = text[len("/forget"):].strip()
             reply = _remove_interest(profile, thing, name, lang, output_fn)
             if conv_log is not None and reply:
@@ -442,7 +442,7 @@ def run_chat(
         if text.lower() == "/recap":
             _print_recap(conv_log, lang, output_fn)
             continue
-        if text.lower().startswith("/search"):
+        if text.lower() == "/search" or text.lower().startswith("/search "):
             query = text[len("/search"):].strip()
             _print_search(conv_log, query, output_fn)
             continue
