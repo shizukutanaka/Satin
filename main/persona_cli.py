@@ -1021,7 +1021,7 @@ def _print_recap(conv_log, lang: str, output_fn: Callable[[str], None]) -> None:
                 from conversation_log import USER_EVENT_TYPES
                 for entry in recent:
                     et = entry.get("event_type", "")
-                    text = entry.get("details", {}).get("text", "")
+                    text = (entry.get("details") or {}).get("text", "")
                     if not text:
                         continue
                     label = ("You" if is_en else "あなた") if et in USER_EVENT_TYPES else "Satin"

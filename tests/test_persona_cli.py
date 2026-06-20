@@ -1322,6 +1322,38 @@ class RecapCommandTests(unittest.TestCase):
                         f"Expected recent exchange in output; got: {out}")
         self.assertTrue(any("やっほー" in l for l in out))
 
+    def test_recap_null_details_does_not_abort_loop(self):
+        """/recap must not silently abort when an event has "details": null.
+
+        entry.get("details", {}) returns None for a JSON-null details field.
+        None.get("text", "") raises AttributeError, which the outer try/except
+        swallows — aborting the remaining iterations.  Fixed with (... or {}).
+        """
+        from unittest import mock
+        import persona_cli as pc
+
+        class _FakeLog:
+            def recent(self, n):
+                return [
+                    {"event_type": "user_comment", "details": None},       # null details
+                    {"event_type": "user_comment",
+                     "details": {"text": "後続イベント"}},               # must still appear
+                ]
+
+        out = []
+        it = iter(["/recap", "/quit"])
+        with mock.patch.object(pc, "_summary_greeting", lambda lang="ja": ""):
+            pc.run_chat(
+                persona=__import__("persona").Persona.from_dict({"name": "T"}),
+                input_fn=lambda _: next(it),
+                output_fn=out.append,
+                greet=False,
+                mood=__import__("mood").MoodTracker(affinity=50),
+                conv_log=_FakeLog(),
+            )
+        self.assertTrue(any("後続イベント" in l for l in out),
+                        f"Event after null-details entry must be shown; got: {out}")
+
 
 class CallemeBirthdayLoggingTests(unittest.TestCase):
     """/callme and /birthday commands log their exchange to conv_log."""
