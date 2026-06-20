@@ -550,6 +550,18 @@ class SummaryGreetingTests(unittest.TestCase):
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
 
+    def test_none_lang_does_not_crash(self):
+        """summary_greeting(lang=None) must not raise TypeError on lang[:2]."""
+        result = summary_greeting(lang=None, **self._kwargs())  # type: ignore[arg-type]
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+    def test_empty_lang_does_not_crash(self):
+        """summary_greeting(lang='') falls back gracefully without raising."""
+        result = summary_greeting(lang="", **self._kwargs())
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

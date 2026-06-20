@@ -278,6 +278,7 @@ def summary_greeting(
 
     データが無い場合はデフォルト文を返す。
     """
+    lang = lang or "ja"
     lang_key = lang[:2] if lang[:2] in _GREETINGS else "en"
     if lang_key != lang[:2]:
         logger.debug("summary_greeting: unsupported lang %r, falling back to %r", lang, lang_key)

@@ -33,9 +33,26 @@ from __future__ import annotations
 import json
 import os
 import random
+import re as _re
 import threading
+import unicodedata as _ud
 from datetime import datetime
 from typing import Dict, List, Optional
+
+
+def _kw_match(kw_norm: str, text_norm: str) -> bool:
+    """Return True if the pre-normalised keyword matches text_norm.
+
+    ASCII keywords use word boundaries to avoid false-positives
+    ("happy" must not match "unhappy", "cute" must not match "execute").
+    CJK/kana keywords use plain substring matching (no word boundaries
+    in Japanese/Chinese/Korean script).
+    """
+    if not kw_norm:
+        return False
+    if kw_norm.isascii():
+        return bool(_re.search(r"\b" + _re.escape(kw_norm) + r"\b", text_norm))
+    return kw_norm in text_norm
 
 # --------------------------------------------------------------------------- #
 # 既定値（設定ファイルが無くても従来挙動を維持できるフォールバック）
@@ -449,7 +466,6 @@ class Persona:
         """
         if not text or not str(text).strip():
             return ""
-        import unicodedata as _ud
         norm = _ud.normalize("NFC", str(text).strip().lower())
 
         block = self._resolve_responses_block(lang)
@@ -472,12 +488,8 @@ class Persona:
                         level_fallback.extend(fb)
                     continue
                 for kw in keywords:
-                    # 入力は NFC 正規化済みなのでキーワードも同じく正規化して
-                    # 比較する（片側だけだと NFD のキーワードが永久に一致しない）。
-                    # 空白のみのキーワードは strip 後 "" となり全入力へ誤マッチ
-                    # するため、正規化後が非空のときだけ部分一致を判定する。
                     kw_norm = _ud.normalize("NFC", str(kw).strip().lower())
-                    if kw_norm and kw_norm in norm:
+                    if _kw_match(kw_norm, norm):
                         replies = list(rule.get("replies") or [])
                         if replies:
                             return self._pick(
@@ -489,10 +501,8 @@ class Persona:
             if not isinstance(rule, dict):
                 continue
             for kw in rule.get("keywords") or []:
-                # 入力と同じ NFC 正規化を施す（片側だけだと NFD キーワードが一致しない）。
-                # 空白のみのキーワードは strip 後 "" となり全入力に誤マッチするので除外。
                 kw_norm = _ud.normalize("NFC", str(kw).strip().lower())
-                if kw_norm and kw_norm in norm:
+                if _kw_match(kw_norm, norm):
                     replies = list(rule.get("replies") or [])
                     if replies:
                         # ルールごとに直前重複を避ける（キーはルール順インデックス）

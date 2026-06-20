@@ -336,6 +336,62 @@ class RespondTests(unittest.TestCase):
         self.assertEqual(p.respond("xyzzy", level="close"), "FB")
 
 
+class RespondFalsePositiveTests(unittest.TestCase):
+    """ASCII keywords in respond() must respect word boundaries.
+
+    Without \\b guards, "happy" matches "unhappy", "cute" matches "execute",
+    etc. — the user would get a cheerful reply when saying "I'm unhappy".
+    """
+
+    def _persona(self, rules, fallback=None):
+        data = {"responses": {"en": {
+            "rules": rules,
+            "fallback": fallback or ["FB"],
+        }}}
+        return Persona.from_dict(data, lang="en")
+
+    def test_happy_does_not_match_unhappy(self):
+        p = self._persona([{"keywords": ["happy"], "replies": ["HAPPY"]}])
+        self.assertNotEqual(p.respond("I'm unhappy today"), "HAPPY")
+
+    def test_cute_does_not_match_execute(self):
+        p = self._persona([{"keywords": ["cute"], "replies": ["CUTE"]}])
+        self.assertNotEqual(p.respond("execute the plan"), "CUTE")
+
+    def test_like_does_not_match_dislike(self):
+        p = self._persona([{"keywords": ["like"], "replies": ["LIKE"]}])
+        self.assertNotEqual(p.respond("I dislike that"), "LIKE")
+
+    def test_tired_does_not_match_retired(self):
+        p = self._persona([{"keywords": ["tired"], "replies": ["TIRED"]}])
+        self.assertNotEqual(p.respond("she retired last year"), "TIRED")
+
+    def test_hi_does_not_match_this(self):
+        p = self._persona([{"keywords": ["hi"], "replies": ["HI"]}])
+        self.assertNotEqual(p.respond("this is fine"), "HI")
+
+    # Positive: keywords must still match when they appear as whole words
+    def test_happy_matches_standalone(self):
+        p = self._persona([{"keywords": ["happy"], "replies": ["HAPPY"]}])
+        self.assertEqual(p.respond("I'm happy today"), "HAPPY")
+
+    def test_hi_matches_standalone(self):
+        p = self._persona([{"keywords": ["hi"], "replies": ["HI"]}])
+        self.assertEqual(p.respond("hi there"), "HI")
+
+    def test_tired_matches_standalone(self):
+        p = self._persona([{"keywords": ["tired"], "replies": ["TIRED"]}])
+        self.assertEqual(p.respond("I feel tired"), "TIRED")
+
+    # CJK keywords must still use plain substring matching
+    def test_ja_substring_still_works(self):
+        p = Persona.from_dict({"responses": {"ja": {
+            "rules": [{"keywords": ["元気"], "replies": ["GENKI"]}],
+            "fallback": ["FB"],
+        }}}, lang="ja")
+        self.assertEqual(p.respond("元気ですか"), "GENKI")
+
+
 class RespondWithLevelTests(unittest.TestCase):
     """respond(text, level=...) uses respond_by_affinity rules first."""
 
