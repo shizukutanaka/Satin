@@ -46,15 +46,16 @@ class PerformanceMonitor:
         self.running = False
 
         if self.settings:
-            self.interval = self.settings.get("interval", 5)
+            self.interval = self.settings.get("interval") or 5
             self.thresholds = {
-                "memory": self.settings.get("memory_threshold", 80),
-                "cpu": self.settings.get("cpu_threshold", 90),
-                "disk": self.settings.get("disk_threshold", 90),
-                "network": self.settings.get("network_threshold", 1_000_000),
+                "memory": self.settings.get("memory_threshold") or 80,
+                "cpu": self.settings.get("cpu_threshold") or 90,
+                "disk": self.settings.get("disk_threshold") or 90,
+                "network": self.settings.get("network_threshold") or 1_000_000,
             }
-            self.alert_enabled = self.settings.get("alert_enabled", True)
-            self.alert_threshold = self.settings.get("alert_threshold", 3)
+            _ae = self.settings.get("alert_enabled")
+            self.alert_enabled = True if _ae is None else bool(_ae)
+            self.alert_threshold = self.settings.get("alert_threshold") or 3
             
     def start_monitoring(self) -> None:
         """モニタリングを開始"""

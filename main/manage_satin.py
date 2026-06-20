@@ -431,6 +431,8 @@ def cmd_mood_import(src: str) -> None:
         from mood import get_mood_tracker, _default_mood_path, AFFINITY_START
         with open(src, encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("JSON ファイルの形式が不正です（dict が必要）")
         tracker = get_mood_tracker()
         def _f(val, default):
             return float(val) if val is not None else float(default)

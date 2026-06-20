@@ -74,7 +74,9 @@ def _load_jsonl(path: str, include_archives: bool = False) -> List[Dict]:
         if not line.strip():
             return
         try:
-            entries.append(json.loads(line))
+            data = json.loads(line)
+            if isinstance(data, dict):
+                entries.append(data)
         except json.JSONDecodeError:
             pass
 

@@ -203,13 +203,13 @@ class ContentAggregator:
         popularity_score = 0.0
         if content.content_type == ContentType.VIDEO:
             # YouTube: view_count で評価
-            views = content.content_data.get('view_count', 0)
+            views = content.content_data.get('view_count') or 0
             # 対数スケール: 100万ビュー = 20点
             popularity_score = min(20, math.log10(max(1, views) + 1) / 6 * 20)
 
         elif content.content_type == ContentType.PAPER:
             # 論文: 引用数で評価
-            citations = content.content_data.get('citations', 0)
+            citations = content.content_data.get('citations') or 0
             # 対数スケール: 100引用 = 20点
             popularity_score = min(20, math.log10(max(1, citations) + 1) / 2 * 20)
 

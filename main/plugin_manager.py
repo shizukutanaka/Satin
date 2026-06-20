@@ -44,7 +44,8 @@ class PluginManager:
             config_file = self.plugin_directory / "config.json"
             if config_file.exists():
                 with open(config_file, 'r', encoding='utf-8') as f:
-                    self.plugin_config = json.load(f)
+                    data = json.load(f)
+                    self.plugin_config = data if isinstance(data, dict) else {}
             else:
                 self.logger.warning("No plugin configuration found")
                 self.plugin_config = {}

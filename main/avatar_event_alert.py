@@ -29,6 +29,8 @@ def monitor_log(logfile, webhook_url, poll_interval=5):
                     if not line.strip():
                         continue
                     ev = json.loads(line)
+                    if not isinstance(ev, dict):
+                        continue
                     key = (ev.get('timestamp'), ev.get('event_type'))
                     if key in seen:
                         continue
