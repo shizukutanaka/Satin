@@ -239,6 +239,12 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I10 (Qiita 由来 — naive/aware datetime 混在):** `content_aggregator`
+  で YouTube Data API 由来の **aware** datetime と yt-dlp/論文/Web 由来の
+  **naive** datetime が混在し、(a) `datetime.now() - aware` で TypeError →
+  関連度スコアリングが例外で **YouTube 結果が丸ごと欠落**、(b) `min/max(dates)`
+  も同型 TypeError。変換 funnel で `_to_naive()`（aware→UTC naive）に一律正規化。
+  参考: [utcnow() の代わりに now(UTC) を / naive・aware の落とし穴 (Qiita)](https://qiita.com/ayu_ko_mimo/items/ac334dcc9a073aac28f7)
 - **[実装] I8 (Qiita 由来 — RotatingFileHandler 重複登録):** `LoggingManager`
   を 2 回インスタンス化するとルートロガーに同一ハンドラが二重に追加され、
   全ログ行が重複出力、Windows ではローテーション時に PermissionError になる。

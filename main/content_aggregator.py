@@ -7,7 +7,7 @@ import json
 import time
 import math
 from typing import Dict, List, Optional, Any, Union, Set
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -82,6 +82,23 @@ class AggregationResult:
         }
 
 
+def _to_naive(dt: Optional[datetime]) -> Optional[datetime]:
+    """published_date を「tz を持たない UTC 基準」の datetime に正規化する。
+
+    各ソースで awareness が食い違う:
+      - YouTube Data API: ``fromisoformat('...+00:00')`` → aware (UTC)
+      - yt-dlp / 論文 / Web: ``fromtimestamp`` 等 → naive (ローカル)
+    aware と naive を混在させたまま ``datetime.now() - published`` を引くと
+    ``TypeError: can't subtract offset-naive and offset-aware datetimes`` に
+    なり、関連度スコアリングで例外→YouTube 結果が丸ごと欠落していた。さらに
+    ``min(dates)`` / ``max(dates)`` でも同型の TypeError が起きる。ここで一律
+    naive(UTC) に揃えて比較・減算を安全にする。
+    """
+    if dt is not None and dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 class ContentAggregator:
     """
     統合コンテンツ収集管理クラス
@@ -121,7 +138,7 @@ class ContentAggregator:
             url=f"https://www.youtube.com/watch?v={video.video_id}",
             source='youtube',
             authors=[video.channel_title],
-            published_date=video.published_at,
+            published_date=_to_naive(video.published_at),
             keywords=video.tags,
             content_data=video.to_dict()
         )
@@ -136,7 +153,7 @@ class ContentAggregator:
             url=paper.url,
             source=paper.source,
             authors=paper.authors,
-            published_date=paper.published_date,
+            published_date=_to_naive(paper.published_date),
             keywords=paper.keywords,
             content_data=paper.to_dict()
         )
@@ -151,7 +168,7 @@ class ContentAggregator:
             url=page.url,
             source='web',
             authors=[page.author] if page.author else [],
-            published_date=page.published_date,
+            published_date=_to_naive(page.published_date),
             keywords=page.keywords,
             content_data=page.to_dict()
         )

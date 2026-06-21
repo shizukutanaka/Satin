@@ -8,7 +8,7 @@ import math
 import os
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
@@ -18,6 +18,7 @@ from content_aggregator import (  # noqa: E402
     ContentAggregator,
     ContentType,
     UnifiedContent,
+    _to_naive,
 )
 
 
@@ -194,6 +195,71 @@ class RelevanceScoreTests(unittest.TestCase):
         score = self._agg.calculate_relevance_score(content, "test")
         self.assertIsInstance(score, float)
         self.assertGreaterEqual(score, 0.0)
+
+
+class TimezoneAwarenessTests(unittest.TestCase):
+    """Regression: YouTube Data API yields tz-aware published dates while
+    yt-dlp/papers/web yield naive ones. Mixing them crashed relevance scoring
+    (datetime.now() - aware -> TypeError) and date-range analysis (min/max of
+    mixed naive+aware -> TypeError), silently dropping all YouTube results."""
+
+    def setUp(self):
+        self._agg = _make_aggregator()
+
+    def test_to_naive_strips_tzinfo(self):
+        aware = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+        out = _to_naive(aware)
+        self.assertIsNone(out.tzinfo)
+
+    def test_to_naive_passes_through_naive(self):
+        naive = datetime(2024, 1, 1, 12, 0)
+        self.assertIs(_to_naive(naive), naive)
+
+    def test_to_naive_handles_none(self):
+        self.assertIsNone(_to_naive(None))
+
+    def test_to_naive_converts_offset_to_utc(self):
+        # +09:00 09:00 == 00:00 UTC
+        from datetime import timezone as _tz
+        jst = datetime(2024, 1, 1, 9, 0, tzinfo=_tz(timedelta(hours=9)))
+        out = _to_naive(jst)
+        self.assertEqual((out.hour, out.tzinfo), (0, None))
+
+    def test_relevance_score_with_aware_published_date(self):
+        # An aware published_date (as produced by the YouTube API path) must not
+        # raise TypeError against the naive datetime.now() in the freshness calc.
+        content = _make_content(
+            title="test",
+            content_type=ContentType.VIDEO,
+            published_date=datetime.now(timezone.utc) - timedelta(days=10),
+        )
+        # _make_content stores it raw; simulate the convert-funnel normalization.
+        content.published_date = _to_naive(content.published_date)
+        score = self._agg.calculate_relevance_score(content, "test")
+        self.assertIsInstance(score, float)
+
+    def test_convert_youtube_normalizes_aware_date(self):
+        video = mock.MagicMock()
+        video.video_id = "abc"
+        video.title = "t"
+        video.description = "d"
+        video.channel_title = "c"
+        video.published_at = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        video.tags = []
+        video.to_dict.return_value = {}
+        unified = self._agg._convert_youtube_to_unified(video)
+        self.assertIsNone(unified.published_date.tzinfo)
+
+    def test_analyze_trends_with_mixed_awareness_does_not_crash(self):
+        # After the funnel, all published_date are naive — min/max must work.
+        naive_item = _make_content(
+            published_date=datetime(2023, 1, 1), content_type=ContentType.PAPER)
+        aware_item = _make_content(
+            content_type=ContentType.VIDEO,
+            published_date=_to_naive(datetime(2024, 1, 1, tzinfo=timezone.utc)))
+        analysis = self._agg.analyze_content_trends([naive_item, aware_item])
+        self.assertIn("date_range", analysis)
+        self.assertIn("earliest", analysis["date_range"])
 
 
 if __name__ == "__main__":
