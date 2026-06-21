@@ -117,6 +117,29 @@ class ParseEnvValueTests(unittest.TestCase):
     def test_plain_string_returned(self):
         self.assertEqual(_parse_env_value("hello"), "hello")
 
+    def test_scientific_notation_finite_float_parsed(self):
+        # Legitimate finite floats in exponent form must still parse as numbers.
+        self.assertEqual(_parse_env_value("1e3"), 1000.0)
+        self.assertIsInstance(_parse_env_value("1e3"), float)
+
+    def test_inf_kept_as_string(self):
+        # Regression: float() silently coerces "inf"/"infinity"/"1e999" to inf,
+        # which corrupts numeric config (e.g. max_backups). Keep as string.
+        for v in ("inf", "-inf", "infinity", "Infinity", "1e999"):
+            with self.subTest(v=v):
+                result = _parse_env_value(v)
+                self.assertIsInstance(result, str,
+                                      f"{v!r} must stay a string, got {result!r}")
+
+    def test_nan_kept_as_string(self):
+        # nan is even more dangerous: every comparison with it is False, which
+        # silently breaks threshold logic. Must not become a float.
+        for v in ("nan", "NaN", "-nan"):
+            with self.subTest(v=v):
+                result = _parse_env_value(v)
+                self.assertIsInstance(result, str,
+                                      f"{v!r} must stay a string, got {result!r}")
+
 
 class SetNestedTests(unittest.TestCase):
     def test_simple_key(self):

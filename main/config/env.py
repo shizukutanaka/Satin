@@ -240,10 +240,17 @@ def _parse_env_value(value: str) -> Any:
     except ValueError:
         pass
     try:
-        return float(value)
+        f = float(value)
+        # float() は "inf"/"-inf"/"nan"/"infinity"/"1e999" を黙って inf/nan に
+        # 変換する。これらが設定値に混入すると、nan は全比較が False になり閾値
+        # 判定を壊し、inf も数値ロジックを破壊する。ドキュメントの「数値」は有限値
+        # を意図しているため、非有限値は数値として扱わず文字列にフォールバックする。
+        import math
+        if math.isfinite(f):
+            return f
     except ValueError:
         pass
-    
+
     # Handle lists (comma-separated)
     if ',' in value:
         return [_parse_env_item(v.strip()) for v in value.split(',')]

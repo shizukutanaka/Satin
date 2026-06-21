@@ -239,6 +239,13 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I15 (Zenn 由来 — 環境変数の非有限 float キャスト):** `config/env.py`
+  の自動型キャストが `float()` をそのまま使い、環境変数 `inf` / `-inf` /
+  `infinity` / `nan` / `1e999` を黙って `float('inf')` / `float('nan')` に
+  変換していた。`nan` は全比較が False になり閾値判定を破壊、`inf` も数値
+  ロジックを壊す。`math.isfinite()` で非有限値は数値扱いせず文字列へ
+  フォールバック（正当な `1e3`=1000.0 等の有限値は従来通り数値）。
+  参考: [浮動小数点の比較と誤差 / math.isclose (Zenn)](https://zenn.dev/sergicalsix/articles/f261d66bc1773b)
 - **[実装] I14 (プライバシー — バックアップ zip が world-readable):**
   `backup_manager.create_backup()` および `dashboard._build_sync_backup()` が
   生成する zip は `mood.json` / `user_profile.json` / `avatar_event_log.jsonl`
