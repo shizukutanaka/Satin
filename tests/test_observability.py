@@ -83,6 +83,67 @@ class StructuredLogHandlerMaxSizeTests(unittest.TestCase):
         self.assertEqual(handler.max_size, 10_000)
 
 
+class StructuredLogHandlerRobustnessTests(unittest.TestCase):
+    """Regression: emit() must not silently drop logs (via handleError) for
+    exc_info=True with no active exception, or for non-standard level names."""
+
+    def _record(self, level, levelname, msg="x", exc_info=None):
+        import logging
+        rec = logging.LogRecord(
+            name="t", level=level, pathname="", lineno=0,
+            msg=msg, args=(), exc_info=exc_info,
+        )
+        rec.levelname = levelname
+        return rec
+
+    def test_exc_info_true_without_active_exception_is_handled(self):
+        import logging
+        # sys.exc_info() with no active exception -> (None, None, None), which is
+        # truthy; record.exc_info[0].__name__ would have raised AttributeError.
+        rec = logging.LogRecord(
+            name="t", level=logging.ERROR, pathname="", lineno=0,
+            msg="boom", args=(), exc_info=(None, None, None),
+        )
+        handler = StructuredLogHandler(max_size=10)
+        handler.emit(rec)
+        self.assertEqual(len(handler.logs), 1)
+        self.assertIsNone(handler.logs[0].error_type)
+        self.assertIsNone(handler.logs[0].error_message)
+
+    def test_real_exception_still_captured(self):
+        import logging
+        try:
+            raise ValueError("nope")
+        except ValueError:
+            import sys
+            rec = logging.LogRecord(
+                name="t", level=logging.ERROR, pathname="", lineno=0,
+                msg="failed", args=(), exc_info=sys.exc_info(),
+            )
+        handler = StructuredLogHandler(max_size=10)
+        handler.emit(rec)
+        self.assertEqual(handler.logs[0].error_type, "ValueError")
+        self.assertIn("nope", handler.logs[0].error_message)
+
+    def test_unknown_level_name_falls_back_by_levelno(self):
+        import logging
+        logging.addLevelName(25, "NOTICE")  # custom level, not in LogLevel enum
+        rec = self._record(25, "NOTICE", msg="notice")
+        handler = StructuredLogHandler(max_size=10)
+        handler.emit(rec)
+        self.assertEqual(len(handler.logs), 1)
+        # 25 is between INFO(20) and WARNING(30) -> maps to INFO
+        self.assertEqual(handler.logs[0].level, LogLevel.INFO)
+
+    def test_notset_level_does_not_drop_log(self):
+        import logging
+        rec = self._record(logging.NOTSET, "NOTSET", msg="ns")
+        handler = StructuredLogHandler(max_size=10)
+        handler.emit(rec)
+        self.assertEqual(len(handler.logs), 1)
+        self.assertEqual(handler.logs[0].level, LogLevel.DEBUG)
+
+
 class StructuredLogTests(unittest.TestCase):
     def _make_log(self):
         from datetime import datetime

@@ -33,6 +33,31 @@ class LogLevel(Enum):
     CRITICAL = "CRITICAL"
 
 
+def _level_from_record(record: "logging.LogRecord") -> "LogLevel":
+    """LogRecord から LogLevel を解決する。
+
+    ``LogLevel[record.levelname]`` を直接使うと、標準の NOTSET や
+    ``logging.addLevelName`` で定義したカスタムレベルで KeyError になり、
+    その構造化ログが丸ごと欠落する。levelname が一致しない場合は数値
+    レベル(levelno)から最も近い標準レベルへ写像してフォールバックする。
+    """
+    name = getattr(record, "levelname", None)
+    try:
+        return LogLevel[name]
+    except (KeyError, TypeError):
+        pass
+    levelno = getattr(record, "levelno", 0) or 0
+    if levelno >= 50:
+        return LogLevel.CRITICAL
+    if levelno >= 40:
+        return LogLevel.ERROR
+    if levelno >= 30:
+        return LogLevel.WARNING
+    if levelno >= 20:
+        return LogLevel.INFO
+    return LogLevel.DEBUG
+
+
 @dataclass
 class StructuredLog:
     """構造化ログエントリ"""
@@ -99,16 +124,23 @@ class StructuredLogHandler(logging.Handler):
             span_id = getattr(record, 'span_id', str(uuid.uuid4()))
 
             # エラー情報
+            # exc_info=True を「例外が無い文脈」で渡すと sys.exc_info() が
+            # (None, None, None) を返す。これは truthy なので素朴な
+            # `if record.exc_info:` を通過し、exc_info[0].__name__ で
+            # AttributeError になる。型が存在することまで確認する。
             error_info = None
             error_stacktrace = None
-            if record.exc_info:
+            error_message = None
+            has_exc = bool(record.exc_info) and record.exc_info[0] is not None
+            if has_exc:
                 error_info = record.exc_info[0].__name__
                 error_stacktrace = traceback.format_exception(*record.exc_info)
+                error_message = str(record.exc_info[1])
 
             # 構造化ログを生成
             structured = StructuredLog(
                 timestamp=datetime.fromtimestamp(record.created),
-                level=LogLevel[record.levelname],
+                level=_level_from_record(record),
                 logger_name=record.name,
                 message=record.getMessage(),
                 trace_id=trace_id,
@@ -116,7 +148,7 @@ class StructuredLogHandler(logging.Handler):
                 operation=getattr(record, 'operation', None),
                 operation_duration_ms=getattr(record, 'operation_duration_ms', None),
                 error_type=error_info,
-                error_message=str(record.exc_info[1]) if record.exc_info else None,
+                error_message=error_message,
                 error_stacktrace=error_stacktrace,
                 user_id=getattr(record, 'user_id', None),
                 request_id=getattr(record, 'request_id', None),
