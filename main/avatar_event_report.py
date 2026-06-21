@@ -9,19 +9,12 @@ except ImportError:
     plt = mdates = None  # type: ignore
 import os
 
+from fsutil import load_jsonl_dicts
+
+
 def load_events(logfile):
-    events = []
-    with open(logfile, encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                data = json.loads(line)
-                if isinstance(data, dict):
-                    events.append(data)
-            except json.JSONDecodeError:
-                continue
-    return events
+    # 空行・壊れた行・dict 以外（null 等）の行はスキップする共通ローダを使用。
+    return load_jsonl_dicts(logfile)
 
 def event_stats(events):
     event_types = [ev.get('event_type', '') for ev in events]

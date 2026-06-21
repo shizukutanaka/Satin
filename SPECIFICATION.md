@@ -233,13 +233,20 @@ satin_launcher.py
 - **[実装] I2 (W2 解消):** `README.md` 冒頭の製品説明を実体に合わせて修正。
 - **[実装] I3 (W3 解消):** 本仕様書 `SPECIFICATION.md` を新規作成（このファイル）。
 
+- **[実装] I4 (W6 再発防止 / B3):** JSONL 読み込みの共通ローダ
+  `fsutil.iter_jsonl_dicts()` / `load_jsonl_dicts()` を追加。空行・JSON 構文
+  エラー行・`dict` 以外（`null`/配列/スカラ）を一元的にスキップする。
+  `avatar_event_report.load_events` / `avatar_event_logger.replay` /
+  `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
+
 ### 7.1 将来の改善候補 (Backlog, 未実装)
 
 - B1: 任意依存一覧を単一の宣言（例 `optional_deps` モジュール）に集約し、
   ランチャと `requirements` の二重管理を解消（W5）。
 - B2: 散在する `*_IMPROVEMENTS.md` を `docs/` 配下へ整理し本仕様書から相互参照。
-- B3: 新規 JSON/JSONL リーダ向けの共通ヘルパ（`load_jsonl_dicts()` 等）を
-  `fsutil` に追加し、`null`/型不正ガードを一元化（W6 の再発防止）。
+- B4: `daily_summary._load_jsonl`（gz アーカイブ対応）と `conversation_log`
+  （event_type フィルタ + ストリーミング早期終了）も、gz・フィルタに対応した
+  共通ローダへ将来的に統合可能（現状は専用実装を維持）。
 
 ---
 

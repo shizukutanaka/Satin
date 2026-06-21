@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from fsutil import restrict_to_owner as _restrict_to_owner
+    from fsutil import load_jsonl_dicts
 except Exception:  # pragma: no cover - defensive fallback
     def _restrict_to_owner(path):  # type: ignore
         try:
@@ -44,6 +45,25 @@ except Exception:  # pragma: no cover - defensive fallback
             return True
         except OSError:
             return False
+
+    def load_jsonl_dicts(path, *, encoding="utf-8"):  # type: ignore
+        if not os.path.exists(path):
+            return []
+        out = []
+        try:
+            with open(path, encoding=encoding) as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(obj, dict):
+                        out.append(obj)
+        except OSError:
+            return []
+        return out
 
 AFFINITY_MIN = 0.0
 AFFINITY_MAX = 100.0
@@ -466,23 +486,8 @@ def _load_mood_config(path: Optional[str] = None) -> Optional[Dict]:
 def load_mood_history(history_path: Optional[str] = None, n: int = 30) -> List[Dict]:
     """好感度履歴の直近 n 件を古い順で返す。ファイルが無ければ空リスト。"""
     path = history_path or _default_mood_history_path()
-    if not os.path.exists(path):
-        return []
-    entries: List[Dict] = []
-    try:
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    data = json.loads(line)
-                    if isinstance(data, dict):
-                        entries.append(data)
-                except json.JSONDecodeError:
-                    continue
-    except Exception:
-        return []
-    return entries[-n:]
+    # 空行・壊れた行・dict 以外（null 等）の行をスキップする共通ローダを使用。
+    return load_jsonl_dicts(path)[-n:]
 
 
 def load_level_transitions(history_path: Optional[str] = None) -> List[Dict]:

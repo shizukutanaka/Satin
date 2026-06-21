@@ -51,18 +51,9 @@ class AvatarEventLogger:
         import os
         if not os.path.exists(self.logfile):
             return
-        events = []
-        with open(self.logfile, encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    data = json.loads(line)
-                    if isinstance(data, dict):
-                        events.append(data)
-                except json.JSONDecodeError:
-                    # 壊れた行（クラッシュで途中まで書かれた等）はスキップ
-                    continue
+        # 空行・壊れた行・dict 以外（null 等）の行はスキップする共通ローダを使用。
+        from fsutil import load_jsonl_dicts
+        events = load_jsonl_dicts(self.logfile)
         if not events:
             return
         for i, event in enumerate(events):
