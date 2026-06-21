@@ -293,24 +293,27 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 get_conversation_log().log_exchange(comment, reply)
             except Exception as e:
                 logger.warning("会話履歴の記録に失敗しました: %s", e)
-        # {user} プレースホルダを呼び名へ解決（GUI は _say() を持たないため個別に処理）
-        if _personalize_gui is not None and "{user}" in reply:
-            try:
-                prof = _get_user_profile_gui() if _get_user_profile_gui is not None else None
-                reply = _personalize_gui(reply, prof, lang)
-            except Exception:
-                pass
         # 一問一答の回答確認文を前置き（「ちゃんと聞いてる」感を演出）
         if ack_msg:
             reply = (ack_msg + " " + reply).strip() if reply else ack_msg
-        self.comment_text = reply
-        self.mode = 'comment'
-        self.ticks = 0
-        if self.tts_queue:
-            self.tts_queue.put(reply)
+        # 表示・TTS 投入は _speak_reply に一本化（{user} 解決もそこで実施）。
+        self._speak_reply(reply)
 
     def _speak_reply(self, reply: str) -> None:
-        """コメント表示と TTS 投入の共通処理。"""
+        """コメント表示と TTS 投入の共通処理（全コメント応答の唯一の出口）。
+
+        ここで {user} プレースホルダを呼び名へ解決する。speak_comment だけでなく
+        ギフト・プロフィール質問・スラッシュコマンド応答も含む全経路がこの関数を
+        通るため、将来どの台詞に {user} を足しても literal が読み上げ／表示へ
+        漏れない（personalize は {user} が無ければ無変換なので無害）。
+        """
+        if _personalize_gui is not None and reply and "{user}" in reply:
+            try:
+                prof = _get_user_profile_gui() if _get_user_profile_gui is not None else None
+                lang = getattr(self.persona, "lang", "ja") if self.persona is not None else "ja"
+                reply = _personalize_gui(reply, prof, lang)
+            except Exception:
+                pass
         self.comment_text = reply
         self.mode = 'comment'
         self.ticks = 0

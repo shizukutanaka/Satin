@@ -139,6 +139,38 @@ class SpeakCommentTests(unittest.TestCase):
             self.assertEqual(v.comment_text, "REPLY_HELLO")
 
 
+class SpeakReplyPersonalizeTests(unittest.TestCase):
+    """{user} placeholder resolution is centralized in _speak_reply so EVERY
+    emission path (gift / profile-Q&A / slash commands), not just speak_comment,
+    resolves it — a literal '{user}' must never reach comment_text / TTS."""
+
+    def tearDown(self):
+        _profile_mod.reset_user_profile()
+
+    def test_speak_reply_resolves_user_placeholder(self):
+        # personalize() with profile=None falls back to a neutral address.
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: None):
+            v = _make_viewer(queue.Queue())
+            v._speak_reply("{user}、こんにちは")
+            self.assertNotIn("{user}", v.comment_text)
+            self.assertIn("こんにちは", v.comment_text)
+
+    def test_speak_reply_uses_profile_name(self):
+        prof = _profile_mod.UserProfile()
+        prof.set_name("Taro")
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof):
+            v = _make_viewer(queue.Queue())
+            v._speak_reply("Hi {user}!")
+            self.assertEqual(v.comment_text, "Hi Taro!")
+            self.assertEqual(v.tts_queue.get_nowait(), "Hi Taro!")
+
+    def test_speak_reply_without_placeholder_is_unchanged(self):
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: None):
+            v = _make_viewer(queue.Queue())
+            v._speak_reply("no placeholder here")
+            self.assertEqual(v.comment_text, "no placeholder here")
+
+
 class SpeakCommentMoodTests(unittest.TestCase):
     """speak_comment calls mood.register(comment) so GUI chat builds affinity."""
 

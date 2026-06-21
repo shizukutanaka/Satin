@@ -239,6 +239,15 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I17 (Qiita 由来 — テンプレ漏れ防御 / `{user}` 集約):** GUI の
+  コメント応答で `{user}` プレースホルダ解決が `speak_comment` のみで行われ、
+  別の出力経路 `_speak_reply()`（ギフト・プロフィール質問・スラッシュコマンド
+  応答）を通らなかった。現状それらの台詞に `{user}` は無いが、将来追加すると
+  literal `{user}` が読み上げ／表示へ漏れる脆さがあった。`{user}` 解決を全
+  コメント応答の唯一の出口 `_speak_reply()` に集約し（personalize は `{user}`
+  非含有なら無変換のため無害）、防御を一点に統一。
+  参考: [str.format / テンプレートの波括弧と KeyError (Qiita)](https://qiita.com/FGtatsuro/items/a64066e2151203b7221a)
+
 - **[実装] I16 (Qiita 由来 — 無制限キューでメモリ肥大):** `camera_thread` が
   無制限 `queue.Queue` に毎フレーム pose を `put` していたため、消費側 (Qt
   タイマー) が止まる/遅れる (ウィンドウ最小化・GL 停止等) と pose がメモリに
