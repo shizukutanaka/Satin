@@ -165,8 +165,9 @@ class LoggingManager:
                         with open(file, 'rt', encoding='utf-8') as f:
                             self._search_file(f, keyword, start_dt, end_dt, results)
                 except Exception as e:
-                    logger.error(f"ログファイルの検索中にエラーが発生しました: {e}")
-            
+                    # ログ機構自身の不調をデバッグ可能にするため exc_info を残す。
+                    logger.error(f"ログファイルの検索中にエラーが発生しました: {e}", exc_info=True)
+
             return results
         except Exception as e:
             logger.error(f"ログ検索中にエラーが発生しました: {e}")
@@ -231,8 +232,9 @@ class LoggingManager:
                         with open(file, 'rt', encoding='utf-8') as f:
                             self._analyze_file(f, start_dt, end_dt, analysis)
                 except Exception as e:
-                    logger.error(f"ログファイルの分析中にエラーが発生しました: {e}")
-            
+                    # ログ機構自身の不調をデバッグ可能にするため exc_info を残す。
+                    logger.error(f"ログファイルの分析中にエラーが発生しました: {e}", exc_info=True)
+
             return analysis
         except Exception as e:
             logger.error(f"ログ分析中にエラーが発生しました: {e}")

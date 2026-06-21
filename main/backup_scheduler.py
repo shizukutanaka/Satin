@@ -169,7 +169,10 @@ class BackupScheduler:
             success = True
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Backup failed: {e}")
+            # exc_info=True で例外のスタックトレースをログに残す。バックアップ失敗の
+            # 根本原因は ZIP 書き込み・権限・ディスクフル・I/O 等多岐にわたるため、
+            # メッセージだけだと運用復旧時の切り分けが困難になる (Qiita 既知の落とし穴)。
+            logger.error(f"Backup failed: {e}", exc_info=True)
 
         history_entry: Dict[str, Any] = {
             "timestamp": timestamp,

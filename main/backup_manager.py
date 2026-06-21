@@ -98,7 +98,13 @@ class BackupManager:
         return sorted(backups, key=lambda x: x["created"], reverse=True)
 
     def restore_backup(self, backup_file: str, target_dir: str) -> bool:
-        """バックアップを target_dir に展開して復元する。"""
+        """バックアップを target_dir に展開して復元する。
+
+        Zip Slip 防御: zip 内のエントリ名に ``../`` や絶対パスが含まれていると
+        ``shutil.unpack_archive`` (内部で ``zipfile.extractall``) は target_dir
+        の外側にファイルを書き出してしまう (任意ファイル書き込み脆弱性)。
+        各エントリの解決後パスが ``target_dir`` 配下に収まるか個別に検証する。
+        """
         try:
             backup_path = Path(backup_file)
             if not backup_path.exists():
@@ -106,7 +112,21 @@ class BackupManager:
 
             target_path = Path(target_dir)
             target_path.mkdir(parents=True, exist_ok=True)
-            shutil.unpack_archive(str(backup_path), target_path)
+
+            import os
+            target_real = os.path.realpath(target_path)
+            with zipfile.ZipFile(backup_path, "r") as zf:
+                for entry in zf.namelist():
+                    if entry.endswith("/"):  # ディレクトリエントリは skip
+                        continue
+                    dest_path = os.path.realpath(os.path.join(target_real, entry))
+                    if (dest_path != target_real
+                            and not dest_path.startswith(target_real + os.sep)):
+                        logger.warning(f"Zip Slip 検出、スキップ: {entry}")
+                        continue
+                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                    with zf.open(entry) as src, open(dest_path, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
 
             logger.info(f"バックアップを復元しました: {backup_file} -> {target_dir}")
             return True

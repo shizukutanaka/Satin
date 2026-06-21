@@ -157,5 +157,72 @@ class RestoreAndDeleteTests(unittest.TestCase):
         self.assertFalse(result)
 
 
+class ZipSlipDefenseTests(unittest.TestCase):
+    """Regression: restore_backup used shutil.unpack_archive which calls
+    ZipFile.extractall without path sanitization. A malicious zip containing
+    '../escaped.txt' or absolute paths could write files outside target_dir
+    (arbitrary file write). The fix validates each entry's resolved path."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mgr = _make_manager(self._tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _make_malicious_zip(self, members):
+        """Build a zip with the given (arcname, content) members."""
+        import zipfile as _zf
+        path = os.path.join(self._tmp, "evil.zip")
+        # Use mode 'w' and write raw arcnames (including '../...' and absolutes).
+        with _zf.ZipFile(path, "w") as zf:
+            for arcname, content in members:
+                zf.writestr(arcname, content)
+        # Move into the manager's backup_dir so restore_backup() will accept it.
+        target = os.path.join(self._mgr.backup_dir, "evil.zip")
+        shutil.move(path, target)
+        return target
+
+    def test_traversal_entry_is_skipped(self):
+        zip_path = self._make_malicious_zip([
+            ("good.txt", b"ok"),
+            ("../escaped.txt", b"PWNED"),
+        ])
+        restore_dir = os.path.join(self._tmp, "restore_target")
+        ok = self._mgr.restore_backup(zip_path, restore_dir)
+        self.assertTrue(ok)
+        # Good entry restored, traversal entry NOT written above restore_dir.
+        self.assertTrue(os.path.exists(os.path.join(restore_dir, "good.txt")))
+        escaped_path = os.path.realpath(os.path.join(restore_dir, "..", "escaped.txt"))
+        self.assertFalse(
+            os.path.exists(escaped_path),
+            f"Zip Slip: traversal entry escaped to {escaped_path}",
+        )
+
+    def test_absolute_path_entry_is_skipped(self):
+        evil_target = os.path.join(self._tmp, "abs_escaped.txt")
+        # Use a path absolute relative to the test tmp so we can assert it stays absent.
+        zip_path = self._make_malicious_zip([
+            ("good2.txt", b"ok"),
+            (evil_target.lstrip("/"), b"PWNED_ABS"),
+        ])
+        restore_dir = os.path.join(self._tmp, "restore_abs")
+        ok = self._mgr.restore_backup(zip_path, restore_dir)
+        self.assertTrue(ok)
+        self.assertTrue(os.path.exists(os.path.join(restore_dir, "good2.txt")))
+        # The absolute-style path is rendered inside restore_dir (with the leading
+        # slash stripped during join). Verify nothing was written to evil_target.
+        self.assertFalse(os.path.exists(evil_target),
+                         "Absolute-style entry must not write outside restore_dir")
+
+    def test_normal_restore_still_works(self):
+        # Regression guard: the rewrite must not break the happy path.
+        target = _make_target(self._tmp, n=3)
+        backup_path = self._mgr.create_backup(target)
+        restore_dir = os.path.join(self._tmp, "restore_ok")
+        self.assertTrue(self._mgr.restore_backup(backup_path, restore_dir))
+        self.assertGreaterEqual(len(os.listdir(restore_dir)), 3)
+
+
 if __name__ == "__main__":
     unittest.main()

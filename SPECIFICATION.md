@@ -239,6 +239,19 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I12 (Snyk/Qiita 由来 — Zip Slip 脆弱性):**
+  `backup_manager.restore_backup()` が `shutil.unpack_archive`（内部で
+  `zipfile.extractall`）をパス検証なしで呼んでいたため、悪意ある zip 内に
+  ``../etc/passwd`` 等のエントリがあると **target_dir 外への任意ファイル書き込み**
+  が可能だった。`manage_satin.cmd_backup_restore` は既に同型ガードを実装済み
+  だったため、その実装に揃えて各エントリの解決後パスを `realpath` で検証する
+  方式に書き換え。
+  参考: [Zip Slip 脆弱性の解説 (Snyk)](https://snyk.io/blog/behind-the-disclosure-the-zip-slip-vulnerability/)
+- **[実装] I13 (Qiita 由来 — exc_info 欠落でスタックトレース消失):**
+  `backup_scheduler` / `logging_manager` の重要 except 節が
+  `logger.error(f"...{e}")` だけでスタックトレースを残さず、根本原因の切り分け
+  が困難だった。クリティカル経路 3 箇所に `exc_info=True` を追加。
+  参考: [logger による例外のログ出力 (Qiita)](https://qiita.com/AirhAurum/items/de28ad28cbf91514bcf3)
 - **[実装] I11 (Zenn 由来 — 非原子的書き込みで基底設定が破損):** アプリ全体で
   最も使われる設定書き込みパス `utils_config.save_config()` だけが、他全モジュール
   が使う原子的パターンを使わず **インプレース `open(path,'w')`** で書いており、
