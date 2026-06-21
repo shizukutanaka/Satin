@@ -41,7 +41,9 @@ class ConfigValidator:
     def _validate_logging(self) -> None:
         """Validate logging configuration"""
         logging_config = self.config.get('logging', {})
-        if not logging_config.get('level') in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+        # `not X in Y` は `not (X in Y)` と評価され機能的には正しいが、`(not X) in Y`
+        # と誤読されやすい。明示的に `not in` を使う。
+        if logging_config.get('level') not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
             raise ConfigurationError("Invalid logging level")
     
     def _validate_ui(self) -> None:

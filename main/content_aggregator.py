@@ -292,7 +292,7 @@ class ContentAggregator:
     def search_all_sources(
         self,
         query: str,
-        sources: List[str] = ['youtube', 'arxiv', 'scholar', 'web'],
+        sources: Optional[List[str]] = None,
         max_results_per_source: int = 10,
         search_params: Optional[Dict[str, Any]] = None,
         parallel: bool = True
@@ -314,6 +314,9 @@ class ContentAggregator:
         Returns:
             AggregationResult object
         """
+        # ミュータブルなデフォルト引数を避け None センチネルで毎回新規リストを使う。
+        if sources is None:
+            sources = ['youtube', 'arxiv', 'scholar', 'web']
         start_time = datetime.now()
         all_contents: List[UnifiedContent] = []
         search_params = search_params or {}
@@ -454,19 +457,21 @@ class ContentAggregator:
 
     def get_trending_content(
         self,
-        sources: List[str] = ['youtube'],
+        sources: Optional[List[str]] = None,
         max_results: int = 20
     ) -> AggregationResult:
         """
         トレンドコンテンツを取得
 
         Args:
-            sources: 取得対象ソース
+            sources: 取得対象ソース（省略時は ['youtube']）
             max_results: 最大結果数
 
         Returns:
             AggregationResult object
         """
+        if sources is None:
+            sources = ['youtube']
         all_contents: List[UnifiedContent] = []
         metadata = {'sources': sources}
 
@@ -523,7 +528,7 @@ class ContentAggregator:
     def create_knowledge_base(
         self,
         topic: str,
-        sources: List[str] = ['youtube', 'arxiv', 'scholar'],
+        sources: Optional[List[str]] = None,
         max_items: int = 50,
         include_transcripts: bool = False,
         include_full_text: bool = False
@@ -533,7 +538,7 @@ class ContentAggregator:
 
         Args:
             topic: トピック
-            sources: データソース
+            sources: データソース（省略時は ['youtube', 'arxiv', 'scholar']）
             max_items: 最大アイテム数
             include_transcripts: YouTube字幕を含める
             include_full_text: 論文全文を含める
@@ -541,6 +546,8 @@ class ContentAggregator:
         Returns:
             Knowledge base dict
         """
+        if sources is None:
+            sources = ['youtube', 'arxiv', 'scholar']
         self.logger.info(f"Creating knowledge base for topic: {topic}")
 
         # 検索実行

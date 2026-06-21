@@ -226,6 +226,16 @@ satin_launcher.py
 
 ## 7. 改善点 (Improvements) — 本コミットで実装
 
+- **[実装] I18 (静的解析 ruff 由来 — ミュータブルデフォルト引数):** `ruff`
+  (bugbear B006) で、手動 grep が見逃していた関数引数のミュータブルデフォルトを
+  4件検出。`content_aggregator.search_all_sources` /
+  `get_trending_content` / `create_knowledge_base` の `sources=[...]` と
+  `youtube_integrator.get_transcript` の `languages=['ja','en']`。現状は読み取り
+  専用で実害は無いが、全呼び出しで同一リストを共有する脆弱性のため `None`
+  センチネルパターンへ統一。あわせて `config_validator` の `not X in Y`
+  (誤読しやすいが機能的には正しい) を `not in` に明確化 (E713)。
+  参考: [ミュータブルデフォルト引数の罠 (Qiita Vermee81)](https://qiita.com/Vermee81/items/eb6c43cae896b3a3bb48)
+
 - **[実装] I1 (W1, W4 解消):** ダッシュボードのポートを単一の定数
   `DEFAULT_DASHBOARD_PORT = 5003` に集約し、`dashboard.py` の `__main__` と
   `satin_launcher.py --dashboard` の既定値を一致させる。環境変数

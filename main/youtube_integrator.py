@@ -382,17 +382,22 @@ class YouTubeIntegrator:
         return hours * 3600 + minutes * 60 + seconds
 
     @handle_error(RetryStrategy(max_retries=2, backoff_factor=1.5))
-    def get_transcript(self, video_id: str, languages: List[str] = ['ja', 'en']) -> Optional[str]:
+    def get_transcript(self, video_id: str, languages: Optional[List[str]] = None) -> Optional[str]:
         """
         動画字幕を取得
 
         Args:
             video_id: YouTube動画ID
-            languages: 取得する言語リスト（優先順）
+            languages: 取得する言語リスト（優先順）。省略時は ['ja', 'en']。
 
         Returns:
             字幕テキスト or None
         """
+        # ミュータブルなデフォルト引数 (= ['ja','en']) は全呼び出しで同一リストを
+        # 共有し、将来うっかり破壊的操作を足すと呼び出し間で状態が漏れる。None
+        # センチネルで毎回新しいリストを使う。
+        if languages is None:
+            languages = ['ja', 'en']
         if not TRANSCRIPT_AVAILABLE:
             self.logger.warning("youtube-transcript-api not available")
             return None
