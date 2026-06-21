@@ -45,10 +45,15 @@ class TTSWorker(threading.Thread):
             if text:
                 tf_path = None
                 try:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tf:
-                        self.engine.save_to_file(text, tf.name)
-                        self.engine.runAndWait()
-                        tf_path = tf.name
+                    # NamedTemporaryFile を with で保持したまま pyttsx3 へ書かせると、
+                    # Windows では「別プロセスが既に開いているファイル」へ書き込めず
+                    # (PermissionError / 共有違反) save_to_file が黙って失敗する。
+                    # ファイル名だけ確保して即座に閉じ、pyttsx3 に書き込ませる。
+                    tf = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
+                    tf_path = tf.name
+                    tf.close()
+                    self.engine.save_to_file(text, tf_path)
+                    self.engine.runAndWait()
                     self.play_wav_on_device(tf_path, self.device_idx_getter())
                 except Exception:
                     pass

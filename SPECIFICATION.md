@@ -239,6 +239,16 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I6 (Zenn 由来 — Flask セッション強化):** ダッシュボードのセッション
+  Cookie に `HTTPONLY=True` / `SAMESITE='Lax'` / `PERMANENT_SESSION_LIFETIME=12h`
+  / `SECURE` を環境変数 `SATIN_DASHBOARD_HTTPS=1` でオプトイン可能化。Flask の
+  素のデフォルト (SAMESITE 未設定・31日 lifetime) は CSRF/リプレイに弱いため。
+  参考: [Flask セッション管理とセキュリティ (Zenn)](https://zenn.dev/saiki_toshiki/articles/946e4a3c2eb4c5)
+- **[実装] I7 (Qiita 由来 — Windows tempfile 競合):** `tts_with_virtual_audio.py`
+  で `NamedTemporaryFile(delete=False)` を `with` で保持したまま
+  `pyttsx3.save_to_file()` を呼んでいたため、Windows で **共有違反**となり
+  TTS が黙って失敗していた。`tf.close()` 後にパスだけ渡すよう修正。
+  参考: [NamedTemporaryFile の Windows 落とし穴 (Qiita)](https://qiita.com/yuji38kwmt/items/c6f50e1fc03dafdcdda0)
 - **[実装] I5 (W5 / B1):** 任意・必須依存の単一宣言 `dependency_manifest.py`
   （重い import を行わない純データ）を追加し、`satin_launcher.py` の依存チェック
   をここから生成。ランチャ内のハードコード一覧を撤去し二重管理を解消。

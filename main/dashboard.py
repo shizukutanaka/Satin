@@ -79,6 +79,19 @@ if _FLASK_AVAILABLE:
     # ハードコードされた秘密鍵はセッション/CSRF 偽造を許す。環境変数を優先し、
     # 未設定ならプロセス毎のランダム値にフォールバックする。
     app.secret_key = os.environ.get('SATIN_DASHBOARD_SECRET') or os.urandom(24).hex()
+    # セッション Cookie の安全側既定。Flask の素のデフォルトは SAMESITE/SECURE
+    # 未設定でクロスサイト POST に弱いため、明示的に強化する:
+    #   HTTPONLY=True   — JS から document.cookie で読めない（XSS 被害を限定）
+    #   SAMESITE='Lax'  — 外部サイトからの POST/iframe に Cookie を載せない（CSRF 軽減）
+    #   SECURE=opt-in   — HTTPS 配信時は SATIN_DASHBOARD_HTTPS=1 で Cookie を HTTPS 限定に
+    #   LIFETIME=12h    — 漏洩 Cookie のリプレイ可能期間を短く
+    import datetime as _dt
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='Lax',
+        SESSION_COOKIE_SECURE=(os.environ.get('SATIN_DASHBOARD_HTTPS') == '1'),
+        PERMANENT_SESSION_LIFETIME=_dt.timedelta(hours=12),
+    )
     app.after_request(_no_cache)
 else:
     class _NoopApp:

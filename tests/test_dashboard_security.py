@@ -279,5 +279,44 @@ class MoodResetPersistenceTests(unittest.TestCase):
                               f"Undefined name used outside import: {line!r}")
 
 
+@unittest.skipUnless(
+    getattr(dashboard.app, "config", None) is not None
+    and hasattr(dashboard.app, "secret_key"),
+    "Flask not installed (no-op app)",
+)
+class SessionCookieHardeningTests(unittest.TestCase):
+    """Regression: Flask's stock SESSION_COOKIE_* defaults leave SAMESITE unset
+    and the lifetime at 31 days, weakening CSRF/replay defenses. Verify the
+    hardened settings from Zenn's Flask session security guidance."""
+
+    def test_session_cookie_is_httponly(self):
+        self.assertTrue(dashboard.app.config.get("SESSION_COOKIE_HTTPONLY"))
+
+    def test_session_cookie_samesite_is_lax(self):
+        self.assertEqual(dashboard.app.config.get("SESSION_COOKIE_SAMESITE"), "Lax")
+
+    def test_session_cookie_secure_defaults_to_false(self):
+        # Off by default so http://127.0.0.1 dev works; opt-in via env for HTTPS.
+        self.assertFalse(dashboard.app.config.get("SESSION_COOKIE_SECURE"))
+
+    def test_session_cookie_secure_opt_in_via_env(self):
+        import importlib
+        os.environ["SATIN_DASHBOARD_HTTPS"] = "1"
+        try:
+            importlib.reload(dashboard)
+            self.assertTrue(dashboard.app.config.get("SESSION_COOKIE_SECURE"))
+        finally:
+            os.environ.pop("SATIN_DASHBOARD_HTTPS", None)
+            importlib.reload(dashboard)
+
+    def test_permanent_session_lifetime_is_short(self):
+        import datetime as _dt
+        lifetime = dashboard.app.config.get("PERMANENT_SESSION_LIFETIME")
+        self.assertIsInstance(lifetime, _dt.timedelta)
+        # Must be no longer than 24h — Flask's default 31d is too generous for
+        # a local dashboard that shows private affinity/conversation data.
+        self.assertLessEqual(lifetime, _dt.timedelta(hours=24))
+
+
 if __name__ == "__main__":
     unittest.main()
