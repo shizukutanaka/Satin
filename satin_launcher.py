@@ -33,29 +33,19 @@ if _MAIN not in sys.path:
 # --------------------------------------------------------------------------- #
 # 依存チェック
 # --------------------------------------------------------------------------- #
-_OPTIONAL_DEPS: list[tuple[str, str]] = [
-    ("PyQt5",       "pip install PyQt5"),
-    ("PIL",         "pip install pillow"),
-    ("numpy",       "pip install numpy"),
-    ("cv2",         "pip install opencv-python"),
-    ("mediapipe",   "pip install mediapipe"),
-    ("pyttsx3",     "pip install pyttsx3"),
-    ("sounddevice", "pip install sounddevice"),
-    ("pygltflib",   "pip install pygltflib"),
-    ("flask",       "pip install flask"),
-    ("psutil",      "pip install psutil"),
-    ("tenacity",    "pip install tenacity"),
-    ("httpx",       "pip install httpx"),
-    ("matplotlib",  "pip install matplotlib"),
-    ("pydub",       "pip install pydub"),
-    ("bs4",         "pip install beautifulsoup4"),
-    ("selenium",    "pip install selenium"),
-    ("tqdm",        "pip install tqdm"),
-]
+# 依存一覧の唯一の真実の源は main/dependency_manifest.py（純データ、重い import
+# 無し）。マニフェストが見つからない異常時でも起動診断が壊れないよう、最小限の
+# フォールバックを持つ。
+try:
+    from dependency_manifest import optional_check_list, required_check_list
 
-_REQUIRED_DEPS: list[tuple[str, str]] = [
-    ("tkinter", "Python 標準 tkinter が見つかりません。Python を再インストールしてください。"),
-]
+    _OPTIONAL_DEPS: list[tuple[str, str]] = optional_check_list()
+    _REQUIRED_DEPS: list[tuple[str, str]] = required_check_list()
+except Exception:  # pragma: no cover - defensive fallback
+    _OPTIONAL_DEPS = []
+    _REQUIRED_DEPS = [
+        ("tkinter", "Python 標準 tkinter が見つかりません。Python を再インストールしてください。"),
+    ]
 
 
 def _check_deps(verbose: bool = False) -> list[str]:

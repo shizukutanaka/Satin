@@ -239,11 +239,16 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I5 (W5 / B1):** 任意・必須依存の単一宣言 `dependency_manifest.py`
+  （重い import を行わない純データ）を追加し、`satin_launcher.py` の依存チェック
+  をここから生成。ランチャ内のハードコード一覧を撤去し二重管理を解消。
+  各依存に「有効化する機能」の説明を付与（ドキュメント用）。
+
 ### 7.1 将来の改善候補 (Backlog, 未実装)
 
-- B1: 任意依存一覧を単一の宣言（例 `optional_deps` モジュール）に集約し、
-  ランチャと `requirements` の二重管理を解消（W5）。
 - B2: 散在する `*_IMPROVEMENTS.md` を `docs/` 配下へ整理し本仕様書から相互参照。
+- B5: `dependency_manifest` を `setup/requirements*.txt` 生成にも利用し、
+  インストール定義の二重管理（W5 の残り半分）も解消する。
 - B4: `daily_summary._load_jsonl`（gz アーカイブ対応）と `conversation_log`
   （event_type フィルタ + ストリーミング早期終了）も、gz・フィルタに対応した
   共通ローダへ将来的に統合可能（現状は専用実装を維持）。
