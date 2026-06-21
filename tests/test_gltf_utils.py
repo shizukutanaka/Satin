@@ -65,10 +65,88 @@ class _FakeGLTF:
         self.buffers = []
 
 
+class _Attrs:
+    def __init__(self, position=None):
+        self.POSITION = position
+
+
+class _Prim:
+    def __init__(self, position=None):
+        self.attributes = _Attrs(position)
+
+
+class _Mesh:
+    def __init__(self, primitives=None):
+        self.primitives = primitives if primitives is not None else []
+
+
+class _Accessor:
+    def __init__(self, buffer_view=0):
+        self.bufferView = buffer_view
+
+
+class _BufView:
+    def __init__(self, buffer=0):
+        self.buffer = buffer
+
+
 class LoadFirstMeshVerticesTests(unittest.TestCase):
     def test_returns_none_when_no_meshes(self):
         gltf = _FakeGLTF(meshes=[])
         self.assertIsNone(gltf_utils.load_first_mesh_vertices(gltf, np=object()))
+
+    def test_returns_none_when_mesh_has_no_primitives(self):
+        gltf = _FakeGLTF(meshes=[_Mesh(primitives=[])])
+        self.assertIsNone(gltf_utils.load_first_mesh_vertices(gltf, np=object()))
+
+    def test_returns_none_when_no_position_attribute(self):
+        # POSITION is not a required glTF attribute; absent -> None, not crash.
+        gltf = _FakeGLTF(meshes=[_Mesh(primitives=[_Prim(position=None)])])
+        self.assertIsNone(gltf_utils.load_first_mesh_vertices(gltf, np=object()))
+
+    def test_returns_none_for_sparse_accessor_without_bufferview(self):
+        gltf = _FakeGLTF(meshes=[_Mesh(primitives=[_Prim(position=0)])])
+        gltf.accessors = [_Accessor(buffer_view=None)]  # sparse -> no bufferView
+        self.assertIsNone(gltf_utils.load_first_mesh_vertices(gltf, np=object()))
+
+    def test_returns_none_on_out_of_range_accessor_index(self):
+        gltf = _FakeGLTF(meshes=[_Mesh(primitives=[_Prim(position=5)])])
+        gltf.accessors = []  # index 5 out of range -> IndexError -> None
+        self.assertIsNone(gltf_utils.load_first_mesh_vertices(gltf, np=object()))
+
+
+class LoadFirstMeshVerticesNumpyTests(unittest.TestCase):
+    """Cases that exercise the numpy path (skipped if numpy is unavailable)."""
+
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy not installed")
+
+    def _gltf_with_payload(self, payload):
+        gltf = _FakeGLTF(meshes=[_Mesh(primitives=[_Prim(position=0)])])
+        gltf.accessors = [_Accessor(buffer_view=0)]
+        gltf.bufferViews = [_BufView(buffer=0)]
+        gltf.buffers = [_DataOnlyBuffer(payload)]
+        return gltf
+
+    def test_valid_multiple_of_3_floats_reshapes(self):
+        import numpy as np
+        payload = np.array([1, 2, 3, 4, 5, 6], dtype=np.float32).tobytes()
+        out = gltf_utils.load_first_mesh_vertices(self._gltf_with_payload(payload), np)
+        self.assertEqual(out.shape, (2, 3))
+
+    def test_non_multiple_of_3_returns_none(self):
+        import numpy as np
+        payload = np.array([1, 2, 3, 4], dtype=np.float32).tobytes()  # 4 floats
+        self.assertIsNone(
+            gltf_utils.load_first_mesh_vertices(self._gltf_with_payload(payload), np))
+
+    def test_empty_buffer_returns_none(self):
+        import numpy as np
+        self.assertIsNone(
+            gltf_utils.load_first_mesh_vertices(self._gltf_with_payload(b""), np))
 
 
 if __name__ == "__main__":
