@@ -68,7 +68,7 @@ class BackupScheduler:
                 level="info",
             )
         except Exception as e:
-            raise BackupError(f"Failed to schedule daily backup: {e}")
+            raise BackupError(f"Failed to schedule daily backup: {e}") from e
 
     def add_weekly_backup(self, day: str, hour: int, minute: int) -> None:
         """毎週指定曜日・時刻にバックアップを実行するジョブを追加する。"""
@@ -97,7 +97,7 @@ class BackupScheduler:
         except BackupError:
             raise
         except Exception as e:
-            raise BackupError(f"Failed to schedule weekly backup: {e}")
+            raise BackupError(f"Failed to schedule weekly backup: {e}") from e
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -124,7 +124,7 @@ class BackupScheduler:
             self.notification_system.send_notification(
                 title="Backup Scheduler Error", message=msg, level="error"
             )
-            raise BackupError(msg)
+            raise BackupError(msg) from e
 
     def stop(self) -> None:
         """スケジューラーを停止する。"""

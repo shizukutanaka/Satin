@@ -74,7 +74,7 @@ def validate_url(v: str) -> str:
             raise ValueError("Invalid URL format")
         return v
     except Exception as e:
-        raise ValueError(f"URL validation failed: {e}")
+        raise ValueError(f"URL validation failed: {e}") from e
 
 
 def validate_api_key(v: str) -> str:

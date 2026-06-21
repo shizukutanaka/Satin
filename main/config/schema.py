@@ -80,8 +80,8 @@ class SatinConfig(BaseModel):
         try:
             version.parse(v)
             return v
-        except version.InvalidVersion:
-            raise ValueError(f"Invalid version format: {v}")
+        except version.InvalidVersion as e:
+            raise ValueError(f"Invalid version format: {v}") from e
     
     @root_validator
     def validate_paths(cls, values):

@@ -48,7 +48,7 @@ def save_config_version(config_path: str = "config.json", description: Optional[
         
     except Exception as e:
         log_error(f"Error saving configuration version: {str(e)}")
-        raise ConfigError(f"Failed to save configuration version: {str(e)}")
+        raise ConfigError(f"Failed to save configuration version: {str(e)}") from e
 
 @profile_time
 def list_config_versions(config_path: str = "config.json") -> List[Dict[str, Any]]:
@@ -87,7 +87,7 @@ def list_config_versions(config_path: str = "config.json") -> List[Dict[str, Any
         
     except Exception as e:
         log_error(f"Error listing configuration versions: {str(e)}")
-        raise ConfigError(f"Failed to list configuration versions: {str(e)}")
+        raise ConfigError(f"Failed to list configuration versions: {str(e)}") from e
 
 @profile_time
 def restore_config_version(version_path: str, config_path: str = "config.json") -> None:
@@ -114,7 +114,7 @@ def restore_config_version(version_path: str, config_path: str = "config.json") 
         
     except Exception as e:
         log_error(f"Error restoring configuration version: {str(e)}")
-        raise ConfigError(f"Failed to restore configuration version: {str(e)}")
+        raise ConfigError(f"Failed to restore configuration version: {str(e)}") from e
 
 @profile_time
 def compare_versions(version1: str, version2: str) -> Dict[str, Any]:
@@ -160,7 +160,7 @@ def compare_versions(version1: str, version2: str) -> Dict[str, Any]:
         
     except Exception as e:
         log_error(f"Error comparing versions: {str(e)}")
-        raise ConfigError(f"Failed to compare versions: {str(e)}")
+        raise ConfigError(f"Failed to compare versions: {str(e)}") from e
 
 @profile_time
 def cleanup_old_versions(config_path: str = "config.json") -> None:
@@ -184,7 +184,7 @@ def cleanup_old_versions(config_path: str = "config.json") -> None:
                 
     except Exception as e:
         log_error(f"Error cleaning up old versions: {str(e)}")
-        raise ConfigError(f"Failed to clean up old versions: {str(e)}")
+        raise ConfigError(f"Failed to clean up old versions: {str(e)}") from e
 
 if __name__ == "__main__":
     print("[INFO] Configuration Version Management Tool")

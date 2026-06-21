@@ -226,6 +226,13 @@ satin_launcher.py
 
 ## 7. 改善点 (Improvements) — 本コミットで実装
 
+- **[実装] I20 (静的解析 ruff 由来 — 例外チェーン欠落 B904):** `except` 節内で
+  別の例外を送出する際 `from e` を付けず、元例外のトレースバックが失われていた
+  18 箇所を修正（`config_validator` / `plugin_manager` / `config_version_manager`
+  / `backup_scheduler` / `schema_validators` / `config/schema`）。`raise ... from e`
+  で連鎖を保持し、設定読込・プラグイン・バックアップ失敗時の根本原因追跡を
+  容易にした（純加算的変更で挙動不変）。
+  参考: [例外の再送出と from / 例外チェーン (Qiita hasoya)](https://qiita.com/hasoya/items/05d4e49d492869875cca)
 - **[実装] I19 (静的解析 ruff 由来 — 3D 描画が NameError でクラッシュ):**
   `ruff` (F821 undefined-name) で、7 つの 3D アバタービューア
   (`avatar_3d_sync` / `avatar_3d_gltf_viewer` / `avatar_3d_autonomous` /

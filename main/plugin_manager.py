@@ -36,7 +36,7 @@ class PluginManager:
             
         except Exception as e:
             self.logger.error(f"Error loading plugins: {str(e)}")
-            raise PluginError(f"Failed to load plugins: {str(e)}")
+            raise PluginError(f"Failed to load plugins: {str(e)}") from e
     
     def _load_plugin_config(self) -> None:
         """Load plugin configuration"""
@@ -52,7 +52,7 @@ class PluginManager:
                 
         except Exception as e:
             self.logger.error(f"Error loading plugin config: {str(e)}")
-            raise PluginError(f"Failed to load plugin configuration: {str(e)}")
+            raise PluginError(f"Failed to load plugin configuration: {str(e)}") from e
     
     def _load_plugin(self, plugin_file: Path) -> None:
         """Load a single plugin"""
@@ -96,7 +96,7 @@ class PluginManager:
                 
         except Exception as e:
             self.logger.error(f"Error loading plugin {plugin_name}: {str(e)}")
-            raise PluginError(f"Failed to load plugin {plugin_name}: {str(e)}")
+            raise PluginError(f"Failed to load plugin {plugin_name}: {str(e)}") from e
     
     def get_plugin(self, name: str) -> Any:
         """Get a plugin by name"""
@@ -122,7 +122,7 @@ class PluginManager:
             
         except Exception as e:
             self.logger.error(f"Error reloading plugin {name}: {str(e)}")
-            raise PluginError(f"Failed to reload plugin {name}: {str(e)}")
+            raise PluginError(f"Failed to reload plugin {name}: {str(e)}") from e
     
     def reload_all_plugins(self) -> None:
         """Reload all plugins"""
@@ -133,4 +133,4 @@ class PluginManager:
             
         except Exception as e:
             self.logger.error(f"Error reloading all plugins: {str(e)}")
-            raise PluginError(f"Failed to reload all plugins: {str(e)}")
+            raise PluginError(f"Failed to reload all plugins: {str(e)}") from e

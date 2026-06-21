@@ -17,10 +17,10 @@ class ConfigValidator:
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except FileNotFoundError:
-            raise ConfigurationError(f"Configuration file not found: {self.config_path}")
-        except json.JSONDecodeError:
-            raise ConfigurationError("Invalid JSON format in configuration file")
+        except FileNotFoundError as e:
+            raise ConfigurationError(f"Configuration file not found: {self.config_path}") from e
+        except json.JSONDecodeError as e:
+            raise ConfigurationError("Invalid JSON format in configuration file") from e
     
     def validate(self) -> None:
         """Validate configuration against schema"""
@@ -36,7 +36,7 @@ class ConfigValidator:
             print("Configuration validation successful")
             
         except Exception as e:
-            raise ConfigurationError(f"Configuration validation failed: {str(e)}")
+            raise ConfigurationError(f"Configuration validation failed: {str(e)}") from e
     
     def _validate_logging(self) -> None:
         """Validate logging configuration"""
