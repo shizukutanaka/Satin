@@ -59,6 +59,16 @@ class BackupManager:
                 target_path,
             )
 
+            # バックアップ zip は config/mood.json / user_profile.json / 会話ログ等の
+            # 個人データを含み得るため、生成直後に所有者のみ読み書き可へ制限する。
+            # umask 既定 (0o644) のままだとマルチユーザー環境で他ユーザーに読まれる。
+            try:
+                from fsutil import restrict_to_owner
+                restrict_to_owner(str(backup_path))
+            except Exception:
+                # 権限制限は best-effort。失敗してもバックアップ自体は成功扱い。
+                pass
+
             if self._cloud_bucket_obj:
                 self._upload_to_cloud(backup_path)
 

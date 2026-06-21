@@ -224,5 +224,28 @@ class ZipSlipDefenseTests(unittest.TestCase):
         self.assertGreaterEqual(len(os.listdir(restore_dir)), 3)
 
 
+@unittest.skipIf(os.name == "nt", "POSIX permission bits only")
+class BackupPermissionTests(unittest.TestCase):
+    """Regression: backup zip contained personal data (mood.json,
+    user_profile.json, conversation log) but was world-readable (umask
+    default), so other users on a shared machine could read it. The fix
+    restricts it to owner-only after creation (fsutil.restrict_to_owner)."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mgr = _make_manager(self._tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_created_backup_is_owner_only(self):
+        import stat
+        target = _make_target(self._tmp, n=1)
+        backup_path = self._mgr.create_backup(target)
+        mode = stat.S_IMODE(os.stat(backup_path).st_mode)
+        self.assertEqual(mode & 0o077, 0,
+                         f"backup must not be readable by group/other; mode={oct(mode)}")
+
+
 if __name__ == "__main__":
     unittest.main()

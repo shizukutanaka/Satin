@@ -239,6 +239,13 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I14 (プライバシー — バックアップ zip が world-readable):**
+  `backup_manager.create_backup()` および `dashboard._build_sync_backup()` が
+  生成する zip は `mood.json` / `user_profile.json` / `avatar_event_log.jsonl`
+  等の**個人データを含む**にも関わらず、umask 既定 (0o644) のまま放置で
+  マルチユーザー環境の他ユーザーが読めた。これは既に `fsutil.restrict_to_owner`
+  で対策していた個別ファイルと一貫しない抜け穴。生成直後に所有者のみ読み書き可
+  (0o600) に制限する best-effort 処理を追加。
 - **[実装] I12 (Snyk/Qiita 由来 — Zip Slip 脆弱性):**
   `backup_manager.restore_backup()` が `shutil.unpack_archive`（内部で
   `zipfile.extractall`）をパス検証なしで呼んでいたため、悪意ある zip 内に

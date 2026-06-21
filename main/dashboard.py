@@ -161,6 +161,14 @@ def _build_sync_backup(zip_path, config_dir, log_path):
                     written.append(arc)
             except Exception:
                 pass
+    # sync バックアップ zip は config/mood.json / user_profile.json / 会話ログ
+    # (avatar_event_log.jsonl + 圧縮アーカイブ) を含む — 全て個人データ。
+    # umask 既定だと他ユーザーが読めてしまうため所有者のみ読み書き可へ制限する。
+    try:
+        from fsutil import restrict_to_owner
+        restrict_to_owner(zip_path)
+    except Exception:
+        pass  # 権限制限は best-effort。失敗時もバックアップ生成自体は成功。
     return written
 
 
