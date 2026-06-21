@@ -32,6 +32,14 @@ class MicVolumeThread(threading.Thread):
 from tts_thread import TTSThread  # noqa: E402,F401
 from gl_widget_base import GLViewportMixin  # noqa: E402
 
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
+
 class Avatar3DModesViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
         super().__init__(parent)

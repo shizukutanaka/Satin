@@ -226,6 +226,19 @@ satin_launcher.py
 
 ## 7. 改善点 (Improvements) — 本コミットで実装
 
+- **[実装] I19 (静的解析 ruff 由来 — 3D 描画が NameError でクラッシュ):**
+  `ruff` (F821 undefined-name) で、7 つの 3D アバタービューア
+  (`avatar_3d_sync` / `avatar_3d_gltf_viewer` / `avatar_3d_autonomous` /
+  `avatar_3d_autonomous_or_camera` / `avatar_3d_mic_tts_modes` /
+  `autonomous_gltf_avatar` / `avatar_3d_autonomous_tts`) が `paintGL`/`draw`
+  内で OpenGL 名 (`glClear` / `glBegin` / `GL_*` / `gluSphere` 等) を **import
+  せず**使用していることを検出。import 共通化リファクタで各モジュールから
+  `from OpenGL.GL import *` が抜け落ち、**アプリ中核の 3D 描画が初回 paint で
+  `NameError` クラッシュ**する潜在バグだった（GUI/GPU/PyOpenGL 必須でテスト
+  未到達のため見逃されていた）。`avatar_3d_viewer.py` の生存パターンに合わせ、
+  各モジュールにガード付き `from OpenGL.GL/GLU import *` を追加。
+  検証: ruff F821 解消 + py_compile + ヘッドレステスト全通過（実 GUI 描画は
+  本環境に display/GPU が無く未実行）。
 - **[実装] I18 (静的解析 ruff 由来 — ミュータブルデフォルト引数):** `ruff`
   (bugbear B006) で、手動 grep が見逃していた関数引数のミュータブルデフォルトを
   4件検出。`content_aggregator.search_all_sources` /

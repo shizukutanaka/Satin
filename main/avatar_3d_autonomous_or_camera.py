@@ -11,6 +11,14 @@ from optional_deps import (  # noqa: E402
 from camera_thread import CameraThread  # noqa: E402
 from gl_widget_base import GLViewportMixin  # noqa: E402
 
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
+
 try:
     from persona import get_persona  # noqa: E402
 except Exception:  # pragma: no cover - defensive
