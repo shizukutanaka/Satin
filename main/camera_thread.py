@@ -6,6 +6,7 @@ avatar_3d_sync / avatar_3d_gltf_viewer / avatar_3d_autonomous_or_camera が
 """
 from __future__ import annotations
 
+import queue
 import threading
 from typing import Optional
 
@@ -29,6 +30,10 @@ class CameraThread(threading.Thread):
 
     cv2 または mediapipe が未インストールの場合は即座に返る(no-op)。
     """
+
+    # pose_queue に保持する最大バックログ。ライブ姿勢は最新フレームのみ有効なので
+    # 浅くてよい (消費が止まってもメモリ肥大しない)。
+    _MAX_BACKLOG = 2
 
     def __init__(self, pose_queue: "queue.Queue") -> None:  # noqa: F821
         super().__init__(daemon=True)
@@ -63,7 +68,7 @@ class CameraThread(threading.Thread):
                             left_eye.x, left_eye.y,
                             right_eye.x, right_eye.y,
                         )
-                    self.pose_queue.put(pose)
+                    self._enqueue_pose(pose)
                     # オーバーレイ表示（顔検出時のみ — 未検出時は face_landmarks が
                     # 未定義で NameError になるためガードが必要）
                     if results.multi_face_landmarks:
@@ -77,6 +82,21 @@ class CameraThread(threading.Thread):
         finally:
             cap.release()
             cv2.destroyAllWindows()
+
+    def _enqueue_pose(self, pose) -> None:
+        """最新フレームのみ保持するバックプレッシャー付き put。
+
+        消費側 (Qt タイマー) が止まる/遅れる (ウィンドウ最小化・GL 停止等) と、
+        無制限キューにフレームが際限なく溜まりメモリが肥大する。ライブ姿勢は最新
+        フレームのみ有効なので、たまった古いフレームを捨ててから最新を入れ、
+        キュー深さを _MAX_BACKLOG 以下に保つ。
+        """
+        while self.pose_queue.qsize() >= self._MAX_BACKLOG:
+            try:
+                self.pose_queue.get_nowait()
+            except queue.Empty:
+                break
+        self.pose_queue.put(pose)
 
     def stop(self) -> None:
         self.running = False

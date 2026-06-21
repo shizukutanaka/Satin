@@ -239,6 +239,12 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I16 (Qiita 由来 — 無制限キューでメモリ肥大):** `camera_thread` が
+  無制限 `queue.Queue` に毎フレーム pose を `put` していたため、消費側 (Qt
+  タイマー) が止まる/遅れる (ウィンドウ最小化・GL 停止等) と pose がメモリに
+  際限なく溜まった。ライブ姿勢は最新のみ有効なので `_enqueue_pose()` で
+  バックログを `_MAX_BACKLOG=2` に制限 (古いフレームを捨てて最新を保持)。
+  参考: [queue.Queue の maxsize とバックプレッシャー (Qiita)](https://qiita.com/tomyox693/items/5624dd8f11305f9de7f0)
 - **[実装] I15 (Zenn 由来 — 環境変数の非有限 float キャスト):** `config/env.py`
   の自動型キャストが `float()` をそのまま使い、環境変数 `inf` / `-inf` /
   `infinity` / `nan` / `1e999` を黙って `float('inf')` / `float('nan')` に

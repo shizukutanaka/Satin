@@ -49,5 +49,41 @@ class NoOpWhenDepsAbsentTests(unittest.TestCase):
             self.assertFalse(t.is_alive())
 
 
+class PoseQueueBackpressureTests(unittest.TestCase):
+    """Regression: pose_queue was an unbounded queue.Queue and the producer
+    put() a frame every camera frame. If the consumer (Qt timer) stalls
+    (window minimized, GL paused) the queue grows without bound. _enqueue_pose
+    caps the backlog to the latest few frames."""
+
+    def test_backlog_capped_when_consumer_stalls(self):
+        q = queue.Queue()
+        t = CameraThread(q)
+        # Simulate a stalled consumer: push many frames, nobody drains.
+        for i in range(1000):
+            t._enqueue_pose((i, 0, 0, 0, 0, 0))
+        self.assertLessEqual(q.qsize(), CameraThread._MAX_BACKLOG,
+                             "pose queue must not grow unbounded when consumer stalls")
+
+    def test_latest_frame_is_retained(self):
+        q = queue.Queue()
+        t = CameraThread(q)
+        for i in range(10):
+            t._enqueue_pose((i,))
+        # Drain and confirm the most recent frame survived.
+        drained = []
+        while not q.empty():
+            drained.append(q.get_nowait())
+        self.assertIn((9,), drained, "the newest pose must be retained")
+
+    def test_normal_flow_when_consumer_keeps_up(self):
+        q = queue.Queue()
+        t = CameraThread(q)
+        # Producer/consumer in lockstep: each put is immediately drained.
+        for i in range(5):
+            t._enqueue_pose((i,))
+            self.assertEqual(q.get_nowait(), (i,))
+        self.assertTrue(q.empty())
+
+
 if __name__ == "__main__":
     unittest.main()
