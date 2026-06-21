@@ -226,6 +226,16 @@ satin_launcher.py
 
 ## 7. 改善点 (Improvements) — 本コミットで実装
 
+- **[実装] I21 (静的解析 ruff 由来 — `List` 未 import で plugin が import 不能 +
+  lint ゲート導入):** `ruff` (F821) で `plugins/cloud_backup.py` が戻り値注釈に
+  `List[...]` を使うのに `from typing import` へ `List` が無く（`__future__
+  annotations` も無し）、google-cloud-storage 導入環境で **モジュール import 時に
+  `NameError`** になる実バグを検出・修正。あわせて、今セッションで見つけた
+  F821/B006/B904 級のバグを将来自動検出するため `ruff.toml` を新規追加。
+  correctness 系ルール（B006/B904/E711-714/E722/F811/F821/F823/PLE）を enforced
+  set として緑に保ち、CI/pre-commit ゲート化できる状態にした（F401/F841 等の
+  hygiene 系は将来クリーンアップ対象として除外）。
+  参考: [Python のセキュリティ/品質を静的解析で守る — ruff/Bandit (Qiita kina006097)](https://qiita.com/kina006097/items/436c012504b1d60a5c5f)
 - **[実装] I20 (静的解析 ruff 由来 — 例外チェーン欠落 B904):** `except` 節内で
   別の例外を送出する際 `from e` を付けず、元例外のトレースバックが失われていた
   18 箇所を修正（`config_validator` / `plugin_manager` / `config_version_manager`
