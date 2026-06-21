@@ -62,25 +62,36 @@ class LoggingManager:
             formatter = logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             )
-            
-            # ローテーティングファイルハンドラーの設定
-            file_handler = logging.handlers.RotatingFileHandler(
-                self.log_dir / "satin.log",
-                maxBytes=self.max_bytes,
-                backupCount=self.backup_count,
-                encoding='utf-8'
-            )
-            file_handler.setFormatter(formatter)
-            
-            # コンソールハンドラーの設定
-            console_handler = logging.StreamHandler()
-            console_handler.setFormatter(formatter)
-            
-            # ルートロガーの設定
+
+            # Satin の RotatingFileHandler / StreamHandler を一意に識別するための
+            # マーカー名。LoggingManager() が（テスト・プラグイン経由等で）複数回
+            # インスタンス化されると、ルートロガーに同一ハンドラが二重・三重に
+            # 追加され、ログが多重出力されるうえ Windows では同じファイルへの
+            # ハンドルが複数開いた状態でローテーションが PermissionError になる
+            # (Qiita 既知の落とし穴)。マーカー名で既存ハンドラを検出して退避する。
+            _FILE_NAME = "satin.rotating_file"
+            _CONSOLE_NAME = "satin.console"
+
             root_logger = logging.getLogger()
             root_logger.setLevel(self.log_levels[self.current_level])
-            root_logger.addHandler(file_handler)
-            root_logger.addHandler(console_handler)
+            existing_names = {h.name for h in root_logger.handlers}
+
+            if _FILE_NAME not in existing_names:
+                file_handler = logging.handlers.RotatingFileHandler(
+                    self.log_dir / "satin.log",
+                    maxBytes=self.max_bytes,
+                    backupCount=self.backup_count,
+                    encoding='utf-8'
+                )
+                file_handler.name = _FILE_NAME
+                file_handler.setFormatter(formatter)
+                root_logger.addHandler(file_handler)
+
+            if _CONSOLE_NAME not in existing_names:
+                console_handler = logging.StreamHandler()
+                console_handler.name = _CONSOLE_NAME
+                console_handler.setFormatter(formatter)
+                root_logger.addHandler(console_handler)
             
             # ログファイル圧縮スレッドの開始
             self._compression_stop = threading.Event()

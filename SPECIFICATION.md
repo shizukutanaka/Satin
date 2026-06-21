@@ -239,6 +239,17 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I8 (Qiita 由来 — RotatingFileHandler 重複登録):** `LoggingManager`
+  を 2 回インスタンス化するとルートロガーに同一ハンドラが二重に追加され、
+  全ログ行が重複出力、Windows ではローテーション時に PermissionError になる。
+  ハンドラに ``satin.rotating_file`` / ``satin.console`` のマーカー名を付け、
+  既存検出で重複登録を防止。
+  参考: [RotatingFileHandler の重複ハンドラ落とし穴 (Qiita)](https://qiita.com/KAZAMAI_NaruTo/items/a1dc89e4ae0ecab56c77)
+- **[実装] I9 (Zenn 由来 — シングルトン スレッドセーフ):**
+  `get_enhanced_config_manager()` がロック無しの素朴な ``if is None: create``
+  実装で、並行コンテキストで 2 インスタンス生成され得た（undo/listener 状態が
+  分裂し最後勝ち）。double-checked locking パターンに統一。
+  参考: [Singleton の罠 — スレッドセーフ実装 (Zenn)](https://zenn.dev/koduki/articles/47ebe8d93e27e0)
 - **[実装] I6 (Zenn 由来 — Flask セッション強化):** ダッシュボードのセッション
   Cookie に `HTTPONLY=True` / `SAMESITE='Lax'` / `PERMANENT_SESSION_LIFETIME=12h`
   / `SECURE` を環境変数 `SATIN_DASHBOARD_HTTPS=1` でオプトイン可能化。Flask の

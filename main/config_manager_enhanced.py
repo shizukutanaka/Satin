@@ -334,18 +334,29 @@ def _validate_against_schema(value: Any, schema: dict, path: str) -> List[str]:
 # Singleton
 # ------------------------------------------------------------------
 
+import threading as _threading
+
 _enhanced_manager: Optional[EnhancedConfigManager] = None
+_enhanced_manager_lock = _threading.Lock()
 
 
 def get_enhanced_config_manager(config_path: Optional[str] = None) -> EnhancedConfigManager:
-    """EnhancedConfigManager のシングルトンを返す。"""
+    """EnhancedConfigManager のシングルトンを返す（スレッドセーフ・double-checked locking）。
+
+    ロックなしで生成すると 2 スレッドが同時に ``is None`` チェックを通過し、
+    別個の EnhancedConfigManager が 2 つ生成され得る。一方のスレッドが書いた
+    undo/listener 状態が他方には反映されない（最後の代入が勝つ）データ競合になる。
+    """
     global _enhanced_manager
     if _enhanced_manager is None:
-        _enhanced_manager = EnhancedConfigManager(config_path=config_path)
+        with _enhanced_manager_lock:
+            if _enhanced_manager is None:
+                _enhanced_manager = EnhancedConfigManager(config_path=config_path)
     return _enhanced_manager
 
 
 def reset_enhanced_config_manager() -> None:
     """テスト用: シングルトンをリセットする。"""
     global _enhanced_manager
-    _enhanced_manager = None
+    with _enhanced_manager_lock:
+        _enhanced_manager = None

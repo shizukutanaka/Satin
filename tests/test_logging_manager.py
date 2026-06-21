@@ -205,5 +205,65 @@ class AnalyzeLogsTests(unittest.TestCase):
         self.assertGreaterEqual(result["warning_count"], 1)
 
 
+class HandlerDuplicationTests(unittest.TestCase):
+    """Regression (Qiita best practice): instantiating LoggingManager twice
+    used to add a second RotatingFileHandler + StreamHandler to the root
+    logger, causing every log line to be emitted twice and — on Windows —
+    triggering PermissionError during log rotation (two handles open on the
+    same file). Re-instantiation must be idempotent."""
+
+    def _fresh_root(self):
+        root = logging.getLogger()
+        return list(root.handlers)
+
+    def _cleanup(self, before):
+        root = logging.getLogger()
+        for h in list(root.handlers):
+            if h not in before:
+                root.removeHandler(h)
+
+    def test_second_instantiation_does_not_duplicate_handlers(self):
+        tmp = tempfile.mkdtemp()
+        original = lm.get_config_manager
+        before = self._fresh_root()
+        lm.get_config_manager = lambda: _FakeConfig(tmp)
+        try:
+            mgr1 = lm.LoggingManager()
+            after_first = [h for h in logging.getLogger().handlers if h not in before]
+            mgr2 = lm.LoggingManager()
+            after_second = [h for h in logging.getLogger().handlers if h not in before]
+            try:
+                self.assertEqual(
+                    len(after_first), len(after_second),
+                    "Re-instantiating LoggingManager must not stack duplicate handlers"
+                )
+                # Exactly one rotating-file + one stream handler, both tagged.
+                names = sorted(h.name for h in after_second if h.name)
+                self.assertEqual(names, ["satin.console", "satin.rotating_file"])
+            finally:
+                mgr1.stop()
+                mgr2.stop()
+        finally:
+            lm.get_config_manager = original
+            self._cleanup(before)
+
+    def test_handlers_carry_marker_names(self):
+        tmp = tempfile.mkdtemp()
+        original = lm.get_config_manager
+        before = self._fresh_root()
+        lm.get_config_manager = lambda: _FakeConfig(tmp)
+        try:
+            mgr = lm.LoggingManager()
+            names = {h.name for h in logging.getLogger().handlers if h not in before}
+            try:
+                self.assertIn("satin.rotating_file", names)
+                self.assertIn("satin.console", names)
+            finally:
+                mgr.stop()
+        finally:
+            lm.get_config_manager = original
+            self._cleanup(before)
+
+
 if __name__ == "__main__":
     unittest.main()

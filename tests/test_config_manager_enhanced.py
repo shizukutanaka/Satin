@@ -327,6 +327,30 @@ class SingletonTests(unittest.TestCase):
         b = get_enhanced_config_manager()
         self.assertIsNot(a, b)
 
+    def test_concurrent_calls_return_same_instance(self):
+        """Regression: without double-checked locking, two threads racing past
+        the `is None` check could each create a separate EnhancedConfigManager,
+        leaving undo/listener state split between them (last write wins)."""
+        import threading
+        reset_enhanced_config_manager()
+        instances = []
+        barrier = threading.Barrier(8)
+
+        def grab():
+            barrier.wait()  # release all threads simultaneously
+            instances.append(get_enhanced_config_manager())
+
+        threads = [threading.Thread(target=grab) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(len(instances), 8)
+        first = instances[0]
+        for inst in instances[1:]:
+            self.assertIs(inst, first,
+                          "concurrent get_enhanced_config_manager must return the same instance")
+
 
 if __name__ == "__main__":
     unittest.main()
