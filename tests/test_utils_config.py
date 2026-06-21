@@ -59,5 +59,53 @@ class OptionalYamlTests(unittest.TestCase):
             os.unlink(path)
 
 
+class AtomicSaveConfigTests(unittest.TestCase):
+    """Regression: save_config wrote config.json in place with open(path,'w'),
+    so a crash or a json.dump TypeError mid-write left a truncated/corrupt
+    base config. It must write atomically (tmp + os.replace) like the rest of
+    the codebase."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._path = os.path.join(self._tmp, "config.json")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_save_writes_valid_json(self):
+        import json
+        ok = uc.save_config({"a": 1, "b": [1, 2]}, self._path)
+        self.assertTrue(ok)
+        with open(self._path) as f:
+            self.assertEqual(json.load(f), {"a": 1, "b": [1, 2]})
+
+    def test_failed_serialization_preserves_existing_file(self):
+        import json
+        # Seed a valid config first.
+        uc.save_config({"keep": "me"}, self._path)
+        # Now attempt to save a non-serializable object (set) -> json raises.
+        ok = uc.save_config({"bad": {1, 2, 3}}, self._path)
+        self.assertFalse(ok, "non-serializable save must report failure")
+        # The original file must be intact, not truncated/corrupt.
+        with open(self._path) as f:
+            self.assertEqual(json.load(f), {"keep": "me"})
+
+    def test_no_tmp_file_left_behind_on_failure(self):
+        uc.save_config({"keep": "me"}, self._path)
+        uc.save_config({"bad": {1, 2, 3}}, self._path)  # fails
+        leftovers = [n for n in os.listdir(self._tmp) if n.endswith(".tmp")]
+        self.assertEqual(leftovers, [], f"temp files leaked: {leftovers}")
+
+    def test_no_tmp_file_left_behind_on_success(self):
+        uc.save_config({"a": 1}, self._path)
+        leftovers = [n for n in os.listdir(self._tmp) if n.endswith(".tmp")]
+        self.assertEqual(leftovers, [])
+
+    def test_unsupported_extension_rejected(self):
+        ok = uc.save_config({"a": 1}, os.path.join(self._tmp, "config.txt"))
+        self.assertFalse(ok)
+
+
 if __name__ == "__main__":
     unittest.main()

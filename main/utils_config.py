@@ -141,25 +141,48 @@ def save_config(config: Dict[str, Any], file_path: Union[str, Path] = None) -> b
     else:
         file_path = Path(file_path)
     
+    suffix = file_path.suffix.lower()
+    if suffix not in ('.json', '.yaml', '.yml'):
+        logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
+        return False
+    if suffix in ('.yaml', '.yml') and yaml is None:
+        logger.error("YAML 設定の保存には PyYAML が必要です: pip install pyyaml")
+        return False
+
+    # 原子的書き込み: 同一ディレクトリの一時ファイルへ全量書き込み、fsync で
+    # ディスクへ確実に flush してから os.replace で差し替える。
+    # 直接 open(path,'w') で書くと、書き込み途中のクラッシュ・電源断や
+    # json.dump がシリアライズ不能値で例外を投げた場合に config.json が
+    # 切り詰められ、次回起動でアプリ全体が壊れる（基底設定なので影響大）。
+    # 一時ファイルは必ず同一ディレクトリに作る（os.replace のクロスデバイス回避）。
+    tmp_path = None
     try:
-        # 親ディレクトリが存在しない場合は作成
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            if file_path.suffix.lower() == '.json':
+        import tempfile
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=file_path.name + ".", suffix=".tmp", dir=str(file_path.parent)
+        )
+        tmp_path = Path(tmp_name)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            if suffix == '.json':
                 json.dump(config, f, ensure_ascii=False, indent=2)
-            elif file_path.suffix.lower() in ('.yaml', '.yml'):
-                if yaml is None:
-                    logger.error("YAML 設定の保存には PyYAML が必要です: pip install pyyaml")
-                    return False
-                yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
             else:
-                logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
-                return False
+                yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, file_path)
+        tmp_path = None  # 差し替え成功。finally での削除対象から外す
         return True
     except Exception as e:
         logger.error(f"設定ファイルの保存に失敗しました: {file_path}\n{str(e)}")
         return False
+    finally:
+        # 失敗時に中途半端な一時ファイルを残さない
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any] = None) -> Dict[str, List[str]]:
     """

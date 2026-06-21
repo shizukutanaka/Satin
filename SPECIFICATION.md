@@ -239,6 +239,14 @@ satin_launcher.py
   `avatar_event_report.load_events` / `avatar_event_logger.replay` /
   `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
 
+- **[実装] I11 (Zenn 由来 — 非原子的書き込みで基底設定が破損):** アプリ全体で
+  最も使われる設定書き込みパス `utils_config.save_config()` だけが、他全モジュール
+  が使う原子的パターンを使わず **インプレース `open(path,'w')`** で書いており、
+  書き込み中のクラッシュ／`json.dump` 例外で `config.json` が切り詰められ次回
+  起動でアプリ全体が壊れる危険があった。同一ディレクトリの一時ファイルへ
+  全量書き込み→`fsync`→`os.replace` の原子的書き込みに変更（失敗時は元ファイル
+  を保全し一時ファイルも残さない）。
+  参考: [sync コマンドのデータ同期と I/O エラー検出 (Zenn)](https://zenn.dev/satoru_takeuchi/articles/248574593145ed)
 - **[実装] I10 (Qiita 由来 — naive/aware datetime 混在):** `content_aggregator`
   で YouTube Data API 由来の **aware** datetime と yt-dlp/論文/Web 由来の
   **naive** datetime が混在し、(a) `datetime.now() - aware` で TypeError →
