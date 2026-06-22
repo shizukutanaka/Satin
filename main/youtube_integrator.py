@@ -5,14 +5,10 @@ YouTube Integration Module
 
 import re
 import json
-import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from pathlib import Path
-from functools import lru_cache
-import logging
 from dataclasses import dataclass, asdict
-from urllib.parse import urlparse, parse_qs
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi

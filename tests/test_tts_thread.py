@@ -10,7 +10,6 @@ pyttsx3 is typically absent in CI, so tests cover:
 import os
 import queue
 import sys
-import threading
 import unittest
 from unittest import mock
 

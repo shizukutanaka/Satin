@@ -21,7 +21,6 @@ from datetime import datetime
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
-import persona as _persona  # noqa: E402
 from persona import Persona, get_persona, reset_persona  # noqa: E402
 
 
@@ -498,7 +497,6 @@ class ApologyTests(unittest.TestCase):
 
     def test_apology_default_responses(self):
         """Default (no config) responses also recognize apologies."""
-        from persona import _DEFAULT_RESPONSES
         p = Persona()  # uses defaults
         reply = p.respond("ごめん")
         self.assertTrue(reply)
@@ -693,7 +691,7 @@ class TalkByAffinityTests(unittest.TestCase):
 
     def test_bundled_persona_has_talk_by_affinity(self):
         """config/persona.json has talk_by_affinity for all 5 levels."""
-        import os, json
+        import os
         cfg_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "config", "persona.json",
@@ -774,7 +772,6 @@ class TalkByTimeTests(unittest.TestCase):
     def test_bundled_persona_has_talk_by_time(self):
         """config/persona.json has talk_by_time for all 4 time buckets in ja and en."""
         import os
-        import json
         cfg_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "config", "persona.json",
@@ -790,7 +787,6 @@ class TalkByTimeTests(unittest.TestCase):
         """_pick_talk_text() computes time_bucket and passes it to persona.talk()."""
         import sys
         import os
-        import datetime
         sys.path.insert(0, os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main"))
         import autonomous_behavior as _ab

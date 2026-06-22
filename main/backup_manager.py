@@ -4,7 +4,6 @@
 """
 import logging
 import shutil
-import hashlib
 import zipfile
 from pathlib import Path
 from datetime import datetime

@@ -4,7 +4,6 @@ Unit tests for content_aggregator — relevance scoring and data model.
 ContentAggregator.calculate_relevance_score is pure computation:
 no network calls, no external deps.
 """
-import math
 import os
 import sys
 import unittest

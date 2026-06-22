@@ -11,9 +11,8 @@ from typing import Dict, List, Optional, Any, Set
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, asdict
-from urllib.parse import urlparse, urljoin, quote
+from urllib.parse import urlparse, urljoin
 from collections import deque
-import logging
 
 try:
     import requests

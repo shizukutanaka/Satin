@@ -1,12 +1,11 @@
 import sys
-import random
 import threading
 import queue
 
 from optional_deps import (  # noqa: E402
-    np, cv2, QApplication, QMainWindow, QOpenGLWidget,
-    QPushButton, QLabel, QLineEdit, QFileDialog, Qt, QTimer,
-    pyttsx3, sd, pygltflib,
+    np, QApplication, QMainWindow, QOpenGLWidget,
+    QPushButton, QLabel, QLineEdit, QTimer,
+    sd,
 )
 
 # --- マイク音量取得スレッド ---

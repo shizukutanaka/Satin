@@ -5,12 +5,10 @@ Weak references, 循環参照回避, garbage collection最適化
 
 import logging
 import gc
-import weakref
 from typing import Any, Optional, Dict, List, Tuple, Callable
-from weakref import WeakValueDictionary, WeakKeyDictionary, ref
+from weakref import WeakValueDictionary
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import sys
 from functools import wraps
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,6 @@
 """
 Advanced error handling and recovery system for Satin
 """
-import sys
 import traceback
 from typing import Callable, TypeVar, Any, Optional, Type, Dict
 from functools import wraps

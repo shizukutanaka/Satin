@@ -9,7 +9,6 @@ OpenCV and mediapipe are typically absent in CI, so these tests cover:
 import os
 import queue
 import sys
-import threading
 import unittest
 from unittest import mock
 

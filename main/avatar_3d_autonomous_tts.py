@@ -1,15 +1,13 @@
 import sys
 import random
-import threading
 import queue
 import logging
 
 logger = logging.getLogger(__name__)
 
 from optional_deps import (  # noqa: E402
-    np, cv2, QApplication, QMainWindow, QOpenGLWidget,
-    QPushButton, QLabel, QLineEdit, QFileDialog, Qt, QTimer,
-    pyttsx3, sd, pygltflib,
+    QApplication, QMainWindow, QOpenGLWidget,
+    QPushButton, QLabel, QLineEdit, QTimer,
 )
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 from tts_thread import TTSThread  # noqa: E402,F401

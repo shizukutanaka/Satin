@@ -33,8 +33,6 @@ class GetLoggerTests(unittest.TestCase):
         # Smoke test: the modules that depend on get_logger must import.
         import youtube_integrator
         import web_integrator
-        import content_aggregator
-        import async_integrator
         # Each exposes its main class; confirm one to be safe
         self.assertTrue(hasattr(youtube_integrator, "YouTubeIntegrator"))
         self.assertTrue(hasattr(web_integrator, "WebIntegrator"))

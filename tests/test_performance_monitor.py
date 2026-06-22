@@ -11,7 +11,6 @@ Run: python -m unittest tests.test_performance_monitor -v
 import os
 import sys
 import unittest
-from unittest.mock import patch
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)

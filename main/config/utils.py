@@ -4,7 +4,6 @@ Configuration utilities for Satin
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, TypeVar, Type, Union
 import shutil

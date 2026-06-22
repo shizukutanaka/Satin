@@ -16,7 +16,6 @@ sys.path.insert(0, _MAIN)
 
 from plugin_manager import PluginManager  # noqa: E402
 from plugin_base import PluginBase  # noqa: E402
-from logging_manager import LoggingManager  # noqa: E402
 
 
 class _StubLogger:

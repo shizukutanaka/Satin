@@ -3,12 +3,10 @@
 カスタム例外, エラー回復戦略, エラーコンテキスト管理
 """
 
-import sys
 import logging
 import traceback
-from typing import Type, Callable, Optional, List, Dict, Any, Union
+from typing import Callable, Optional, List, Dict, Any
 from dataclasses import dataclass, field
-from enum import Enum
 from datetime import datetime
 from functools import wraps
 import json

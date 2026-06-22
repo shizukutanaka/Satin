@@ -5,7 +5,6 @@ Covers: history tracking, available_backends, logging fallback,
 clear_history, history_count, and graceful backend failure handling.
 Does NOT require plyer or notify2.
 """
-import logging
 import os
 import sys
 import unittest

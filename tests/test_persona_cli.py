@@ -281,7 +281,6 @@ class MoodIntegrationTests(unittest.TestCase):
     """run_chat updates the injected mood tracker and exposes /mood."""
 
     def _run(self, inputs, mood):
-        from mood import MoodTracker  # local import; mood is optional
         d = _Driver(inputs)
         tmp = tempfile.mkdtemp()
         try:
@@ -357,7 +356,7 @@ class MoodIntegrationTests(unittest.TestCase):
 
     def test_reset_mood_first_call_shows_confirmation_prompt(self):
         """First /reset-mood shows a warning, does NOT reset affinity."""
-        from mood import MoodTracker, AFFINITY_START
+        from mood import MoodTracker
         m = MoodTracker(affinity=90, interactions=10)
         out = self._run(["/reset-mood"], m)
         self.assertEqual(m.affinity, 90.0, "Affinity must not change on first call")
@@ -369,7 +368,7 @@ class MoodIntegrationTests(unittest.TestCase):
 
     def test_reset_mood_cancelled_by_intervening_input(self):
         """A non-reset command between two /reset-mood calls cancels the pending state."""
-        from mood import MoodTracker, AFFINITY_START
+        from mood import MoodTracker
         m = MoodTracker(affinity=90, interactions=10)
         # reset → cancel via other cmd → reset again (should re-show prompt, NOT reset)
         out = self._run(["/reset-mood", "/mood", "/reset-mood"], m)
@@ -930,7 +929,6 @@ class HurtEventIntegrationTests(unittest.TestCase):
 
     def test_rude_message_triggers_hurt_reply(self):
         """Multiple negative keywords cause a large delta and trigger a hurt response."""
-        from mood import _HURT_THRESHOLD
         # "嫌い うざい ばか" hits 3 negative words → delta = -3 * 6 = -18
         # but capped at -10, which is below _HURT_THRESHOLD (-4)
         outputs, tracker = self._run("嫌い うざい ばか", affinity=80.0)
@@ -949,7 +947,7 @@ class HurtEventIntegrationTests(unittest.TestCase):
         # so let's use a word that gives -4 exactly. But with delta_cap at 10,
         # "嫌い" gives -6. So actually it SHOULD trigger hurt.
         # Let me use a custom tracker with small negative_delta
-        from mood import MoodTracker, _HURT_THRESHOLD
+        from mood import MoodTracker
         tracker = MoodTracker(affinity=50.0, interactions=1,
                               negative_delta=2.0)  # small delta: 1 word → -2 > -4
         outputs = []
@@ -1646,7 +1644,6 @@ class FullReplyLoggingTests(unittest.TestCase):
 
     def test_follow_up_question_included_in_log(self):
         """Follow-up question appended to reply is captured in the logged text."""
-        from unittest import mock
         import persona_cli as pc
         import tempfile, os
         from conversation_log import ConversationLog

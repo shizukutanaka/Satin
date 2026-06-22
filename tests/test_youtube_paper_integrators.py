@@ -15,8 +15,7 @@ _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _MAIN)
 
 from youtube_integrator import (  # noqa: E402
-    YouTubeIntegrator, YouTubeVideo, YouTubeChannel, YouTubePlaylist,
-    TRANSCRIPT_AVAILABLE, YT_DLP_AVAILABLE, YOUTUBE_API_AVAILABLE,
+    YouTubeIntegrator, YouTubeVideo, TRANSCRIPT_AVAILABLE, YT_DLP_AVAILABLE, YOUTUBE_API_AVAILABLE,
 )
 from paper_integrator import AcademicPaper, PaperIntegrator  # noqa: E402
 

@@ -8,16 +8,13 @@
 - ログ検索機能
 - ログ分析機能
 """
-import os
 import logging
 import logging.handlers
 import gzip
 import shutil
-import json
 import threading
-import time
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict
 from pathlib import Path
 from config_manager import get_config_manager
 

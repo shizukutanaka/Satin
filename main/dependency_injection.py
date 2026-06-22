@@ -19,9 +19,8 @@ Suitable for:
 import inspect
 import logging
 from typing import (
-    Any, Callable, Dict, List, Optional, Type, TypeVar, Generic, Union
+    Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 )
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 import asyncio

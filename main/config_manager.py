@@ -1,8 +1,6 @@
 """
 設定管理クラスモジュール
 """
-import os
-import json
 import logging
 import shutil
 from pathlib import Path

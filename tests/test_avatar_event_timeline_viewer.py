@@ -10,7 +10,6 @@ import os
 import sys
 import tempfile
 import unittest
-from types import SimpleNamespace
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)

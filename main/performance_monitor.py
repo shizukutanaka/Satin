@@ -18,7 +18,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from config_manager import get_config_manager
 
 logger = logging.getLogger(__name__)

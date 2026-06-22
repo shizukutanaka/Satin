@@ -7,11 +7,10 @@ import time
 import asyncio
 import logging
 from typing import Any, Optional, Callable, Dict, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime, timedelta
 from collections import deque
-import json
 
 logger = logging.getLogger(__name__)
 

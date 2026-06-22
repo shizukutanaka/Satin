@@ -1,18 +1,14 @@
 """
 Plugin configuration management for Satin
 """
-import os
 import importlib
 import importlib.util  # submodule must be imported explicitly; `import importlib`
                        # alone does not expose importlib.util (AttributeError)
-import inspect
 import logging
-import pkgutil
 from pathlib import Path
-from typing import Dict, List, Optional, Type, TypeVar, Any, Tuple, Union
+from typing import Dict, List, Optional, TypeVar, Any, Union
 from dataclasses import dataclass, field, asdict
 from enum import Enum, auto
-import json
 
 logger = logging.getLogger(__name__)
 

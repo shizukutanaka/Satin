@@ -13,7 +13,6 @@ import unittest
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
-import special_days  # noqa: E402
 from special_days import seasonal_greeting, birthday_greeting, BIRTHDAY_AFFINITY_BONUS  # noqa: E402
 from user_profile import UserProfile  # noqa: E402
 

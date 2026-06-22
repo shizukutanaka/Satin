@@ -14,7 +14,6 @@ import unittest
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
-import mood as _mood  # noqa: E402
 from mood import (  # noqa: E402
     AFFINITY_MAX,
     AFFINITY_MIN,
@@ -260,7 +259,6 @@ class DecayTests(unittest.TestCase):
         self.assertGreaterEqual(m._last_interaction_time, before)
 
     def test_last_interaction_time_persists_in_to_dict(self):
-        import time
         m = MoodTracker(interactions=1, last_interaction_time=12345.0)
         d = m.to_dict()
         self.assertAlmostEqual(d["last_interaction_time"], 12345.0)
@@ -573,7 +571,6 @@ class MoodConfigLoadTests(unittest.TestCase):
 
     def test_get_mood_tracker_explicit_config_skips_auto_load(self):
         """Explicitly passing mood_config bypasses auto-loading mood_config.json."""
-        import json
         from unittest import mock
         import mood as mood_mod
 

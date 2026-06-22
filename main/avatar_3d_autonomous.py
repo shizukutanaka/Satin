@@ -2,9 +2,8 @@ import sys
 import random
 
 from optional_deps import (  # noqa: E402
-    np, cv2, QApplication, QMainWindow, QOpenGLWidget,
-    QPushButton, QLabel, QLineEdit, QFileDialog, Qt, QTimer,
-    pyttsx3, sd, pygltflib,
+    QApplication, QMainWindow, QOpenGLWidget,
+    QPushButton, QLabel, QTimer,
 )
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 from gl_widget_base import GLViewportMixin  # noqa: E402
@@ -87,7 +86,6 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
             self.talk_label.setText('')
 
 if __name__ == "__main__":
-    import numpy as np
     app = QApplication(sys.argv)
     win = MainWindow()
     win.show()

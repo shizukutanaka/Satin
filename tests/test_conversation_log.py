@@ -14,7 +14,6 @@ from unittest import mock
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
-import conversation_log as _cl  # noqa: E402
 from conversation_log import (  # noqa: E402
     ConversationLog,
     EVENT_AVATAR_REPLY,
@@ -142,7 +141,6 @@ class RecentTests(_TmpLogBase):
         texts = self.log.recent_texts()
         self.assertEqual(len(texts), 1)
         # タイムスタンプ付き形式を確認
-        import re
         self.assertRegex(texts[0], r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] You: test message$")
 
     def test_recent_texts_custom_labels(self):

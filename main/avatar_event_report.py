@@ -1,4 +1,3 @@
-import json
 import argparse
 from collections import Counter, defaultdict
 from datetime import datetime

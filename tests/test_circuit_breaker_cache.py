@@ -3,7 +3,6 @@ Stdlib-only tests for main/circuit_breaker_cache.py.
 
 Run: python -m unittest tests.test_circuit_breaker_cache -v
 """
-import asyncio
 import os
 import sys
 import unittest

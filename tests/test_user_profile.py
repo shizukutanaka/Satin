@@ -4,7 +4,6 @@ Unit tests for user_profile — the avatar's minimal memory of who the user is.
 Covers: name sanitization, address fallback, persistence round-trip,
 the {user} placeholder substitution, and the process-wide singleton.
 """
-import json
 import os
 import sys
 import tempfile

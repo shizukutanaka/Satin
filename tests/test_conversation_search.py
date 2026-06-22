@@ -11,7 +11,6 @@ import unittest
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
-import conversation_log as cl_mod  # noqa: E402
 from conversation_log import ConversationLog  # noqa: E402
 
 

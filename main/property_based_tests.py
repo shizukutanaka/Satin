@@ -40,7 +40,6 @@ except ImportError:
 try:
     import pytest
 except ImportError:
-    import unittest
     class pytest:  # type: ignore[no-redef]
         @staticmethod
         def raises(exc, *a, **kw):
@@ -52,7 +51,7 @@ except ImportError:
                 else: raise AssertionError(f"Expected {exc}")
             return _ctx()
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
 try:

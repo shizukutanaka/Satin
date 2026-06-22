@@ -1,9 +1,8 @@
-import os
 import importlib
 import importlib.util  # submodule must be imported explicitly; `import importlib`
                        # alone does not expose importlib.util (AttributeError)
 import json
-from typing import Dict, Any, List, Type
+from typing import Dict, Any
 from pathlib import Path
 from error_handling import PluginError
 from logging_manager import LoggingManager as Logger

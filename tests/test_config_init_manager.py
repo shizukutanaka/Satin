@@ -8,15 +8,13 @@ import json
 import os
 import sys
 import tempfile
-import threading
-import time
 import unittest
 from pathlib import Path
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
-from config import ConfigManager, ConfigSource, ConfigValue  # noqa: E402
+from config import ConfigManager  # noqa: E402
 
 
 class InstantiationTests(unittest.TestCase):

@@ -1,10 +1,9 @@
 import sys
 import random
-import os
 
 from optional_deps import (  # noqa: E402
     np, QApplication, QMainWindow, QOpenGLWidget,
-    QFileDialog, QPushButton, QLabel, Qt, QTimer, pygltflib,
+    QFileDialog, QPushButton, QLabel, QTimer, pygltflib,
 )
 
 from gltf_utils import load_first_mesh_vertices  # noqa: E402

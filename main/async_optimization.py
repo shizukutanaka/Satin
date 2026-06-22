@@ -21,10 +21,10 @@ import asyncio
 import functools
 import logging
 import time
-from typing import Any, Callable, List, Optional, TypeVar, Union, Coroutine
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, Future
+from typing import Any, Callable, List, Optional, TypeVar, Coroutine
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 
 logger = logging.getLogger(__name__)

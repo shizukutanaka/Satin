@@ -28,9 +28,13 @@ class _FakeConfig:
 
 
 class LoggingManagerImportTests(unittest.TestCase):
-    def test_threading_and_time_are_imported(self):
+    def test_threading_is_imported(self):
+        # Regression guard: the compression thread uses threading.Event/Thread,
+        # which were once used without an import (NameError). `time` was also
+        # asserted historically but the module no longer uses it (the compression
+        # loop waits via the stop Event, not time.sleep), so only threading is
+        # required now.
         self.assertTrue(hasattr(lm, "threading"))
-        self.assertTrue(hasattr(lm, "time"))
 
     def test_instantiation_when_configured_does_not_raise(self):
         tmp = tempfile.mkdtemp()

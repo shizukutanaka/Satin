@@ -207,7 +207,6 @@ class LogShowTests(unittest.TestCase):
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def test_show_prints_history(self):
-        from conversation_log import get_conversation_log
         import conversation_log as _cl
         with mock.patch.object(_cl, "_conversation_log", self._log, create=True):
             self._log.log_exchange("hello", "hi")
@@ -675,7 +674,6 @@ class LogSearchTests(unittest.TestCase):
     def test_search_shows_timestamp_and_prefix(self):
         out = self._run_search("天気")
         # Should contain timestamp-format prefix [YYYY-MM-DD HH:MM:SS]
-        import re
         self.assertRegex(out, r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]")
 
     def test_search_limit_restricts_results(self):

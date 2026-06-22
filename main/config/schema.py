@@ -1,7 +1,7 @@
 """
 Configuration schema and validation for Satin
 """
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, Optional
 from enum import Enum
 from pydantic import BaseModel, Field, validator, root_validator
 from pathlib import Path

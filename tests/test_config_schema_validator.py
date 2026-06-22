@@ -71,7 +71,6 @@ class ContentAggregatorCacheDirTests(unittest.TestCase):
         # because the local variable `cache_dir` (str) was used instead of self.cache_dir (Path)
         # We only test that the attribute assignment is reachable; full init needs API keys.
         import content_aggregator as ca
-        from pathlib import Path
         # inspect the source to confirm self.cache_dir is used
         import inspect
         src = inspect.getsource(ca.ContentAggregator.__init__)

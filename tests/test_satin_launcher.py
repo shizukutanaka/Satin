@@ -5,7 +5,6 @@ All tests avoid actually launching GUI, Flask, or TTS by mocking out the
 underlying _launch_* functions and checking the dispatch logic. Also tests
 _check_deps() and _check_config().
 """
-import importlib
 import os
 import sys
 import tempfile

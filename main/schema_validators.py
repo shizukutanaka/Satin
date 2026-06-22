@@ -34,7 +34,7 @@ except ImportError:
     def AfterValidator(f): return f  # type: ignore[misc]
 from typing import Optional, List, Dict, Any, Annotated, Union
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import urlparse
 import re
 

@@ -20,7 +20,7 @@ import time
 import tracemalloc
 import gc
 import asyncio
-from typing import Callable, Any, Dict, List, Optional, TypeVar, Union
+from typing import Callable, Any, Dict, List, Optional, TypeVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime

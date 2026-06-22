@@ -226,6 +226,12 @@ satin_launcher.py
 
 ## 7. 改善点 (Improvements) — 本コミットで実装
 
+- **[実装] I22 (静的解析 ruff 由来 — 未使用 import のクリーンアップ):** `ruff`
+  (F401) の **安全な autofix のみ**（`[*]` 印付き 199 件）を適用し、74 ファイルから
+  純粋に未使用の import を除去。`try: import x; X_AVAILABLE=True` 形式の可用性
+  プローブ（19 件）は ruff が autofix 対象外として保守的に保持。あわせて
+  `logging_manager` の陳腐化したテスト（未使用になった `time` import の存在を
+  要求していた）を実態（`threading` のみ必要）に合わせて更新。
 - **[実装] I21 (静的解析 ruff 由来 — `List` 未 import で plugin が import 不能 +
   lint ゲート導入):** `ruff` (F821) で `plugins/cloud_backup.py` が戻り値注釈に
   `List[...]` を使うのに `from typing import` へ `List` が無く（`__future__

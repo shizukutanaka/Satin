@@ -14,8 +14,7 @@ sys.path.insert(0, _MAIN)
 from advanced_error_handling import (  # noqa: E402
     SatinException, APIIntegrationError, YouTubeAPIError,
     WebScrapingError, RateLimitError, DataValidationError,
-    ResourceCleanupError, ErrorContext, ErrorRecoveryInfo,
-    ErrorRecoveryStrategy,
+    ResourceCleanupError, ErrorContext, ErrorRecoveryStrategy,
     ErrorContextManager,
     handle_errors_gracefully,
     with_error_context,

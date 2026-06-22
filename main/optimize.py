@@ -3,14 +3,10 @@ Performance optimization utilities for Satin
 """
 import functools
 import time
-from typing import Callable, Any, Optional, List, Dict, Tuple, TypeVar, Generic
+from typing import Callable, Any, Optional, List, Dict, Tuple, TypeVar
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import weakref
 from collections import OrderedDict
-import json
-import os
-import logging
 try:
     import aiofiles
 except ImportError:

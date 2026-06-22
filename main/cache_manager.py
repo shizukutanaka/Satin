@@ -7,7 +7,6 @@
 - キャッシュヒット率の監視
 - キャッシュの永続化
 """
-import os
 import json
 import hashlib
 import logging

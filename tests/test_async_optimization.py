@@ -158,7 +158,6 @@ class AsyncRateLimiterAdvancedTests(unittest.IsolatedAsyncioTestCase):
 
 class AsyncTaskResultTests(unittest.TestCase):
     def _make(self, **kw):
-        from datetime import datetime
         defaults = dict(task_id="t1", coroutine_name="coro", result=None,
                         exception=None, duration_ms=0.0, start_time=None, end_time=None)
         defaults.update(kw)

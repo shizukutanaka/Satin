@@ -74,7 +74,6 @@ class EventStatsTests(unittest.TestCase):
 
     def test_by_hour_accumulates_correctly(self):
         # 1000s ≈ 1970-01-01 00:16 UTC — hour 0 in local
-        from datetime import datetime
         events = [{"event_type": "e", "timestamp": 1000.0}]
         counts, by_hour, times = aer.event_stats(events)
         total = sum(by_hour.values())

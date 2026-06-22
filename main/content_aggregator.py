@@ -4,15 +4,13 @@ YouTube・論文・Web統合コンテンツ収集システム
 """
 
 import json
-import time
 import math
-from typing import Dict, List, Optional, Any, Union, Set
-from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from enum import Enum
-import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 from youtube_integrator import YouTubeIntegrator, YouTubeVideo
 from paper_integrator import PaperIntegrator, AcademicPaper

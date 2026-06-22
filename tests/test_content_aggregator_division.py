@@ -12,7 +12,6 @@ Run: python -m unittest tests.test_content_aggregator_division -v
 import math
 import os
 import sys
-import types
 import unittest
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")

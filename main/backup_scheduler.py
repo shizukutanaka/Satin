@@ -7,7 +7,6 @@ scheduler 機能を無効化して gracefully に動作します。
 from __future__ import annotations
 
 import threading
-import time
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional

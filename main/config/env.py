@@ -2,9 +2,8 @@
 Environment variable handling for Satin configuration
 """
 import os
-import re
 import logging
-from typing import Dict, Any, Optional, List, Tuple, Type, TypeVar, Union
+from typing import Dict, Any, Optional, TypeVar, Union
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

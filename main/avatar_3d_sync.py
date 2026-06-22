@@ -1,11 +1,9 @@
 import sys
-import threading
 import queue
 
 from optional_deps import (  # noqa: E402
-    np, cv2, QApplication, QMainWindow, QOpenGLWidget,
-    QPushButton, QLabel, QLineEdit, QFileDialog, Qt, QTimer,
-    pyttsx3, sd, pygltflib,
+    QApplication, QMainWindow, QOpenGLWidget,
+    QTimer,
 )
 from camera_thread import CameraThread  # noqa: E402
 from gl_widget_base import GLViewportMixin  # noqa: E402

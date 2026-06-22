@@ -48,7 +48,6 @@ class BackupManagerTimestampTest(unittest.TestCase):
 
     def test_two_rapid_backups_get_unique_names(self):
         import backup_manager as bm
-        import re
         import inspect
         src = inspect.getsource(bm.BackupManager.create_backup)
         # Timestamp format must include microseconds (%f) to guarantee uniqueness
