@@ -335,6 +335,21 @@ def run_chat(
                     _say(desc)
             except Exception:  # pragma: no cover - defensive
                 pass
+
+        # 気分への寄り添い（自発）: 直近の発話に明確なトレンドがある時だけ、
+        # あいさつに続けてそっと一言添える。トレンド無し/データ不足なら何も言わない
+        # ので、普段のあいさつを邪魔しない。会話ログは実際に書き込む先（conv_log）
+        # を参照し、テストの一時ログでは発話ゼロ→無言になる。
+        if mood is not None and _wellbeing_summary is not None and _wellbeing_message is not None:
+            try:
+                _wb_path = getattr(conv_log, "logfile", None)
+                summary = (_wellbeing_summary(event_log_path=_wb_path, days=3)
+                           if _wb_path else _wellbeing_summary(days=3))
+                wb = _wellbeing_message(summary, lang=lang)
+                if wb:
+                    _say(wb)
+            except Exception:  # pragma: no cover - defensive
+                pass
     output_fn(_help_text())
 
     exchanges = 0

@@ -233,6 +233,81 @@ class RunChatTests(unittest.TestCase):
         self.assertTrue(any(line.strip() for line in out))
 
 
+class GreetingWellbeingTests(unittest.TestCase):
+    """Proactive wellbeing: when the user's recent messages show a clear trend,
+    the avatar adds an empathetic line AFTER the greeting at session start. With
+    no clear trend (or no mood tracker) it stays silent."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._logpath = os.path.join(self._tmp, "c.jsonl")
+        self.log = ConversationLog(self._logpath)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_user_msgs(self, texts):
+        import json
+        import time
+        now = time.time()
+        with open(self._logpath, "a", encoding="utf-8") as f:
+            for t in texts:
+                f.write(json.dumps({"event_type": "user_comment",
+                                    "timestamp": now - 60,
+                                    "details": {"text": t}}) + "\n")
+
+    def _mood(self):
+        from mood import MoodTracker
+        return MoodTracker()
+
+    def test_low_trend_adds_line_after_greeting(self):
+        import user_wellbeing as uw
+        self._write_user_msgs(["最悪", "むかつく", "つまらない"])
+        d = _Driver([])  # greet, then EOF
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=self.log, mood=self._mood(),
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+        )
+        # Greeting still comes first...
+        self.assertTrue(d.out[0].startswith("Mimi: G"))
+        # ...and a low-trend wellbeing line is present (persona lang is en).
+        self.assertTrue(
+            any(any(m in line for m in uw._WELLBEING_MESSAGES["low"]["en"])
+                for line in d.out),
+            f"expected a wellbeing line in: {d.out}",
+        )
+
+    def test_no_trend_stays_silent(self):
+        import user_wellbeing as uw
+        # Empty log -> no user messages -> no wellbeing line.
+        d = _Driver([])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=self.log, mood=self._mood(),
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+        )
+        all_wb = (uw._WELLBEING_MESSAGES["low"]["en"]
+                  + uw._WELLBEING_MESSAGES["high"]["en"])
+        self.assertFalse(
+            any(any(m in line for m in all_wb) for line in d.out),
+            f"unexpected wellbeing line: {d.out}")
+
+    def test_no_mood_tracker_stays_silent(self):
+        import user_wellbeing as uw
+        self._write_user_msgs(["最悪", "むかつく", "つまらない"])
+        d = _Driver([])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=self.log, mood=None,  # mood disabled
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+        )
+        all_wb = (uw._WELLBEING_MESSAGES["low"]["en"]
+                  + uw._WELLBEING_MESSAGES["high"]["en"])
+        self.assertFalse(
+            any(any(m in line for m in all_wb) for line in d.out),
+            f"wellbeing must be silent when mood is disabled: {d.out}",
+        )
+
+
 class RunChatHistoryTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()

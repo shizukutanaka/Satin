@@ -324,6 +324,10 @@ In the CLI, `/feeling` (alias `/checkin`) shows the reflection. It reads only
 *your* messages (avatar replies are ignored), needs at least 3 recent messages
 to say anything, and only speaks up when one sentiment clearly dominates.
 
+The avatar is also **proactive** about it: at the start of a chat session,
+right after its greeting, it adds the wellbeing line on its own when there's a
+clear recent trend (and says nothing otherwise, so it never nags).
+
 ### Affinity / Mood (relationship that grows)
 
 The avatar now remembers how your relationship develops. Positive words
