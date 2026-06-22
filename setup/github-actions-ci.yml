@@ -19,6 +19,26 @@ on:
     branches: ["**"]
 
 jobs:
+  lint:
+    # 静的解析ゲート: ruff.toml の enforced set（correctness 系ルール）。
+    # これにより F821 未定義名（OpenGL 未 import の 3D 描画クラッシュ・
+    # cloud_backup の List 未 import 等）、B006 ミュータブルデフォルト、
+    # B904 例外チェーン欠落といったバグ類型の回帰を自動検出する。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Ruff lint (enforced correctness rules from ruff.toml)
+        run: ruff check main/ tests/
+
   test:
     runs-on: ubuntu-latest
     strategy:
