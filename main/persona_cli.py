@@ -915,9 +915,9 @@ def _add_interest(profile, thing: str, avatar_name: str, lang: str,
         return ""
     if not saved:
         if lang == "en":
-            output_fn(f"Couldn't save that — maybe the list is full (max 10)?")
+            output_fn("Couldn't save that — maybe the list is full (max 10)?")
         else:
-            output_fn(f"うまく保存できなかったよ（上限10件かも？）")
+            output_fn("うまく保存できなかったよ（上限10件かも？）")
         return ""
     if lang == "en":
         reply = f"Oh, you like {saved}? I'll remember that!"

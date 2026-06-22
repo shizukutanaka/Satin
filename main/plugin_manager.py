@@ -72,7 +72,7 @@ class PluginManager:
             
             # Find plugin classes — skip abstract bases and non-concrete types
             plugin_class = None
-            for name, obj in module.__dict__.items():
+            for _name, obj in module.__dict__.items():
                 if (isinstance(obj, type)
                         and obj is not PluginBase
                         and issubclass(obj, PluginBase)

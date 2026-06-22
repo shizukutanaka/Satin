@@ -152,7 +152,7 @@ class PerformanceProfiler:
 
         # Get top 5 functions by cumulative time
         operations = []
-        for name, (cc, nc, tt, ct, callers) in ps.stats.items():
+        for name, (_cc, nc, tt, ct, _callers) in ps.stats.items():
             operations.append({
                 'name': str(name),
                 'calls': nc,

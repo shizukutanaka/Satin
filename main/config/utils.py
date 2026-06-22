@@ -208,7 +208,7 @@ def set_config_value(
     keys = key_path.split(delimiter)
     current = config
     
-    for i, key in enumerate(keys[:-1]):
+    for _i, key in enumerate(keys[:-1]):
         if key not in current or not isinstance(current[key], dict):
             current[key] = {}
         current = current[key]

@@ -321,7 +321,7 @@ class AsyncAggregationService:
         # 結果を集約
         task_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for idx, (source_name, result) in enumerate(zip(
+        for _idx, (source_name, result) in enumerate(zip(
             [source_map[i] for i in range(len(task_results))],
             task_results
         )):

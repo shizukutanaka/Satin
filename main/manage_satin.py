@@ -532,7 +532,7 @@ def cmd_data_purge(assume_yes: bool = False, dry_run: bool = False) -> None:
             return
 
     deleted = 0
-    for desc, p in existing:
+    for _desc, p in existing:
         try:
             os.remove(p)
             deleted += 1

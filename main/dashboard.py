@@ -686,7 +686,7 @@ def mood_history(i18n):
             content += '<table border=0 cellpadding=4 cellspacing=2>'
             content += f'<tr><th>{_html.escape(i18n.t("date", "Date"))}</th>'
             content += f'<th>{_html.escape(i18n.t("affinity_score", "Affinity"))}</th>'
-            content += f'<th></th>'
+            content += '<th></th>'
             content += f'<th>{_html.escape(i18n.t("affinity_level", "Level"))}</th>'
             content += f'<th>{_html.escape(i18n.t("milestone", "Milestone"))}</th></tr>'
             for e in entries:

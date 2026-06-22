@@ -25,9 +25,11 @@ select = [
     "E713",  # test for membership should be `not in`
     "E714",  # test for object identity should be `is not`
     "E722",  # do not use bare `except`
+    "B007",  # loop control variable not used within the loop body
     "F811",  # redefinition of unused name
     "F821",  # undefined name
     "F823",  # local variable referenced before assignment
+    "F541",  # f-string without any placeholders
     "PLE",   # Pylint error-category checks
 ]
 
