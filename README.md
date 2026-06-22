@@ -298,6 +298,32 @@ Borrowing the most beloved mechanic of romance games (ときめきメモリア�
 
 These appear in the headless chat greeting and in the GUI autonomous greeting.
 
+#### The avatar notices how *you* feel (wellbeing check-in)
+
+Affinity tracks how the avatar feels about *you*; the **wellbeing** feature is
+the mirror image — it notices how *you* have been feeling lately. It scans the
+sentiment of your own recent messages (last few days, from the conversation log)
+and gently reflects it back: a caring nudge when you've sounded down, shared joy
+when you've been upbeat, and — importantly — **silence when there's no clear
+signal** (it won't force a mood read from thin data). It reuses the same offline
+sentiment keywords as the affinity system, so no LLM or network is involved.
+
+```text
+You: /feeling
+Satin: 最近、少し元気がないみたいだね。無理しないで、いつでも話してね。
+```
+
+```python
+from main.user_wellbeing import wellbeing_reflection
+
+# Empathetic one-liner based on the last 3 days of your messages ("" if unclear)
+print(wellbeing_reflection(days=3, lang="ja"))
+```
+
+In the CLI, `/feeling` (alias `/checkin`) shows the reflection. It reads only
+*your* messages (avatar replies are ignored), needs at least 3 recent messages
+to say anything, and only speaks up when one sentiment clearly dominates.
+
 ### Affinity / Mood (relationship that grows)
 
 The avatar now remembers how your relationship develops. Positive words

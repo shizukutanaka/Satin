@@ -220,6 +220,18 @@ class RunChatTests(unittest.TestCase):
         n, out = self._run(["/stats"], greet=False)
         self.assertEqual(n, 0)
 
+    def test_feeling_command_outputs_and_is_not_an_exchange(self):
+        # /feeling reflects the user's recent mood; like /stats it must produce
+        # output and must NOT be counted as a conversational exchange.
+        n, out = self._run(["/feeling"], greet=False)
+        self.assertEqual(n, 0)
+        self.assertTrue(any(line.strip() for line in out))
+
+    def test_checkin_alias_works(self):
+        n, out = self._run(["/checkin"], greet=False)
+        self.assertEqual(n, 0)
+        self.assertTrue(any(line.strip() for line in out))
+
 
 class RunChatHistoryTests(unittest.TestCase):
     def setUp(self):

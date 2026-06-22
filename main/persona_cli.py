@@ -23,6 +23,7 @@
   /mood               好感度レベルと今日のアバターの気分を表示
   /reset-mood         好感度をニュートラルにリセット
   /recap              今日の会話サマリーと直近のやりとりを表示
+  /feeling            最近のあなたの気分にアバターが寄り添う（/checkin も同じ）
   /stats              会話統計を表示
   /name               ペルソナ名を表示
   /quit               終了（/exit, /q も同じ）
@@ -103,6 +104,13 @@ try:
     from daily_summary import summary_greeting as _summary_greeting
 except Exception:  # pragma: no cover - defensive
     _summary_greeting = None  # type: ignore
+
+try:
+    from user_wellbeing import wellbeing_summary as _wellbeing_summary
+    from user_wellbeing import wellbeing_message as _wellbeing_message
+except Exception:  # pragma: no cover - defensive
+    _wellbeing_summary = None  # type: ignore
+    _wellbeing_message = None  # type: ignore
 
 try:
     from daily_mood import (
@@ -203,7 +211,7 @@ def _help_text() -> str:
         "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | "
         "/like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | "
         "/gift <プレゼント> 贈る | /whoami 確認 | /forget-me 記憶を全消去 | "
-        "/mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /stats 統計 | /name 名前 | /quit 終了"
+        "/mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /feeling 気分 | /stats 統計 | /name 名前 | /quit 終了"
     )
 
 
@@ -441,6 +449,9 @@ def run_chat(
             continue
         if text.lower() == "/recap":
             _print_recap(conv_log, lang, output_fn)
+            continue
+        if text.lower() in ("/feeling", "/checkin"):
+            _print_feeling(lang, output_fn)
             continue
         if text.lower() == "/search" or text.lower().startswith("/search "):
             query = text[len("/search"):].strip()
@@ -1031,6 +1042,33 @@ def _print_recap(conv_log, lang: str, output_fn: Callable[[str], None]) -> None:
             pass
     if not has_output:
         output_fn("No conversations yet today." if is_en else "今日はまだ会話が記録されていません。")
+
+
+def _print_feeling(lang: str, output_fn: Callable[[str], None]) -> None:
+    """直近のユーザー発話の感情傾向から寄り添いの一言を表示する（/feeling）。
+
+    気分が読み取れない（データ不足・中立）ときは、押し付けずニュートラルな一言で返す。
+    """
+    is_en = lang.startswith("en")
+    if _wellbeing_summary is None or _wellbeing_message is None:
+        output_fn("(wellbeing unavailable)" if is_en
+                  else "(気分の寄り添い機能は利用できません)")
+        return
+    try:
+        summary = _wellbeing_summary(days=3)
+        msg = _wellbeing_message(summary, lang=lang)
+    except Exception:
+        summary, msg = {}, ""
+    if msg:
+        output_fn(msg)
+        return
+    # データ不足／中立: そっとした中立メッセージ
+    if summary.get("sample_size", 0) < 3:
+        output_fn("Let's talk a bit more and I'll get a feel for how you're doing."
+                  if is_en else "もう少しお話ししたら、あなたの調子がわかるよ。")
+    else:
+        output_fn("You seem steady lately — that's good." if is_en
+                  else "最近は落ち着いてるみたいだね。いい感じ。")
 
 
 def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:

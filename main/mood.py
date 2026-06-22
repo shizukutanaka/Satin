@@ -123,6 +123,28 @@ def _clamp(value: float) -> float:
     return max(AFFINITY_MIN, min(AFFINITY_MAX, value))
 
 
+def classify_sentiment(text: str) -> int:
+    """発話 text の感情極性を返す: 肯定 +1 / 否定 -1 / 中立 0。
+
+    MoodTracker.register と同じ既定の感情語・マッチ規則（全言語フラット化・
+    NFC 正規化・ASCII は語境界 / CJK は部分一致）を使うが、好感度状態には一切
+    触れない純関数。user_wellbeing 等が「ユーザー自身の気分」推定に再利用する
+    ため、感情語の唯一の真実の源をここに置く。
+    """
+    if not isinstance(text, str) or not text.strip():
+        return 0
+    norm = _ud.normalize("NFC", text.lower())
+    pos = sum(1 for words in _DEFAULT_POSITIVE.values() for w in words
+              if _kw_match(w, norm))
+    neg = sum(1 for words in _DEFAULT_NEGATIVE.values() for w in words
+              if _kw_match(w, norm))
+    if pos > neg:
+        return 1
+    if neg > pos:
+        return -1
+    return 0
+
+
 def affinity_level(affinity: float) -> str:
     """好感度を 5 段階のレベルキー (distant..close) に変換する。"""
     key = _LEVELS[0][1]
