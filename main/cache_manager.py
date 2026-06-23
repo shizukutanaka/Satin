@@ -106,6 +106,11 @@ class CacheManager:
         # Per-key TTL overrides for the public get()/set() API (the decorator
         # path uses the global self.cache_ttl instead).
         self._ttl_overrides: Dict[str, int] = {}
+        # memory_cache / _ttl_overrides は cleanup デーモンスレッドと
+        # メイン/async スレッドの双方から変更されるため、無ロックだと
+        # 「反復中に別スレッドが削除」で RuntimeError/KeyError、または
+        # popitem の競合でデータ欠落が起きる。全変更・反復をこのロックで保護する。
+        self._cache_lock = threading.Lock()
 
         self.executor = ThreadPoolExecutor(max_workers=self.max_concurrent_tasks)
         # Keep strong refs to fire-and-forget disk-write tasks so the event loop
@@ -163,59 +168,68 @@ class CacheManager:
         cache_manager.get(key) を直接呼ぶが、従来このメソッドが存在せず
         AttributeError でキャッシュ参照が必ず失敗していた。per-key TTL に対応。
         """
-        entry = self.memory_cache.get(key)
-        if entry is None:
-            return None
-        value, timestamp = entry
-        ttl = self._ttl_overrides.get(key, self.cache_ttl)
-        if datetime.now() - timestamp >= timedelta(seconds=ttl):
-            del self.memory_cache[key]
-            self._ttl_overrides.pop(key, None)
-            return None
-        self.memory_cache.move_to_end(key)
-        return value
+        with self._cache_lock:
+            entry = self.memory_cache.get(key)
+            if entry is None:
+                return None
+            value, timestamp = entry
+            ttl = self._ttl_overrides.get(key, self.cache_ttl)
+            if datetime.now() - timestamp >= timedelta(seconds=ttl):
+                del self.memory_cache[key]
+                self._ttl_overrides.pop(key, None)
+                return None
+            self.memory_cache.move_to_end(key)
+            return value
 
     def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         """公開 API: 値をキャッシュに格納する（任意の per-key TTL 対応）。
 
         ディスクキャッシュが有効な場合は永続化も行う。
         """
-        self.memory_cache[key] = (value, datetime.now())
-        self.memory_cache.move_to_end(key)
-        if ttl is not None:
-            self._ttl_overrides[key] = ttl
-        else:
-            self._ttl_overrides.pop(key, None)
+        with self._cache_lock:
+            self.memory_cache[key] = (value, datetime.now())
+            self.memory_cache.move_to_end(key)
+            if ttl is not None:
+                self._ttl_overrides[key] = ttl
+            else:
+                self._ttl_overrides.pop(key, None)
 
-        while self.max_cache_items > 0 and len(self.memory_cache) > self.max_cache_items:
-            oldest, _ = self.memory_cache.popitem(last=False)
-            self._ttl_overrides.pop(oldest, None)
+            while self.max_cache_items > 0 and len(self.memory_cache) > self.max_cache_items:
+                oldest, _ = self.memory_cache.popitem(last=False)
+                self._ttl_overrides.pop(oldest, None)
 
-        # ディスク永続化（disk_cache_size<=0 の場合は内部で no-op）
+        # ディスク永続化はロック外（I/O が遅く、メモリ操作と独立なため）。
+        # disk_cache_size<=0 の場合は内部で no-op。
         self._update_disk_cache(key, value)
 
     def _get_memory_cache(self, key: str) -> Optional[Any]:
-        entry = self.memory_cache.get(key)
-        if entry is None:
-            return None
-        value, timestamp = entry
-        if datetime.now() - timestamp >= timedelta(seconds=self.cache_ttl):
-            del self.memory_cache[key]
-            return None
-        self.memory_cache.move_to_end(key)
-        return value
+        with self._cache_lock:
+            entry = self.memory_cache.get(key)
+            if entry is None:
+                return None
+            value, timestamp = entry
+            if datetime.now() - timestamp >= timedelta(seconds=self.cache_ttl):
+                del self.memory_cache[key]
+                return None
+            self.memory_cache.move_to_end(key)
+            return value
 
     def _set_memory_cache(self, key: str, value: Any) -> None:
-        self.memory_cache[key] = (value, datetime.now())
-        self.memory_cache.move_to_end(key)
-        while self.max_cache_items > 0 and len(self.memory_cache) > self.max_cache_items:
-            self.memory_cache.popitem(last=False)
+        with self._cache_lock:
+            self.memory_cache[key] = (value, datetime.now())
+            self.memory_cache.move_to_end(key)
+            while self.max_cache_items > 0 and len(self.memory_cache) > self.max_cache_items:
+                self.memory_cache.popitem(last=False)
 
     async def _update_disk_cache_async(self, key: str, value: Any) -> None:
         if self.disk_cache_size <= 0:
             return
         if aiofiles is None:
-            self._update_disk_cache(key, value)
+            # aiofiles 不在時に同期 write をそのまま呼ぶとイベントループ全体を
+            # ブロックし、並列リクエストが直列化して async の意味が無くなる。
+            # スレッドプールにオフロードしてループを空けておく。
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(self.executor, self._update_disk_cache, key, value)
             return
         try:
             cache_file = self.cache_dir / f"{key}.json"
@@ -234,7 +248,9 @@ class CacheManager:
                     data = json.loads(cache_file.read_text(encoding="utf-8"))
                     timestamp = datetime.fromisoformat(data.get("timestamp", datetime.now().isoformat()))
                     if datetime.now() - timestamp < timedelta(seconds=self.cache_ttl):
-                        self.memory_cache[cache_file.stem] = (data.get("value"), timestamp)
+                        # cleanup デーモンは __init__ で既に起動済みのため保護する。
+                        with self._cache_lock:
+                            self.memory_cache[cache_file.stem] = (data.get("value"), timestamp)
                 except Exception as exc:
                     logger.warning("Failed to warmup cache", extra={"file": str(cache_file), "error": str(exc)})
         except Exception as exc:
@@ -245,8 +261,9 @@ class CacheManager:
 
     def clear_cache(self) -> None:
         try:
-            self.memory_cache.clear()
-            self._ttl_overrides.clear()
+            with self._cache_lock:
+                self.memory_cache.clear()
+                self._ttl_overrides.clear()
             for cache_file in self.cache_dir.glob("*.json"):
                 try:
                     cache_file.unlink()
@@ -293,11 +310,14 @@ class CacheManager:
             self._cleanup_stop_event.wait(self.cleanup_interval)
 
     def _cleanup_memory_cache(self) -> None:
-        current_size = sum(len(json.dumps(v[0])) for v in self.memory_cache.values())
-        while current_size > self.memory_cache_size_bytes and self.memory_cache:
-            oldest, _ = self.memory_cache.popitem(last=False)
-            self._ttl_overrides.pop(oldest, None)
+        # デーモンスレッドから呼ばれる。反復と popitem を必ず同一ロック下で
+        # 行い、メイン/async スレッドの set()/get() と競合させない。
+        with self._cache_lock:
             current_size = sum(len(json.dumps(v[0])) for v in self.memory_cache.values())
+            while current_size > self.memory_cache_size_bytes and self.memory_cache:
+                oldest, _ = self.memory_cache.popitem(last=False)
+                self._ttl_overrides.pop(oldest, None)
+                current_size = sum(len(json.dumps(v[0])) for v in self.memory_cache.values())
 
     def _cleanup_disk_cache(self) -> None:
         if self.disk_cache_size <= 0:
@@ -323,8 +343,9 @@ class CacheManager:
         """メモリとディスクキャッシュの使用状況サマリーを返す"""
 
         stats = self.get_cache_stats()
-        memory_items = len(self.memory_cache)
-        memory_size_bytes = sum(len(json.dumps(value[0])) for value in self.memory_cache.values())
+        with self._cache_lock:
+            memory_items = len(self.memory_cache)
+            memory_size_bytes = sum(len(json.dumps(value[0])) for value in self.memory_cache.values())
 
         if self.disk_cache_size > 0:
             disk_files = list(self.cache_dir.glob("*.json"))
@@ -365,16 +386,17 @@ class CacheManager:
         """期限切れのメモリ・ディスクキャッシュを即時に削除"""
 
         removed_memory = 0
-        for key in list(self.memory_cache.keys()):
-            entry = self.memory_cache.get(key)
-            if entry is None:
-                continue
-            _, timestamp = entry
-            ttl = self._ttl_overrides.get(key, self.cache_ttl)
-            if datetime.now() - timestamp >= timedelta(seconds=ttl):
-                del self.memory_cache[key]
-                self._ttl_overrides.pop(key, None)
-                removed_memory += 1
+        with self._cache_lock:
+            for key in list(self.memory_cache.keys()):
+                entry = self.memory_cache.get(key)
+                if entry is None:
+                    continue
+                _, timestamp = entry
+                ttl = self._ttl_overrides.get(key, self.cache_ttl)
+                if datetime.now() - timestamp >= timedelta(seconds=ttl):
+                    del self.memory_cache[key]
+                    self._ttl_overrides.pop(key, None)
+                    removed_memory += 1
 
         removed_disk = 0
         if self.disk_cache_size > 0:

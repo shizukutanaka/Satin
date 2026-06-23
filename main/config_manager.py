@@ -3,6 +3,7 @@
 """
 import logging
 import shutil
+import threading
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -172,9 +173,17 @@ class ConfigManager:
 
 # シングルトンインスタンス
 _config_manager = None
+_config_manager_lock = threading.Lock()
 def get_config_manager() -> ConfigManager:
-    """ConfigManagerのシングルトンインスタンスを取得"""
+    """ConfigManagerのシングルトンインスタンスを取得（スレッドセーフ）。
+
+    ダブルチェックロックで初期化競合を防ぐ。ロックが無いと 2 つのスレッドが
+    同時に None を見て別々の ConfigManager を生成し、片方の
+    update_plugin_config() の結果が黙って失われる（後勝ちで上書き）。
+    """
     global _config_manager
     if _config_manager is None:
-        _config_manager = ConfigManager()
+        with _config_manager_lock:
+            if _config_manager is None:
+                _config_manager = ConfigManager()
     return _config_manager

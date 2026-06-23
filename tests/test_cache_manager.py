@@ -169,5 +169,63 @@ class CleanupDiskCacheTests(unittest.TestCase):
             self.cm.disk_cache_size = orig
 
 
+class ThreadSafetyTests(unittest.TestCase):
+    """Regression: memory_cache / _ttl_overrides were mutated by the cleanup
+    daemon thread and the main thread without a lock, causing KeyError /
+    'dictionary changed size during iteration' under concurrency."""
+
+    def setUp(self):
+        import cache_manager
+        self.cm = cache_manager.CacheManager()
+        self.cm.clear_cache()
+
+    def tearDown(self):
+        self.cm.shutdown(wait=True)
+
+    def test_concurrent_set_get_clear_does_not_raise(self):
+        import threading
+
+        errors = []
+
+        def writer():
+            try:
+                for i in range(500):
+                    self.cm.set(f"k{i % 50}", i, ttl=1)
+            except Exception as e:  # pragma: no cover - failure path
+                errors.append(("writer", e))
+
+        def reader():
+            try:
+                for i in range(500):
+                    self.cm.get(f"k{i % 50}")
+            except Exception as e:  # pragma: no cover
+                errors.append(("reader", e))
+
+        def cleaner():
+            try:
+                for _ in range(50):
+                    self.cm._cleanup_memory_cache()
+                    self.cm.clear_expired_cache()
+            except Exception as e:  # pragma: no cover
+                errors.append(("cleaner", e))
+
+        threads = [
+            threading.Thread(target=writer),
+            threading.Thread(target=writer),
+            threading.Thread(target=reader),
+            threading.Thread(target=cleaner),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertEqual(errors, [], f"concurrent access raised: {errors}")
+
+    def test_cache_lock_exists(self):
+        import threading as _t
+        self.assertIsInstance(self.cm._cache_lock, type(_t.Lock()))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -154,5 +154,45 @@ class CleanupNullSettingsTests(unittest.TestCase):
             self.fail("_cleanup_old_backups raised AttributeError on null backup key")
 
 
+class SingletonThreadSafetyTests(unittest.TestCase):
+    """Regression: get_config_manager() had no lock, so concurrent first calls
+    could create multiple ConfigManager instances (last-write-wins on the global),
+    silently dropping config updates made on the abandoned instance."""
+
+    def setUp(self):
+        import config_manager
+        self._cm_mod = config_manager
+        self._orig = config_manager._config_manager
+        config_manager._config_manager = None
+
+    def tearDown(self):
+        self._cm_mod._config_manager = self._orig
+
+    def test_concurrent_get_returns_same_instance(self):
+        import threading
+        instances = []
+        barrier = threading.Barrier(8)
+
+        def grab():
+            barrier.wait()  # maximize the chance of a simultaneous None check
+            instances.append(self._cm_mod.get_config_manager())
+
+        threads = [threading.Thread(target=grab) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertEqual(len(instances), 8)
+        first = instances[0]
+        for inst in instances[1:]:
+            self.assertIs(inst, first,
+                          "get_config_manager() must return one shared instance")
+
+    def test_lock_object_exists(self):
+        import threading as _t
+        self.assertIsInstance(self._cm_mod._config_manager_lock, type(_t.Lock()))
+
+
 if __name__ == "__main__":
     unittest.main()
