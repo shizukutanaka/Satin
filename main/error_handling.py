@@ -109,10 +109,17 @@ class ErrorHandler:
         return handler(error)
     
     def _find_handler(self, exc_type: Type[Exception]) -> Callable:
-        """Find the most specific handler for an exception type"""
-        for et in self._handlers:
-            if issubclass(exc_type, et):
-                return self._handlers[et]
+        """Find the most specific handler for an exception type using MRO order.
+
+        Iterating self._handlers in insertion order returns the *first* base
+        class that matches, not the most-derived one registered.  For example,
+        RetryableError (subclass of SatinError) would always resolve to the
+        SatinError handler, so the RetryableError-specific handler was dead code.
+        Walking exc_type.__mro__ instead finds the closest registered ancestor.
+        """
+        for cls in exc_type.__mro__:
+            if cls in self._handlers:
+                return self._handlers[cls]
         return self._handle_generic_error
     
     def _log_error(self, error: Exception) -> None:

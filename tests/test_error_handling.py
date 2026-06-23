@@ -46,6 +46,58 @@ class HandleErrorDecoratorTests(unittest.TestCase):
         self.assertGreaterEqual(state["calls"], 2)
 
 
+class FindHandlerMROTests(unittest.TestCase):
+    """Regression: _find_handler must walk exc_type.__mro__ so subclass-specific
+    handlers are reached before their parent class handlers.
+
+    Before the fix, ErrorHandler._handlers was iterated in insertion order and
+    the first issubclass() match was returned.  SatinError was registered before
+    RetryableError/ValidationError, so those subclass handlers were dead code.
+    """
+
+    def setUp(self):
+        from error_handling import ErrorHandler, SatinError, RetryableError, ValidationError
+        self.eh = ErrorHandler.__new__(ErrorHandler)
+        self.eh.log_file = "/dev/null"
+        self.eh._handlers = {}
+        # Register handlers in parent-first order (reproduces pre-fix registration order)
+        self.eh.register_handler(SatinError, lambda e: "satin")
+        self.eh.register_handler(RetryableError, lambda e: "retryable")
+        self.eh.register_handler(ValidationError, lambda e: "validation")
+        self.eh.register_handler(Exception, lambda e: "generic")
+
+    def test_retryable_error_uses_specific_handler(self):
+        from error_handling import RetryableError
+        result = self.eh._find_handler(RetryableError)
+        self.assertEqual(result(None), "retryable",
+                         "_find_handler must pick RetryableError handler, not SatinError handler")
+
+    def test_validation_error_uses_specific_handler(self):
+        from error_handling import ValidationError
+        result = self.eh._find_handler(ValidationError)
+        self.assertEqual(result(None), "validation",
+                         "_find_handler must pick ValidationError handler, not SatinError handler")
+
+    def test_satin_error_uses_satin_handler(self):
+        from error_handling import SatinError
+        result = self.eh._find_handler(SatinError)
+        self.assertEqual(result(None), "satin")
+
+    def test_unknown_exception_falls_back_to_generic(self):
+        from error_handling import ErrorHandler
+        result = self.eh._find_handler(FileNotFoundError)
+        # FileNotFoundError -> OSError -> Exception -> object; Exception is registered
+        self.assertEqual(result(None), "generic")
+
+    def test_unregistered_exc_returns_default_generic_handler(self):
+        """If no ancestor is registered at all, returns _handle_generic_error fallback."""
+        from error_handling import ErrorHandler
+        eh = ErrorHandler.__new__(ErrorHandler)
+        eh._handlers = {}
+        handler = eh._find_handler(ValueError)
+        self.assertTrue(callable(handler))
+
+
 class IntegratorImportTests(unittest.TestCase):
     def test_async_integrator_imports_without_httpx(self):
         import async_integrator  # noqa: F401  (was NameError: httpx)
