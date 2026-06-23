@@ -249,6 +249,8 @@ class UserProfile:
             tmp = f"{path}.tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(self.to_dict(), f, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
             _restrict_to_owner(tmp)  # 私的データ: 公開前に所有者のみへ制限
             os.replace(tmp, path)
             return True
