@@ -3,6 +3,7 @@ Unified Content Aggregator
 YouTube・論文・Web統合コンテンツ収集システム
 """
 
+import copy
 import json
 import math
 from typing import Dict, List, Optional, Any
@@ -439,7 +440,7 @@ class ContentAggregator:
 
         result = AggregationResult(
             query=query,
-            sources=[s for s in sources if s != 'web'],
+            sources=list(sources),
             total_results=len(all_contents),
             contents=all_contents,
             aggregation_time=datetime.now(),
@@ -557,9 +558,11 @@ class ContentAggregator:
             max_results_per_source=math.ceil(max_items / n_sources)
         )
 
-        # 追加データ取得
+        # 追加データ取得 (content_data を変更するので元の UnifiedContent を汚染しないようコピー)
         enriched_contents = []
-        for content in result.contents[:max_items]:
+        for orig in result.contents[:max_items]:
+            content = copy.copy(orig)
+            content.content_data = dict(orig.content_data)
             # YouTube字幕
             if include_transcripts and content.content_type == ContentType.VIDEO:
                 video_id = content.content_id

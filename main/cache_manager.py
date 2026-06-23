@@ -274,6 +274,17 @@ class CacheManager:
             logger.error("Failed to clear cache", extra={"error": str(exc)})
             raise
     
+    def delete(self, key: str) -> None:
+        """指定キーのキャッシュエントリを削除する（メモリ・ディスク両方）。"""
+        with self._cache_lock:
+            self.memory_cache.pop(key, None)
+            self._ttl_overrides.pop(key, None)
+        cache_file = self.cache_dir / f"{key}.json"
+        try:
+            cache_file.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Failed to delete cache file", extra={"file": str(cache_file), "error": str(exc)})
+
     def _generate_cache_key(self, func_name: str, args: Tuple, kwargs: Dict) -> str:
         """キャッシュキーの生成（プロセス間で安定なハッシュ）。
 

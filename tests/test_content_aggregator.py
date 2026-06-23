@@ -261,5 +261,79 @@ class TimezoneAwarenessTests(unittest.TestCase):
         self.assertIn("earliest", analysis["date_range"])
 
 
+class WebSourcePreservationTests(unittest.TestCase):
+    """Regression: sources=[s for s in sources if s != 'web'] unconditionally
+    removed 'web' from AggregationResult.sources even when the caller requested it."""
+
+    def setUp(self):
+        self._agg = _make_aggregator()
+        # Stub the search helpers so they return empty results quickly
+        self._agg._search_youtube = mock.MagicMock(return_value=(True, [], None))
+        self._agg._search_arxiv = mock.MagicMock(return_value=(True, [], None))
+        self._agg._search_scholar = mock.MagicMock(return_value=(True, [], None))
+        self._agg.logger = mock.MagicMock()
+
+    def test_web_source_preserved_in_result(self):
+        result = self._agg.search_all_sources(
+            query="test", sources=["youtube", "web"], max_results_per_source=1
+        )
+        self.assertIn("web", result.sources,
+                      "AggregationResult.sources must include 'web' when caller requested it")
+
+    def test_non_web_sources_still_present(self):
+        result = self._agg.search_all_sources(
+            query="test", sources=["youtube", "arxiv", "web"], max_results_per_source=1
+        )
+        for s in ("youtube", "arxiv", "web"):
+            self.assertIn(s, result.sources)
+
+
+class KnowledgeBaseMutationTests(unittest.TestCase):
+    """Regression: create_knowledge_base mutated content_data on shared
+    UnifiedContent objects from the AggregationResult, corrupting the source
+    data for any caller holding a reference to result.contents."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self._agg = _make_aggregator()
+        self._agg.logger = mock.MagicMock()
+        self._tmpdir = tempfile.mkdtemp()
+        self._agg.output_dir = Path(self._tmpdir)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_create_knowledge_base_does_not_mutate_source_content(self):
+        from content_aggregator import AggregationResult
+
+        orig = _make_content(
+            content_type=ContentType.VIDEO,
+            content_data={"view_count": 100},
+        )
+        result = AggregationResult(
+            query="test",
+            sources=["youtube"],
+            total_results=1,
+            contents=[orig],
+            aggregation_time=datetime.now(),
+            metadata={},
+        )
+        self._agg.search_all_sources = mock.MagicMock(return_value=result)
+        self._agg.youtube.get_transcript = mock.MagicMock(return_value="transcript text")
+
+        self._agg.create_knowledge_base(
+            "test", sources=["youtube"], include_transcripts=True, include_full_text=False
+        )
+
+        self.assertNotIn(
+            "transcript", orig.content_data,
+            "create_knowledge_base must not mutate the original UnifiedContent objects",
+        )
+        self.assertEqual(orig.content_data.get("view_count"), 100,
+                         "original content_data values must be unchanged")
+
+
 if __name__ == "__main__":
     unittest.main()

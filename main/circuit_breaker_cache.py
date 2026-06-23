@@ -194,11 +194,11 @@ class CircuitBreaker:
             self.metrics.total_calls += 1
             self.metrics.failed_calls += 1
             self.metrics.last_failure_time = datetime.now()
-            self.last_failure_time = datetime.now()
 
             logger.error(f"Call failed in Circuit Breaker '{self.name}': {e}")
 
             async with self._lock:
+                self.last_failure_time = datetime.now()
                 self.failure_count += 1
 
                 # HALF_OPEN 状態では即座に OPEN に(成功カウントもリセット)
@@ -460,9 +460,9 @@ class ResilientService:
     async def call(
         self,
         func: Callable,
+        *args,
         cache_key: Optional[str] = None,
         fallback: Optional[Callable] = None,
-        *args,
         **kwargs
     ) -> Any:
         """
@@ -474,8 +474,8 @@ class ResilientService:
         4. フォールバック実行
         """
 
-        # ステップ 1: キャッシュ確認
-        if cache_key:
+        # ステップ 1: キャッシュ確認 (circuit が OPEN の間は stale 値を返さない)
+        if cache_key and self.circuit_breaker.state != CircuitState.OPEN:
             cached_value = await self.cache.get(cache_key)
             if cached_value is not None:
                 logger.debug(f"Cache HIT for {cache_key}")

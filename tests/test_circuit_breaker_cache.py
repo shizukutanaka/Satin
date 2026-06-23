@@ -292,5 +292,73 @@ class ResilientServiceCallTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cached, "produced")
 
 
+class ResilientServicePositionalArgsTests(unittest.IsolatedAsyncioTestCase):
+    """Regression: *args appeared after cache_key/fallback defaults, so positional
+    call args were absorbed by those parameters instead of being forwarded to func."""
+
+    async def test_positional_args_forwarded_to_func(self):
+        svc = ResilientService("args_fwd")
+
+        async def add(a, b):
+            return a + b
+
+        result = await svc.call(add, 3, 4)
+        self.assertEqual(result, 7, "positional args must reach the function, not cache_key/fallback")
+
+    async def test_cache_key_still_works_as_keyword(self):
+        svc = ResilientService("args_kw")
+        await svc.cache.set("kw_key", "cached")
+        result = await svc.call(lambda: "live", cache_key="kw_key")
+        self.assertEqual(result, "cached")
+
+
+class OpenCircuitCacheBypassTests(unittest.IsolatedAsyncioTestCase):
+    """Regression: when circuit is OPEN, ResilientService.call used to return
+    a stale cached value instead of raising CircuitBreakerOpenError."""
+
+    async def test_open_circuit_bypasses_stale_cache(self):
+        svc = ResilientService(
+            "stale_bypass",
+            circuit_breaker_config=CircuitBreakerConfig(failure_threshold=1),
+        )
+
+        async def always_fail():
+            raise RuntimeError("downstream down")
+
+        # Open the circuit via a call WITHOUT a cache_key so cache doesn't
+        # intercept and mask the failure before it reaches the breaker.
+        with self.assertRaises(RuntimeError):
+            await svc.call(always_fail)
+
+        # Pre-warm cache with a stale value after the circuit is already OPEN
+        await svc.cache.set("stale_key", "stale_value")
+
+        # Circuit is OPEN; must raise, not serve stale_value from cache
+        with self.assertRaises(CircuitBreakerOpenError):
+            await svc.call(always_fail, cache_key="stale_key")
+
+    async def test_closed_circuit_still_uses_cache(self):
+        """Sanity: cache hit must still work when circuit is CLOSED."""
+        svc = ResilientService("closed_cache")
+        await svc.cache.set("good_key", "cached_val")
+        result = await svc.call(lambda: "live", cache_key="good_key")
+        self.assertEqual(result, "cached_val")
+
+    async def test_last_failure_time_set_inside_lock(self):
+        """Regression: last_failure_time was written outside the lock, creating
+        a TOCTOU race with _should_attempt_reset. Verify the attribute is set."""
+        cb = CircuitBreaker("lft_test", CircuitBreakerConfig(failure_threshold=5))
+
+        async def fail():
+            raise ValueError("err")
+
+        try:
+            await cb.call(fail)
+        except ValueError:
+            pass
+
+        self.assertIsNotNone(cb.last_failure_time)
+
+
 if __name__ == "__main__":
     unittest.main()

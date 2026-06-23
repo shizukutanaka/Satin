@@ -137,6 +137,35 @@ class CacheStatsTests(unittest.TestCase):
         self.assertAlmostEqual(stats["average_latency"], 15.0)
 
 
+class CacheManagerDeleteTests(unittest.TestCase):
+    """Tests for the new CacheManager.delete() method."""
+
+    def setUp(self):
+        import cache_manager
+        self.cm = cache_manager.CacheManager()
+        self.cm.clear_cache()
+
+    def tearDown(self):
+        self.cm.shutdown(wait=True)
+
+    def test_delete_removes_existing_entry(self):
+        self.cm.set("to_delete", "value")
+        self.cm.delete("to_delete")
+        self.assertIsNone(self.cm.get("to_delete"))
+
+    def test_delete_nonexistent_key_does_not_raise(self):
+        try:
+            self.cm.delete("no_such_key")
+        except Exception as exc:
+            self.fail(f"delete() on missing key raised {exc}")
+
+    def test_delete_does_not_affect_other_keys(self):
+        self.cm.set("keep", "safe")
+        self.cm.set("remove", "gone")
+        self.cm.delete("remove")
+        self.assertEqual(self.cm.get("keep"), "safe")
+
+
 class CleanupDiskCacheTests(unittest.TestCase):
     """_cleanup_disk_cache must not call stat() after unlink() (FileNotFoundError)."""
 

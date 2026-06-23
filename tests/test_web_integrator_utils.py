@@ -94,5 +94,37 @@ class GenerateUrlHashTests(unittest.TestCase):
         self.assertEqual(len(h), 16)
 
 
+class HttpToHttpsTests(unittest.TestCase):
+    """Regression: http→https upgrade used 'not parsed.scheme' which is always
+    False for a valid http:// URL, so the upgrade never fired."""
+
+    def setUp(self):
+        self.wi = _make_integrator()
+
+    def test_http_upgraded_to_https(self):
+        result = self.wi.normalize_url("http://example.com/page")
+        self.assertTrue(result.startswith("https://"),
+                        f"http:// must be upgraded to https://, got: {result}")
+
+    def test_https_unchanged(self):
+        result = self.wi.normalize_url("https://example.com/page")
+        self.assertTrue(result.startswith("https://"))
+        self.assertFalse(result.startswith("https://https://"))
+
+    def test_root_path_not_emptied(self):
+        """Regression: https://example.com/ had path '/' rstripped to '' which
+        could produce a URL with empty netloc in edge cases."""
+        result = self.wi.normalize_url("https://example.com/")
+        from urllib.parse import urlparse
+        parsed = urlparse(result)
+        self.assertNotEqual(parsed.netloc, "", "netloc must not be empty")
+        self.assertEqual(parsed.netloc, "example.com")
+
+    def test_non_root_trailing_slash_stripped(self):
+        result = self.wi.normalize_url("https://example.com/page/")
+        self.assertFalse(result.rstrip("?#").endswith("/path/"),
+                         "non-root trailing slash should be stripped")
+
+
 if __name__ == "__main__":
     unittest.main()

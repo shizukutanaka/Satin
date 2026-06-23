@@ -248,8 +248,12 @@ class WebIntegrator:
         if use_cache:
             cached = self.cache_manager.get(cache_key)
             if cached:
-                self.logger.debug(f"Cache hit for {url}")
-                return WebPage.from_dict(cached)
+                try:
+                    self.logger.debug(f"Cache hit for {url}")
+                    return WebPage.from_dict(cached)
+                except Exception:
+                    self.logger.warning(f"Corrupted cache entry for {url}, evicting")
+                    self.cache_manager.delete(cache_key)
 
         # HTML取得
         html = self._fetch_html(url)
@@ -471,13 +475,13 @@ class WebIntegrator:
         parsed = urlparse(url)
 
         # スキーム正規化 (http → https)
-        scheme = 'https' if not parsed.scheme else parsed.scheme
+        scheme = 'https' if parsed.scheme in ('', 'http') else parsed.scheme
 
         # ホストの小文字化
         netloc = parsed.netloc.lower()
 
-        # パスの正規化
-        path = parsed.path.rstrip('/')
+        # パスの正規化 (ルートパス "/" はそのまま保持)
+        path = parsed.path.rstrip('/') if parsed.path != '/' else '/'
 
         # クエリパラメータの正規化 (ソート)
         query = ''
@@ -515,7 +519,7 @@ class WebIntegrator:
             robots = RobotFileParser(robots_url)
             robots.read()
 
-            can_fetch = robots.can_fetch(self.user_agent, url)
+            can_fetch = robots.can_fetch("*", url)
             if not can_fetch:
                 self.logger.warning(f"robots.txt denies access to {url}")
             return can_fetch
@@ -618,6 +622,11 @@ class WebIntegrator:
                 continue
 
             visited.add(url)
+
+            # robots.txt チェック (エントリ URL 以外のサブページも対象)
+            if not self.check_robots_txt(url):
+                self.logger.info(f"robots.txt denies {url}, skipping")
+                continue
 
             # ページ取得
             page = self.fetch_page(url)
