@@ -788,6 +788,28 @@ class ConfessionEventTests(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+class ConfessionGetAttrDefaultTests(unittest.TestCase):
+    """Regression: getattr(tracker, '_confession_done', True) used True as default,
+    so a tracker loaded from old state without that attribute would silently
+    skip every confession forever. Default must be False."""
+
+    def test_tracker_without_attribute_shows_confession(self):
+        from mood import check_confession_event, MoodTracker
+        # Simulate an old-format tracker without _confession_done attribute.
+        t = object.__new__(MoodTracker)
+        t.affinity = 79.0
+        # Deliberately do NOT set t._confession_done.
+        msg = check_confession_event(t, 79.0, 81.0, lang="ja")
+        self.assertIsNotNone(msg, "tracker with no _confession_done must show confession")
+
+    def test_tracker_without_attribute_marks_done_after_call(self):
+        from mood import check_confession_event, MoodTracker
+        t = object.__new__(MoodTracker)
+        t.affinity = 79.0
+        check_confession_event(t, 79.0, 81.0)
+        self.assertTrue(t._confession_done)
+
+
 class LevelTransitionHistoryTests(unittest.TestCase):
     """snapshot_to_history() records level_changed milestones."""
 

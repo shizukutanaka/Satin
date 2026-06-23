@@ -864,7 +864,7 @@ def check_confession_event(
     after_level = affinity_level(after)
     if before_level != "friendly" or after_level != "close":
         return None
-    if getattr(tracker, "_confession_done", True):
+    if getattr(tracker, "_confession_done", False):
         return None
 
     import random

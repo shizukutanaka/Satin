@@ -61,14 +61,17 @@ class AsyncRecordMetricDeadlockTest(unittest.TestCase):
 
 
 class ConfidenceIntervalWithoutNumpyTest(unittest.TestCase):
-    """Regression: calculate_confidence_interval must work when np is None."""
+    """Regression: calculate_confidence_interval must work when np is None.
+
+    Metrics are stored as flat lists of floats by record_metric(); the method
+    previously assumed a dict-of-dicts structure (self.metrics[resource]['history'])
+    which raised TypeError on production data.
+    """
 
     def _make_pm_with_history(self, values):
         pm = PerformanceMonitor()
-        pm.metrics["cpu"] = {
-            "history": [{"value": v, "timestamp": 1_700_000_000 + i}
-                        for i, v in enumerate(values)]
-        }
+        # Flat list of floats — matches what record_metric() produces.
+        pm.metrics["cpu"] = list(values)
         return pm
 
     def test_returns_tuple_without_numpy(self):
@@ -91,7 +94,7 @@ class ConfidenceIntervalWithoutNumpyTest(unittest.TestCase):
 
     def test_empty_history_returns_zero_tuple(self):
         pm = PerformanceMonitor()
-        pm.metrics["cpu"] = {"history": []}
+        pm.metrics["cpu"] = []  # flat empty list (matches record_metric storage)
         result = run(pm.calculate_confidence_interval("cpu"))
         self.assertEqual(result, (0, 0))
 
@@ -103,6 +106,17 @@ class ConfidenceIntervalWithoutNumpyTest(unittest.TestCase):
         mean = sum(values) / len(values)
         self.assertLessEqual(lower, mean)
         self.assertGreaterEqual(upper, mean)
+
+    def test_via_record_metric_does_not_raise(self):
+        """Regression: calling calculate_confidence_interval after record_metric
+        used to raise TypeError because self.metrics[resource] is a flat list
+        but the method tried self.metrics[resource]['history']."""
+        pm = PerformanceMonitor()
+        for v in [10.0, 20.0, 30.0, 40.0, 50.0]:
+            pm.record_metric("cpu", v)
+        lower, upper = run(pm.calculate_confidence_interval("cpu"))
+        self.assertIsInstance(lower, float)
+        self.assertIsInstance(upper, float)
 
 
 class RecordMetricSyncTest(unittest.TestCase):

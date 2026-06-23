@@ -178,10 +178,8 @@ class PerformanceMonitor:
             """Determine optimal optimization strategy"""
             strategy = {}
             for resource in self._strategies.keys():
-                if resource in metrics:
-                    current = metrics[resource][-1]['value']
+                if resource in metrics and resource in predictions:
                     predicted = predictions[resource]
-                    pattern = patterns[resource]
                     
                     # Determine strategy based on conditions
                     if predicted > 90:  # High usage predicted
@@ -475,7 +473,7 @@ class PerformanceMonitor:
         if resource not in self.metrics:
             return (0, 0)
 
-        values = [point['value'] for point in self.metrics[resource]['history']]
+        values = list(self.metrics[resource])  # flat list of floats
         if not values:
             return (0, 0)
 
@@ -503,16 +501,17 @@ class PerformanceMonitor:
             return
             
         for resource, history in self.metrics.items():
-            if 'history' in history:
-                values = [point['value'] for point in history['history']]
-                latest = values[-1]
-                
-                # Get confidence interval
-                lower, upper = await self.calculate_confidence_interval(resource)
-                
-                # Check for anomaly
-                if latest < lower or latest > upper:
-                    await self._anomaly_detector.handle_anomaly(resource, latest)
+            if resource.endswith('_timestamp') or not history:
+                continue
+            values = list(history)  # flat list of floats
+            latest = values[-1]
+
+            # Get confidence interval
+            lower, upper = await self.calculate_confidence_interval(resource)
+
+            # Check for anomaly
+            if latest < lower or latest > upper:
+                await self._anomaly_detector.handle_anomaly(resource, latest)
                     
         self._last_anomaly_check = current_time
     
