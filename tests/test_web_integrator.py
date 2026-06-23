@@ -259,5 +259,101 @@ class WebIntegratorFlagsTests(unittest.TestCase):
             pass
 
 
+class SitemapXmlFallbackTests(unittest.TestCase):
+    """Regression: 'xml' or 'html.parser' fallback was unreachable (BS4 objects are truthy).
+
+    Before fix: BeautifulSoup(html, 'xml') or BeautifulSoup(html, 'html.parser')
+    After fix:  try/except so html.parser is actually used when lxml raises.
+    """
+
+    def setUp(self):
+        import web_integrator as _wi_mod
+        self._wi_mod = _wi_mod
+        self.wi = WebIntegrator()
+
+    def tearDown(self):
+        try:
+            self.wi.cache_manager.shutdown(wait=False)
+        except Exception:
+            pass
+
+    def test_html_parser_used_when_xml_parser_raises(self):
+        """When the xml parser raises, html.parser fallback must be invoked and used."""
+        import unittest.mock as mock
+        wi_mod = self._wi_mod
+
+        calls = []
+
+        mock_soup = mock.MagicMock()
+        mock_url_tag = mock.MagicMock()
+        mock_loc = mock.MagicMock()
+        mock_loc.get_text.return_value = "https://example.com/p1"
+        mock_url_tag.find.side_effect = lambda tag: mock_loc if tag == 'loc' else None
+        mock_soup.find_all.return_value = [mock_url_tag]
+
+        def fake_bs4(html_content, parser):
+            calls.append(parser)
+            if parser == 'xml':
+                raise Exception("FeatureNotFound: lxml not available")
+            return mock_soup
+
+        orig_bs4_available = wi_mod.BS4_AVAILABLE
+        had_bs4 = hasattr(wi_mod, 'BeautifulSoup')
+        orig_bs4 = getattr(wi_mod, 'BeautifulSoup', None)
+        try:
+            wi_mod.BS4_AVAILABLE = True
+            wi_mod.BeautifulSoup = fake_bs4
+            self.wi._fetch_html = lambda url: "<sitemap><url><loc>x</loc></url></sitemap>"
+            entries = self.wi.fetch_sitemap("https://example.com")
+        finally:
+            wi_mod.BS4_AVAILABLE = orig_bs4_available
+            if had_bs4:
+                wi_mod.BeautifulSoup = orig_bs4
+            elif hasattr(wi_mod, 'BeautifulSoup'):
+                del wi_mod.BeautifulSoup
+
+        # html.parser must have been tried
+        self.assertIn('html.parser', calls)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].url, "https://example.com/p1")
+
+    def test_xml_parser_used_when_available(self):
+        """When the xml parser succeeds, html.parser must NOT be called."""
+        import unittest.mock as mock
+        wi_mod = self._wi_mod
+
+        calls = []
+
+        mock_soup = mock.MagicMock()
+        mock_url_tag = mock.MagicMock()
+        mock_loc = mock.MagicMock()
+        mock_loc.get_text.return_value = "https://example.com/ok"
+        mock_url_tag.find.side_effect = lambda tag: mock_loc if tag == 'loc' else None
+        mock_soup.find_all.return_value = [mock_url_tag]
+
+        def fake_bs4(html_content, parser):
+            calls.append(parser)
+            return mock_soup  # xml parser succeeds
+
+        orig_bs4_available = wi_mod.BS4_AVAILABLE
+        had_bs4 = hasattr(wi_mod, 'BeautifulSoup')
+        orig_bs4 = getattr(wi_mod, 'BeautifulSoup', None)
+        try:
+            wi_mod.BS4_AVAILABLE = True
+            wi_mod.BeautifulSoup = fake_bs4
+            self.wi._fetch_html = lambda url: "<sitemap><url><loc>x</loc></url></sitemap>"
+            entries = self.wi.fetch_sitemap("https://example.com")
+        finally:
+            wi_mod.BS4_AVAILABLE = orig_bs4_available
+            if had_bs4:
+                wi_mod.BeautifulSoup = orig_bs4
+            elif hasattr(wi_mod, 'BeautifulSoup'):
+                del wi_mod.BeautifulSoup
+
+        self.assertIn('xml', calls)
+        self.assertNotIn('html.parser', calls)
+        self.assertEqual(len(entries), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
