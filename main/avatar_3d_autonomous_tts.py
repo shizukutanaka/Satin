@@ -647,7 +647,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if get_conversation_log is not None:
             try:
                 log = get_conversation_log()
-                count = len(log.entries) if hasattr(log, "entries") else 0
+                count = len(log.search("", include_archives=False))
                 if lang == "en":
                     parts.append(f"Logged exchanges: {count}")
                 else:

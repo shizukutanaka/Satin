@@ -1042,6 +1042,17 @@ class GUILikeForgetMoodBirthdayTests(unittest.TestCase):
         v.speak_comment("/stats")
         self.assertEqual(v.mode, "comment")
 
+    def test_stats_shows_conversation_log_count(self):
+        """GUI /stats must use ConversationLog.search() for count, not .entries."""
+        class _FakeLog:
+            def search(self, query, *, include_archives=True):
+                return [{"event_type": "user_comment"} for _ in range(7)]
+
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", lambda: _FakeLog()):
+            v.speak_comment("/stats")
+        self.assertIn("7", v.comment_text)
+
     # --- /birthday ---
 
     def test_birthday_valid_date_saved(self):
