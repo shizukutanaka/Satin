@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import os
 import random
+import threading
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 logger_name = __name__
 
@@ -99,6 +100,16 @@ _WELLBEING_MESSAGES: Dict[str, Dict[str, List[str]]] = {
 }
 
 
+# wellbeing_summary の結果を 60 秒キャッシュする（大きなログファイルの再読を防ぐ）。
+# テスト用に now= を明示した場合はキャッシュをバイパスして決定論的挙動を維持する。
+_SUMMARY_CACHE_TTL = 60.0
+_summary_cache: Dict[Tuple[str, int], Tuple[Dict, float]] = {}
+_summary_cache_lock = threading.Lock()
+
+# _last_pick への同時アクセスを保護する（複数スレッドから wellbeing_message が呼ばれる場合）。
+_last_pick_lock = threading.Lock()
+
+
 def _lang_key(lang: Optional[str]) -> str:
     """言語コードを 'ja' / 'en' のいずれかへ正規化する（未知は en）。"""
     s = str(lang or "").lower()
@@ -131,18 +142,33 @@ def wellbeing_summary(
     trend は保守的に決める: サンプルが _MIN_SAMPLE 未満なら "neutral"、
     否定が優勢かつ _MIN_DOMINANT 以上なら "low"、肯定が優勢かつ _MIN_DOMINANT
     以上なら "high"、それ以外は "neutral"。
+
+    now が None（本番用途）のときは結果を _SUMMARY_CACHE_TTL 秒間キャッシュして
+    大きなログファイルへの連続読み込みを避ける。now= を明示した場合（テスト）は
+    キャッシュをバイパスし、決定論的な挙動を維持する。
     """
     path = event_log_path or _DEFAULT_LOGFILE
-    now = time.time() if now is None else now
+    use_cache = now is None
+    real_now = time.time() if now is None else now
+
+    if use_cache:
+        cache_key = (path, days)
+        with _summary_cache_lock:
+            cached = _summary_cache.get(cache_key)
+        if cached is not None:
+            result, cached_at = cached
+            if real_now - cached_at < _SUMMARY_CACHE_TTL:
+                return result
+
     # days 日前の 0:00 以降を対象（days=1 なら「今日」だけ）。
-    cutoff = _start_of_day(now) - max(0, days - 1) * 86400
+    cutoff = _start_of_day(real_now) - max(0, days - 1) * 86400
 
     pos = neg = neu = 0
     for ev in _load_jsonl_dicts(path):
         if ev.get("event_type") not in _USER_EVENT_TYPES:
             continue
         ts = ev.get("timestamp")
-        if not isinstance(ts, (int, float)) or ts < cutoff or ts > now:
+        if not isinstance(ts, (int, float)) or ts < cutoff or ts > real_now:
             continue
         text = (ev.get("details") or {}).get("text") or ""
         s = _classify_sentiment(text)
@@ -161,7 +187,7 @@ def wellbeing_summary(
         elif pos > neg and pos >= _MIN_DOMINANT:
             trend = "high"
 
-    return {
+    result = {
         "sample_size": sample,
         "positive": pos,
         "negative": neg,
@@ -169,6 +195,10 @@ def wellbeing_summary(
         "score": pos - neg,
         "trend": trend,
     }
+    if use_cache:
+        with _summary_cache_lock:
+            _summary_cache[(path, days)] = (result, real_now)
+    return result
 
 
 # 直前に選んだメッセージ（連続重複回避用）。trend ごとに保持。
@@ -191,10 +221,11 @@ def wellbeing_message(summary: Dict, lang: str = "ja") -> str:
                or _WELLBEING_MESSAGES.get(trend, {}).get("en") or [])
     if not options:
         return ""
-    last = _last_pick.get(trend)
-    choices = [o for o in options if o != last] or options
-    pick = random.choice(choices)
-    _last_pick[trend] = pick
+    with _last_pick_lock:
+        last = _last_pick.get(trend)
+        choices = [o for o in options if o != last] or options
+        pick = random.choice(choices)
+        _last_pick[trend] = pick
     return pick
 
 

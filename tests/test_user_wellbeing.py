@@ -125,6 +125,31 @@ class WellbeingSummaryTests(unittest.TestCase):
         # Only the valid messages counted; no crash.
         self.assertEqual(s["sample_size"], 2)  # the no-details one is neutral, the thanks is positive
 
+    def test_cache_returns_same_result_within_ttl(self):
+        """Second call with now=None reuses the cached result without re-reading the file."""
+        self._write(["最悪", "むかつく", "つまらない"])
+        uw._summary_cache.clear()
+        # First real call (now=None means cache is active)
+        s1 = uw.wellbeing_summary(event_log_path=self._log, days=3)
+        # Second call: overwrite the log so we can detect if it was re-read
+        with open(self._log, "w", encoding="utf-8") as f:
+            f.write("")  # empty file would give sample_size=0
+        s2 = uw.wellbeing_summary(event_log_path=self._log, days=3)
+        # s2 should still be the cached result from s1
+        self.assertEqual(s1["trend"], s2["trend"])
+        self.assertEqual(s1["sample_size"], s2["sample_size"])
+
+    def test_explicit_now_bypasses_cache(self):
+        """Passing now= explicitly must bypass the cache (test isolation)."""
+        self._write(["最悪", "むかつく", "つまらない"])
+        s1 = uw.wellbeing_summary(event_log_path=self._log, days=3, now=self._now)
+        # Overwrite the log — if cache were active, s2 would equal s1
+        with open(self._log, "w", encoding="utf-8") as f:
+            f.write("")
+        s2 = uw.wellbeing_summary(event_log_path=self._log, days=3, now=self._now)
+        # No cache bypass: re-read file gives empty → sample_size=0
+        self.assertEqual(s2["sample_size"], 0)
+
 
 class WellbeingMessageTests(unittest.TestCase):
     def test_neutral_returns_empty(self):

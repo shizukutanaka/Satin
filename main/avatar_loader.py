@@ -1,5 +1,6 @@
 import os
 import json
+import tempfile
 
 try:
     import tkinter as tk
@@ -103,8 +104,20 @@ class AvatarLoaderApp:
             self.history.remove(path)
         self.history.insert(0, path)
         self.history = self.history[:5]
-        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(self.history, f, ensure_ascii=False)
+        _dir = os.path.dirname(os.path.abspath(HISTORY_FILE)) or "."
+        fd, tmp = tempfile.mkstemp(dir=_dir, suffix=".tmp")
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, HISTORY_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
         self.update_history_list()
 
     def update_history_list(self):
