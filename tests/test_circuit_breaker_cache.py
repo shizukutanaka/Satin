@@ -254,5 +254,43 @@ class ResilientServiceTests(unittest.TestCase):
         self.assertIsInstance(svc.bulkhead, BulkheadPolicy)
 
 
+class ResilientServiceCallTests(unittest.IsolatedAsyncioTestCase):
+    """Regression: the lambda wrapper returned an unawaited coroutine object."""
+
+    async def test_call_returns_actual_result_not_coroutine(self):
+        """call() must return the function's value, not a coroutine object."""
+        import inspect
+        svc = ResilientService("test_call")
+
+        async def my_func():
+            return 42
+
+        result = await svc.call(my_func)
+        self.assertEqual(result, 42)
+        self.assertFalse(inspect.iscoroutine(result), "result must not be an unawaited coroutine")
+
+    async def test_call_sync_func_returns_result(self):
+        svc = ResilientService("test_sync")
+        result = await svc.call(lambda: "hello")
+        self.assertEqual(result, "hello")
+
+    async def test_call_with_cache_hit_returns_cached_value(self):
+        svc = ResilientService("test_cache")
+        await svc.cache.set("ck", "cached_val")
+        result = await svc.call(lambda: "live_val", cache_key="ck")
+        self.assertEqual(result, "cached_val")
+
+    async def test_call_stores_result_in_cache(self):
+        svc = ResilientService("test_store")
+
+        async def produce():
+            return "produced"
+
+        result = await svc.call(produce, cache_key="k1")
+        self.assertEqual(result, "produced")
+        cached = await svc.cache.get("k1")
+        self.assertEqual(cached, "produced")
+
+
 if __name__ == "__main__":
     unittest.main()

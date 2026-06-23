@@ -123,8 +123,17 @@ class EnhancedConfigManager(ConfigManager):
         """直前の save() を元に戻す。スタックが空なら False。"""
         if not self._undo_stack:
             return False
+        before = copy.deepcopy(self.current_config) if self.current_config is not None else {}
         prev = self._undo_stack.pop()
-        return self._write(prev)
+        ok = self._write(prev)
+        if ok:
+            diff = ConfigDiff(before, prev)
+            for cb in list(self._change_listeners):
+                try:
+                    cb(diff)
+                except Exception:
+                    pass
+        return ok
 
     def undo_depth(self) -> int:
         return len(self._undo_stack)

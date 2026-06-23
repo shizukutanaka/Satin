@@ -181,6 +181,29 @@ class EnhancedManagerUndoTests(unittest.TestCase):
             mgr.save({"v": 1})
             self.assertEqual(calls, [])
 
+    def test_change_listener_called_on_undo(self):
+        """Regression: undo() previously bypassed change listeners entirely."""
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = self._make_manager(tmp)
+            received = []
+            mgr.add_change_listener(received.append)
+            mgr.save({"v": 99})   # listener fires for save (len==1)
+            received.clear()
+            mgr.undo()            # must also fire the listener
+            self.assertEqual(len(received), 1, "undo() must notify change listeners")
+            # The diff should show 'v' changed from 99 back to 0
+            diff = received[0]
+            self.assertIn("v", diff.changed)
+
+    def test_undo_listener_not_called_on_empty_stack(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = self._make_manager(tmp)
+            received = []
+            mgr.add_change_listener(received.append)
+            result = mgr.undo()  # nothing to undo
+            self.assertFalse(result)
+            self.assertEqual(received, [])
+
 
 class EnhancedManagerDiffTests(unittest.TestCase):
     def test_diff_returns_config_diff(self):

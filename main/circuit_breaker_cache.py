@@ -482,17 +482,17 @@ class ResilientService:
                 return cached_value
 
         # ステップ 2 & 3: Bulkhead + Circuit Breaker
-        async def protected_call():
-            return await self.bulkhead.call(
-                lambda: self.circuit_breaker.call(
-                    func,
-                    *args,
-                    fallback=fallback,
-                    **kwargs
-                )
-            )
-
-        result = await protected_call()
+        # Pass circuit_breaker.call directly so BulkheadPolicy detects it as a
+        # coroutinefunction and awaits it.  The previous lambda wrapper was a
+        # plain callable, so BulkheadPolicy called it, received a bare coroutine
+        # object, and returned it unawaited.
+        result = await self.bulkhead.call(
+            self.circuit_breaker.call,
+            func,
+            *args,
+            fallback=fallback,
+            **kwargs
+        )
 
         # キャッシュに保存
         if cache_key:
