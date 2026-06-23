@@ -262,7 +262,7 @@ def recall_fact(profile, lang: str = "ja") -> str:
     覚えている事実が無い / profile が None の場合は空文字。
     """
     if profile is None:
-        return None or ""
+        return ""
     facts = getattr(profile, "facts", {}) or {}
     # カタログに recall テンプレートがあるキーのみ対象
     usable = [(k, v) for k, v in facts.items() if k in _QUESTION_BY_KEY and v]
