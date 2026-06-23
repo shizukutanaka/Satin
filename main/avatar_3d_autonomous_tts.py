@@ -673,6 +673,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             tracker._last_anniversary_days = 0
             tracker._last_login_date = ""
             tracker._login_streak = 0
+            tracker._confession_done = False
             if _default_mood_path is not None:
                 tracker.save(_default_mood_path())
             reply = (f"Affinity reset to neutral ({int(AFFINITY_START)}/100)." if lang == "en"

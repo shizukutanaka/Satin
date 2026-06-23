@@ -1133,6 +1133,30 @@ class GUIResetMoodTests(unittest.TestCase):
             v.speak_comment("/reset-mood")
         self.assertEqual(v.mode, "comment")
 
+    def test_reset_mood_resets_confession_done(self):
+        """After /reset-mood, _confession_done must be False so the event can re-fire."""
+        class _FakeTracker:
+            affinity = 90.0
+            interactions = 50
+            _last_interaction_time = 0.0
+            _first_interaction_time = 0.0
+            _last_anniversary_days = 5
+            _last_login_date = "2024-01-01"
+            _login_streak = 7
+            _confession_done = True  # was already triggered
+
+            def save(self, p):
+                pass
+
+        tracker = _FakeTracker()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None):
+            v.speak_comment("/reset-mood")
+
+        self.assertFalse(tracker._confession_done,
+                         "_confession_done must be reset so confession can re-fire")
+
 
 class GUIWhoamiTests(unittest.TestCase):
     """Tests for /whoami GUI command."""
