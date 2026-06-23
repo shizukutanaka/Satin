@@ -461,6 +461,14 @@ class MoodIntegrationTests(unittest.TestCase):
         out = self._run(["/reset-mood", "/mood", "/reset-mood"], m)
         self.assertEqual(m.affinity, 90.0, "Affinity must remain unchanged when cancelled")
 
+    def test_reset_mood_resets_confession_done(self):
+        """After /reset-mood, _confession_done must be False so confession can re-fire."""
+        from mood import MoodTracker, AFFINITY_START
+        m = MoodTracker(affinity=90, interactions=10, confession_done=True)
+        self._run(["/reset-mood", "/reset-mood"], m)
+        self.assertFalse(m._confession_done,
+                         "_confession_done must be reset so confession can re-fire after reset")
+
     def test_reset_mood_disabled_when_none(self):
         """Two /reset-mood commands with mood=None shows 無効 (after confirm step)."""
         d = _Driver(["/reset-mood", "/reset-mood"])

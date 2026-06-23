@@ -747,6 +747,8 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
         # リセットは「関係の仕切り直し」: 出会いの起点と記念日マーカーも消す
         mood._first_interaction_time = 0.0
         mood._last_anniversary_days = 0
+        # 告白フラグも仕切り直す（仲良し度を再び積み上げれば告白シーンが再発火できる）
+        mood._confession_done = False
         # デイリーログインの連続記録も仕切り直す
         mood._last_login_date = ""
         mood._login_streak = 0
