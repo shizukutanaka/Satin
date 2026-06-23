@@ -667,7 +667,10 @@ class WebIntegrator:
                 if not html or not BS4_AVAILABLE:
                     continue
 
-                soup = BeautifulSoup(html, 'xml') or BeautifulSoup(html, 'html.parser')
+                try:
+                    soup = BeautifulSoup(html, 'xml')
+                except Exception:
+                    soup = BeautifulSoup(html, 'html.parser')
 
                 # URL要素を検索
                 entries = []
