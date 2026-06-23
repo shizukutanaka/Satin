@@ -144,6 +144,26 @@ class BackupConfigsTests(unittest.TestCase):
         zips = [f for f in os.listdir(self._tmp) if f.endswith(".zip")]
         self.assertEqual(len(zips), 1)
 
+    def test_partial_write_failure_removes_zip(self):
+        """Regression: if zf.write() raises mid-way, the partial ZIP must be
+        removed so callers never see a corrupted archive."""
+        import unittest.mock as mock
+        _write_json(self._tmp, "cfg_a.json", {"k": 1})
+        _write_json(self._tmp, "cfg_b.json", {"k": 2})
+
+        with mock.patch.object(zipfile.ZipFile, "write",
+                               side_effect=FileNotFoundError("gone")):
+            backup_configs(
+                search_dir=self._tmp,
+                glob_pattern="cfg_*.json",
+                zip_prefix="fail_bak",
+                ok_message_template="{zipname}",
+                error_prefix="err",
+            )
+
+        zips = [f for f in os.listdir(self._tmp) if f.endswith(".zip")]
+        self.assertEqual(zips, [], "partial ZIP must be deleted on write failure")
+
 
 class CommentManagerBatchTests(unittest.TestCase):
     def setUp(self):

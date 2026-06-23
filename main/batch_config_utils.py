@@ -80,3 +80,9 @@ def backup_configs(
         log_info(ok_message_template.format(zipname=zipname))
     except Exception as e:
         log_error(f"[ERROR] {error_prefix}: {e}")
+        # Remove the partial ZIP so callers never see a corrupted archive.
+        try:
+            if os.path.exists(zipname):
+                os.remove(zipname)
+        except OSError:
+            pass
