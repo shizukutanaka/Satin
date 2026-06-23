@@ -24,7 +24,10 @@ class I18N:
         lang = os.environ.get('SATIN_LANG')
         if lang:
             return lang.lower()
-        loc = locale.getdefaultlocale()[0]
+        try:
+            loc = locale.getlocale()[0]
+        except Exception:
+            loc = None
         if loc:
             return loc.lower().split('_')[0]
         return 'en'
