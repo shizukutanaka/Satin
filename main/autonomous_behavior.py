@@ -93,10 +93,14 @@ except Exception:  # pragma: no cover - defensive
 
 try:
     from user_wellbeing import wellbeing_reflection as _wellbeing_reflection
-    from conversation_log import DEFAULT_LOGFILE as _wb_default_logfile
+    from conversation_log import (
+        DEFAULT_LOGFILE as _wb_default_logfile,
+        get_conversation_log as _get_conversation_log_wb,
+    )
 except Exception:  # pragma: no cover - defensive
     _wellbeing_reflection = None
     _wb_default_logfile = None
+    _get_conversation_log_wb = None
 
 
 class AutonomousBehaviorMixin:
@@ -236,6 +240,11 @@ class AutonomousBehaviorMixin:
             if _wellbeing_reflection is not None:
                 try:
                     _wb_path = _wb_default_logfile
+                    if _get_conversation_log_wb is not None:
+                        try:
+                            _wb_path = _get_conversation_log_wb().logfile
+                        except Exception:
+                            pass
                     wb = _wellbeing_reflection(event_log_path=_wb_path, lang=lang)
                     if wb:
                         greeting = (greeting + " " + wb).strip() if greeting else wb
