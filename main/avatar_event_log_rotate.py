@@ -23,8 +23,17 @@ def rotate_log(logfile, max_size=5*1024*1024, max_backups=5, quiet=False):
         return
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     rotated = f"{logfile}.{ts}.gz"
-    with open(logfile, 'rb') as f_in, gzip.open(rotated, 'wb') as f_out:
-        shutil.copyfileobj(f_in, f_out)
+    # アーカイブ書き込みが失敗した場合でもライブログを失わないように、
+    # 成功後にのみライブログを空にする（失敗時は中途半端なアーカイブを削除）。
+    try:
+        with open(logfile, 'rb') as f_in, gzip.open(rotated, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    except Exception:
+        try:
+            os.remove(rotated)
+        except OSError:
+            pass
+        raise
     # アーカイブを所有者のみ読み書き可に制限（会話ログは個人情報）
     try:
         from fsutil import restrict_to_owner

@@ -146,5 +146,58 @@ class MaxBackupsZeroBugTests(unittest.TestCase):
                          f"max_backups=1 must keep 1 archive; found: {gz_files}")
 
 
+class GzipFailureResilienceTests(unittest.TestCase):
+    """rotate_log must not lose the live log when gzip creation fails.
+
+    Before the fix, a gzip failure would still truncate the live log, causing
+    permanent data loss. After the fix, failure cleans up the partial archive
+    and re-raises, leaving the live log intact.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_live_log_preserved_when_gzip_fails(self):
+        """If gzip write raises, the live log must NOT be truncated."""
+        import unittest.mock as mock
+        logfile = os.path.join(self._tmp, "events.jsonl")
+        original_content = "important log data\n" * 10
+        with open(logfile, "w", encoding="utf-8") as f:
+            f.write(original_content)
+
+        # Simulate gzip.open raising mid-write
+        with mock.patch("gzip.open", side_effect=OSError("disk full")):
+            try:
+                rotate_log(logfile, max_size=1, max_backups=5)
+            except OSError:
+                pass  # expected
+
+        with open(logfile, encoding="utf-8") as f:
+            surviving = f.read()
+        self.assertEqual(surviving, original_content,
+                         "Live log must be intact when archive creation fails")
+
+    def test_partial_archive_cleaned_up_on_failure(self):
+        """A partially-written archive file must be removed on failure."""
+        import unittest.mock as mock
+        logfile = os.path.join(self._tmp, "events.jsonl")
+        with open(logfile, "w", encoding="utf-8") as f:
+            f.write("data\n" * 5)
+
+        with mock.patch("gzip.open", side_effect=OSError("disk full")):
+            try:
+                rotate_log(logfile, max_size=1, max_backups=5)
+            except OSError:
+                pass
+
+        gz_files = [f for f in os.listdir(self._tmp) if f.endswith(".gz")]
+        self.assertEqual(gz_files, [],
+                         "Partial archive must be cleaned up on gzip failure")
+
+
 if __name__ == "__main__":
     unittest.main()
