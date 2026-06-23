@@ -4,6 +4,7 @@ state machine extracted from the three autonomous avatar viewers.
 
 The mixin operates on plain attributes, so it is testable without Qt/numpy.
 """
+import contextlib
 import os
 import sys
 import unittest
@@ -238,6 +239,11 @@ class PersonaIntegrationTests(unittest.TestCase):
             autonomous_behavior, "_mood_description", lambda *a, **kw: ""
         )
         self._daily_desc_patcher.start()
+        # Suppress wellbeing so exact-string equality assertions are deterministic
+        self._wb_patcher = mock.patch.object(
+            autonomous_behavior, "_wellbeing_reflection", lambda *a, **kw: ""
+        )
+        self._wb_patcher.start()
 
     def tearDown(self):
         self._patcher.stop()
@@ -248,6 +254,7 @@ class PersonaIntegrationTests(unittest.TestCase):
         self._bday_patcher.stop()
         self._daily_mood_patcher.stop()
         self._daily_desc_patcher.stop()
+        self._wb_patcher.stop()
 
     def test_start_sets_greeting_from_persona(self):
         d = _StartStopDummy()
@@ -353,8 +360,11 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
                                                lambda *a, **kw: ""):
                             with mock.patch.object(autonomous_behavior, "_check_daily_login",
                                                    lambda *a, **kw: ""):
-                                d = _StartStopDummy()
-                                d.start_autonomous()
+                                with mock.patch.object(autonomous_behavior,
+                                                       "_wellbeing_reflection",
+                                                       lambda *a, **kw: ""):
+                                    d = _StartStopDummy()
+                                    d.start_autonomous()
 
         self.assertEqual(captured_levels, ["close"])
         self.assertEqual(d.talk_text, "GREETING_close")
@@ -948,6 +958,116 @@ class SummaryGreetingTests(unittest.TestCase):
              mock.patch.object(autonomous_behavior, "_mood_description", lambda *a, **kw: ""):
             d = _StartStopDummy()
             d.start_autonomous()  # must not raise
+
+        self.assertTrue(d.is_autonomous)
+
+
+class WellbeingGreetingTests(unittest.TestCase):
+    """start_autonomous appends a wellbeing check-in when the user's mood trend is
+    clear (low or high), and stays silent when trend is neutral."""
+
+    def _fake_persona(self):
+        class _FP:
+            lang = "ja"
+            def greeting(self, *a, **kw): return "GREETING"
+            def talk(self, *a, **kw): return "TALK"
+            def rest(self, *a, **kw): return "REST"
+        return _FP()
+
+    def _greeting_dummy(self, captured):
+        class _GDummy(_StartStopDummy):
+            def _on_talk_start(self, text):
+                captured.append(text)
+        return _GDummy()
+
+    def _common_patches(self):
+        """Context-manager patches shared by all tests in this class."""
+        return [
+            mock.patch.object(autonomous_behavior, "get_persona",
+                              lambda *a, **k: self._fake_persona()),
+            mock.patch.object(autonomous_behavior, "_get_mood_tracker", None),
+            mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""),
+            mock.patch.object(autonomous_behavior, "_summary_greeting", lambda **kw: ""),
+            mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""),
+            mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **kw: ""),
+            mock.patch.object(autonomous_behavior, "_get_daily_mood", None),
+            mock.patch.object(autonomous_behavior, "_mood_description", lambda *a, **kw: ""),
+        ]
+
+    def test_low_trend_appended_to_greeting(self):
+        """When wellbeing_reflection returns a message (low trend), it is appended."""
+        captured = []
+        patches = self._common_patches() + [
+            mock.patch.object(autonomous_behavior, "_wellbeing_reflection",
+                              lambda *a, **kw: "無理しないでね。"),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+
+        self.assertEqual(len(captured), 1)
+        self.assertIn("GREETING", captured[0])
+        self.assertIn("無理しないでね。", captured[0])
+
+    def test_high_trend_appended_to_greeting(self):
+        """When wellbeing_reflection returns a positive message, it is appended."""
+        captured = []
+        patches = self._common_patches() + [
+            mock.patch.object(autonomous_behavior, "_wellbeing_reflection",
+                              lambda *a, **kw: "最近すごく楽しそう！"),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+
+        self.assertIn("最近すごく楽しそう！", captured[0])
+
+    def test_neutral_trend_not_appended(self):
+        """When wellbeing_reflection returns '' (neutral), greeting is unchanged."""
+        captured = []
+        patches = self._common_patches() + [
+            mock.patch.object(autonomous_behavior, "_wellbeing_reflection",
+                              lambda *a, **kw: ""),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+
+        self.assertEqual(captured, ["GREETING"])
+
+    def test_wellbeing_reflection_none_does_not_crash(self):
+        """If _wellbeing_reflection is None (import failed), start still completes."""
+        patches = self._common_patches() + [
+            mock.patch.object(autonomous_behavior, "_wellbeing_reflection", None),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = _StartStopDummy()
+            d.start_autonomous()
+
+        self.assertTrue(d.is_autonomous)
+        self.assertIn("GREETING", d.talk_text)
+
+    def test_wellbeing_reflection_exception_does_not_crash(self):
+        """If _wellbeing_reflection raises, start_autonomous still completes."""
+        def _boom(*a, **kw):
+            raise RuntimeError("wellbeing boom")
+
+        patches = self._common_patches() + [
+            mock.patch.object(autonomous_behavior, "_wellbeing_reflection", _boom),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = _StartStopDummy()
+            d.start_autonomous()
 
         self.assertTrue(d.is_autonomous)
 

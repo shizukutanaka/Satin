@@ -91,6 +91,13 @@ except Exception:  # pragma: no cover - defensive
     _mood_description = None
     _mood_affinity_multiplier = None
 
+try:
+    from user_wellbeing import wellbeing_reflection as _wellbeing_reflection
+    from conversation_log import DEFAULT_LOGFILE as _wb_default_logfile
+except Exception:  # pragma: no cover - defensive
+    _wellbeing_reflection = None
+    _wb_default_logfile = None
+
 
 class AutonomousBehaviorMixin:
     REST_TEXTS = ['ふう…ちょっと休憩。', 'すこし止まります。']
@@ -225,6 +232,15 @@ class AutonomousBehaviorMixin:
                             greeting = (greeting + " " + summary).strip() if greeting else summary
                     except Exception as e:
                         logger.debug("本日サマリーの取得に失敗しました: %s", e)
+            # ユーザーの最近の気分に寄り添う一言（低調/上向きのときのみ、静かに添える）
+            if _wellbeing_reflection is not None:
+                try:
+                    _wb_path = _wb_default_logfile
+                    wb = _wellbeing_reflection(event_log_path=_wb_path, lang=lang)
+                    if wb:
+                        greeting = (greeting + " " + wb).strip() if greeting else wb
+                except Exception as e:
+                    logger.debug("ウェルビーイングチェックインの生成に失敗しました: %s", e)
             if greeting:
                 self.talk_text = greeting
                 self._on_talk_start(greeting)
