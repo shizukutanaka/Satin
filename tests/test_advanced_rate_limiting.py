@@ -115,6 +115,32 @@ class TokenBucketTests(unittest.TestCase):
             self.assertIs(first, True)
             self.assertIs(second, False)
 
+    def test_check_rate_limit_remaining_subtracts_tokens_consistently(self):
+        """Regression: LeakyBucket.check_rate_limit reported remaining WITHOUT
+        subtracting the requested tokens, while TokenBucket and SlidingWindow
+        both subtract them. All three must agree that 'remaining' means
+        capacity left AFTER the checked request."""
+        from advanced_rate_limiting import LeakyBucketLimiter, SlidingWindowLimiter
+        # Each starts empty with capacity 5; checking 2 tokens must leave 3.
+        tb = TokenBucketLimiter(capacity=5.0, refill_rate=1.0)
+        sw = SlidingWindowLimiter(max_requests=5, window_seconds=60.0)
+        lb = LeakyBucketLimiter(leak_rate=1.0, queue_size=5)
+        tb_status = _run(tb.check_rate_limit(2))
+        sw_status = _run(sw.check_rate_limit(2))
+        lb_status = _run(lb.check_rate_limit(2))
+        self.assertTrue(tb_status.allowed and sw_status.allowed and lb_status.allowed)
+        self.assertEqual(tb_status.remaining_requests, 3)
+        self.assertEqual(sw_status.remaining_requests, 3)
+        self.assertEqual(lb_status.remaining_requests, 3,
+                         "LeakyBucket must subtract tokens like the others")
+
+    def test_leaky_bucket_remaining_never_negative_at_capacity(self):
+        from advanced_rate_limiting import LeakyBucketLimiter
+        lb = LeakyBucketLimiter(leak_rate=0.001, queue_size=3)
+        status = _run(lb.check_rate_limit(3))  # exactly fills
+        self.assertTrue(status.allowed)
+        self.assertEqual(status.remaining_requests, 0)
+
 
 class SlidingWindowTests(unittest.TestCase):
     def test_empty_window_allows_request(self):

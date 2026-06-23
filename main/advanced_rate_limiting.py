@@ -235,7 +235,10 @@ class LeakyBucketLimiter(RateLimiter):
             if len(self.queue) + tokens <= self.queue_size:
                 return RateLimitStatus(
                     allowed=True,
-                    remaining_requests=self.queue_size - len(self.queue),
+                    # Subtract the requested tokens so "remaining" means capacity
+                    # left AFTER this request, matching TokenBucket and
+                    # SlidingWindow. The guard above keeps this non-negative.
+                    remaining_requests=self.queue_size - len(self.queue) - tokens,
                     current_rate=self.leak_rate
                 )
             else:
