@@ -208,6 +208,32 @@ class AnalyzeLogsTests(unittest.TestCase):
         result = self._mgr.analyze_logs()
         self.assertGreaterEqual(result["warning_count"], 1)
 
+    def test_top_errors_aggregated_across_multiple_files(self):
+        """Regression: _analyze_file used local error_counts dicts that were
+        reset per file, so only the last file's errors appeared in top_errors.
+        With multiple log files, errors from earlier files must be counted too.
+        """
+        import shutil
+        tmp = tempfile.mkdtemp()
+        try:
+            mgr = _make_mgr_with_logs(tmp, [
+                "2024-01-15 10:00:00 - app - ERROR - Alpha error",
+            ])
+            # Write a second log file with a different error message
+            (mgr.log_dir / "test.log.1").write_text(
+                "2024-01-15 10:01:00 - app - ERROR - Beta error\n",
+                encoding="utf-8",
+            )
+            result = mgr.analyze_logs()
+            top_error_msgs = [msg for msg, _ in result.get("top_errors", [])]
+            self.assertIn("Alpha error", top_error_msgs,
+                          "Error from first log file must appear in top_errors")
+            self.assertIn("Beta error", top_error_msgs,
+                          "Error from second log file must appear in top_errors")
+            mgr.stop()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 class HandlerDuplicationTests(unittest.TestCase):
     """Regression (Qiita best practice): instantiating LoggingManager twice

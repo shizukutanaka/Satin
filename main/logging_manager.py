@@ -217,69 +217,75 @@ class LoggingManager:
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S") if start_date else None
             end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S") if end_date else None
-            
+
+            # Accumulators shared across all files so every file's errors are
+            # counted, not just the last file (the previous per-call local dicts
+            # caused only the last file's data to survive in top_errors).
+            error_counts: Dict[str, int] = {}
+            performance_counts: Dict[str, int] = {}
+
             # ログファイルの分析
             for file in sorted(self.log_dir.glob("*.log*")):
                 try:
                     # 圧縮ファイルの場合は解凍して分析
                     if file.suffix.endswith(".gz"):
                         with gzip.open(file, 'rt', encoding='utf-8') as f:
-                            self._analyze_file(f, start_dt, end_dt, analysis)
+                            self._analyze_file(f, start_dt, end_dt, analysis, error_counts, performance_counts)
                     else:
                         with open(file, 'rt', encoding='utf-8') as f:
-                            self._analyze_file(f, start_dt, end_dt, analysis)
+                            self._analyze_file(f, start_dt, end_dt, analysis, error_counts, performance_counts)
                 except Exception as e:
                     # ログ機構自身の不調をデバッグ可能にするため exc_info を残す。
                     logger.error(f"ログファイルの分析中にエラーが発生しました: {e}", exc_info=True)
+
+            # Compute top-5 after all files are processed so results aggregate
+            # across the full set of log files.
+            analysis["top_errors"] = sorted(
+                error_counts.items(), key=lambda x: x[1], reverse=True
+            )[:5]
+            analysis["performance_issues"] = sorted(
+                performance_counts.items(), key=lambda x: x[1], reverse=True
+            )[:5]
 
             return analysis
         except Exception as e:
             logger.error(f"ログ分析中にエラーが発生しました: {e}")
             return analysis
-    
-    def _analyze_file(self, file_obj, start_dt: datetime, end_dt: datetime, analysis: Dict):
+
+    def _analyze_file(
+        self,
+        file_obj,
+        start_dt: datetime,
+        end_dt: datetime,
+        analysis: Dict,
+        error_counts: Dict,
+        performance_counts: Dict,
+    ):
         """ファイル内の分析実行"""
-        error_counts = {}
-        performance_issues = {}
-        
         for line in file_obj:
             try:
                 # 日時を抽出
                 timestamp = line.split(' - ')[0]
                 log_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-                
+
                 # 日付範囲のチェック
                 if (start_dt and log_dt < start_dt) or (end_dt and log_dt > end_dt):
                     continue
-                
+
                 # ログレベルのカウント
                 level = line.split(' - ')[2]
                 count_key = f"{level.lower()}_count"
                 analysis[count_key] = analysis.get(count_key, 0) + 1
                 analysis["total_logs"] += 1
-                
+
                 # エラーの分析
                 if level == "ERROR":
                     error_msg = line.split(' - ')[3].strip()
                     error_counts[error_msg] = error_counts.get(error_msg, 0) + 1
-                
+
                 # パフォーマンス問題の検出
                 if "performance" in line.lower():
                     perf_msg = line.split(' - ')[3].strip()
-                    performance_issues[perf_msg] = performance_issues.get(perf_msg, 0) + 1
+                    performance_counts[perf_msg] = performance_counts.get(perf_msg, 0) + 1
             except Exception:
                 continue
-        
-        # エラーの上位5件を設定
-        analysis["top_errors"] = sorted(
-            error_counts.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:5]
-        
-        # パフォーマンス問題の上位5件を設定
-        analysis["performance_issues"] = sorted(
-            performance_issues.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:5]
