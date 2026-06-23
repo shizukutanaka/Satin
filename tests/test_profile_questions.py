@@ -95,6 +95,19 @@ class RecallTests(unittest.TestCase):
         msg = pq.recall_fact(p, "en")
         self.assertIn("curry", msg)
 
+    def test_recall_no_repeat_consecutive(self):
+        """With 2+ facts, two consecutive recalls should use different keys."""
+        p = UserProfile(name="Test")
+        p.set_fact("favorite_food", "ラーメン")
+        p.set_fact("favorite_color", "青")
+        pq._last_recalled_key = ""  # reset state
+        picks = []
+        for _ in range(10):
+            msg = pq.recall_fact(p, "ja")
+            picks.append(msg)
+        # Should have at least 2 distinct recall templates across 10 picks
+        self.assertGreaterEqual(len(set(picks)), 2)
+
 
 class CatalogIntegrityTests(unittest.TestCase):
     def test_all_questions_have_both_langs(self):

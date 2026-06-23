@@ -15,6 +15,7 @@ Satin にはこれまで follow_up_question（一方的な問いかけ）はあ�
 from __future__ import annotations
 
 import random
+import threading
 from typing import Dict, List, Optional, Tuple
 
 # --------------------------------------------------------------------------- #
@@ -212,6 +213,10 @@ _QUESTIONS: List[Dict] = [
 
 _QUESTION_BY_KEY: Dict[str, Dict] = {q["key"]: q for q in _QUESTIONS}
 
+# 直前に思い出した事実キー（連続重複回避）。複数スレッドから呼ばれるためロックで保護。
+_last_recalled_key: str = ""
+_last_recalled_lock = threading.Lock()
+
 
 def _lang_key(lang: str) -> str:
     return "en" if str(lang).lower().startswith("en") else "ja"
@@ -263,7 +268,13 @@ def recall_fact(profile, lang: str = "ja") -> str:
     usable = [(k, v) for k, v in facts.items() if k in _QUESTION_BY_KEY and v]
     if not usable:
         return ""
-    key, value = random.choice(usable)
+    global _last_recalled_key
+    with _last_recalled_lock:
+        candidates = [(k, v) for k, v in usable if k != _last_recalled_key]
+        if not candidates:
+            candidates = usable
+        key, value = random.choice(candidates)
+        _last_recalled_key = key
     lk = _lang_key(lang)
     template = _QUESTION_BY_KEY[key][lk].get("recall", "")
     if not template:
