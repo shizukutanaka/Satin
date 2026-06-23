@@ -185,7 +185,7 @@ for _idx, _gift in enumerate(_GIFTS):
 
 
 def _pick(options: List[str], key: str = "") -> str:
-    """重複を避けながらリストから 1 件選ぶ（ステートレス: 単純にランダム）。"""
+    """リストから 1 件ランダムに選ぶ。空なら空文字。"""
     import random
     return random.choice(options) if options else ""
 

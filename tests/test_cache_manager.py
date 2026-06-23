@@ -137,5 +137,37 @@ class CacheStatsTests(unittest.TestCase):
         self.assertAlmostEqual(stats["average_latency"], 15.0)
 
 
+class CleanupDiskCacheTests(unittest.TestCase):
+    """_cleanup_disk_cache must not call stat() after unlink() (FileNotFoundError)."""
+
+    def setUp(self):
+        import cache_manager
+        self.cm = cache_manager.CacheManager()
+        self.cm.clear_cache()
+
+    def tearDown(self):
+        self.cm.shutdown(wait=True)
+
+    def test_cleanup_does_not_raise_on_size_eviction(self):
+        """Regression: stat() after unlink() used to raise FileNotFoundError
+        when a cache file was evicted because total size exceeded disk_cache_size."""
+        import json, time
+        # Write two small cache files manually into the cache dir.
+        for i in range(3):
+            p = self.cm.cache_dir / f"test_file_{i}.json"
+            p.write_text(json.dumps({"value": "x" * 100,
+                                     "timestamp": "2099-01-01T00:00:00"}),
+                         encoding="utf-8")
+
+        # Set a tiny limit so the cleanup loop deletes files by size.
+        orig = self.cm.disk_cache_size
+        self.cm.disk_cache_size = 1  # 1 byte — forces eviction
+        try:
+            # Must not raise FileNotFoundError
+            self.cm._cleanup_disk_cache()
+        finally:
+            self.cm.disk_cache_size = orig
+
+
 if __name__ == "__main__":
     unittest.main()

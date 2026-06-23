@@ -311,10 +311,11 @@ class CacheManager:
                 if datetime.now() - timestamp > timedelta(seconds=self.cache_ttl):
                     cache_file.unlink()
                     continue
-                total_size += cache_file.stat().st_size
+                file_size = cache_file.stat().st_size
+                total_size += file_size
                 if total_size > self.disk_cache_size * 1024 * 1024:
                     cache_file.unlink()
-                    total_size -= cache_file.stat().st_size
+                    total_size -= file_size
             except Exception as exc:
                 logger.error("Error during disk cache cleanup", extra={"file": str(cache_file), "error": str(exc)})
 
