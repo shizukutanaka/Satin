@@ -410,7 +410,13 @@ class GCRALimiter(RateLimiter):
                 )
 
     async def acquire(self, tokens: int = 1) -> bool:
-        """Acquire tokens using GCRA, blocking if needed."""
+        """Acquire tokens using GCRA, sleeping outside the lock if needed.
+
+        The TAT slot is reserved inside the lock so concurrent acquirers see
+        a correctly sequenced timeline.  The sleep itself happens after the
+        lock is released so other coroutines are not serialized behind this
+        one's wait time.
+        """
         async with self._lock:
             now = time.time()
             new_tat = max(self.tat, now) + (tokens * self.emission_interval)
@@ -420,9 +426,12 @@ class GCRALimiter(RateLimiter):
                 return True
 
             wait_time = new_tat - now - (self.capacity * self.emission_interval)
-            await asyncio.sleep(wait_time)
+            # Reserve the slot before releasing the lock.
             self.tat = new_tat
-            return True
+        # Sleep outside the lock so concurrent acquirers can reserve their own
+        # slots immediately rather than queuing behind this wait.
+        await asyncio.sleep(wait_time)
+        return True
 
     def get_status(self) -> RateLimitStatus:
         """Get current GCRA status."""
