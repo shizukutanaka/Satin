@@ -67,6 +67,8 @@ class PluginManager:
             spec = importlib.util.spec_from_file_location(plugin_name, plugin_file)
             if spec is None:
                 raise ImportError(f"Cannot create module spec from {plugin_file}")
+            if spec.loader is None:
+                raise ImportError(f"Cannot create loader for module spec from {plugin_file}")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             

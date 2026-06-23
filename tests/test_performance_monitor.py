@@ -85,6 +85,29 @@ class CheckAlertsTests(unittest.TestCase):
         self.assertTrue(pm._check_alerts(_stats(sent=900_000, recv=200_000)))
 
 
+class CheckAlertsEmptyStatsTests(unittest.TestCase):
+    """Regression: _check_alerts raised KeyError when psutil is absent and
+    _collect_stats() returned {}.  The guard `if not stats: return False`
+    must be present so the psutil-free path never crashes."""
+
+    def test_empty_stats_returns_false(self):
+        pm = _make_monitor()
+        self.assertFalse(pm._check_alerts({}))
+
+    def test_empty_stats_does_not_increment_counter(self):
+        pm = _make_monitor()
+        pm._check_alerts({})
+        self.assertEqual(pm.alert_count, 0)
+
+
+class LogStatsEmptyStatsTests(unittest.TestCase):
+    """Regression: _log_stats raised KeyError on empty stats dict."""
+
+    def test_log_stats_empty_does_not_raise(self):
+        pm = _make_monitor()
+        pm._log_stats({})  # must not raise
+
+
 class CollectStatsNullDiskIOTest(unittest.TestCase):
     """Regression: psutil.disk_io_counters() returning None raised AttributeError."""
 

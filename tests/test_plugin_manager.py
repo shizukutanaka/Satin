@@ -89,6 +89,30 @@ class MyPlugin(PluginBase):
             self.assertIn("my_plugin", pm.plugins)
 
 
+class NullSpecLoaderTests(unittest.TestCase):
+    """Regression: spec.loader can be None after spec_from_file_location().
+    Without an explicit check, spec.loader.exec_module() raises AttributeError
+    with a confusing traceback.  The fix adds `if spec.loader is None: raise ImportError`.
+    """
+
+    def test_null_loader_raises_plugin_error(self):
+        import unittest.mock as mock
+        from pathlib import Path
+        from error_handling import PluginError
+
+        pm = PluginManager(_StubLogger())
+        pm.plugin_directory = Path("/fake")
+        pm.plugin_config = {}
+
+        fake_spec = mock.MagicMock()
+        fake_spec.loader = None  # triggers the new guard
+
+        with mock.patch('plugin_manager.importlib.util.spec_from_file_location',
+                        return_value=fake_spec):
+            with self.assertRaises(PluginError):
+                pm._load_plugin(Path("/fake/my_plugin.py"))
+
+
 class ImportlibUtilImportTests(unittest.TestCase):
     """plugin_manager uses importlib.util.spec_from_file_location, but
     `import importlib` alone does NOT expose importlib.util — it must be

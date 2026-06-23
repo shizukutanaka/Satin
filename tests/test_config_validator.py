@@ -69,14 +69,27 @@ class ConfigValidatorTests(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             cv.validate()
 
-    def test_missing_log_level_raises(self):
+    def test_missing_log_level_does_not_raise(self):
+        # Absent 'level' means "use default" — it must be treated as valid.
         data = {**_VALID, "logging": {}}
         path = _write_config(self._tmp, data)
         cv = ConfigValidator(path)
-        with self.assertRaises(ConfigurationError):
-            cv.validate()
+        cv.validate()  # must NOT raise
+
+    def test_none_log_level_does_not_raise(self):
+        data = {**_VALID, "logging": {"level": None}}
+        path = _write_config(self._tmp, data)
+        cv = ConfigValidator(path)
+        cv.validate()  # must NOT raise
 
     # --- UI validation ---
+
+    def test_missing_ui_theme_does_not_raise(self):
+        # Absent 'theme' means "use default" — it must be treated as valid.
+        data = {**_VALID, "ui": {}}
+        path = _write_config(self._tmp, data)
+        cv = ConfigValidator(path)
+        cv.validate()  # must NOT raise
 
     def test_non_string_theme_raises(self):
         data = {**_VALID, "ui": {"theme": 42}}

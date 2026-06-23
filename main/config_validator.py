@@ -40,15 +40,17 @@ class ConfigValidator:
     def _validate_logging(self) -> None:
         """Validate logging configuration"""
         logging_config = self.config.get('logging', {})
-        # `not X in Y` は `not (X in Y)` と評価され機能的には正しいが、`(not X) in Y`
-        # と誤読されやすい。明示的に `not in` を使う。
-        if logging_config.get('level') not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+        level = logging_config.get('level')
+        # None means the key is absent — treat as "use default", which is valid.
+        if level is not None and level not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
             raise ConfigurationError("Invalid logging level")
-    
+
     def _validate_ui(self) -> None:
         """Validate UI configuration"""
         ui_config = self.config.get('ui', {})
-        if not isinstance(ui_config.get('theme'), str):
+        theme = ui_config.get('theme')
+        # None means the key is absent — treat as "use default", which is valid.
+        if theme is not None and not isinstance(theme, str):
             raise ConfigurationError("Invalid UI theme configuration")
     
     def _validate_network(self) -> None:

@@ -124,8 +124,10 @@ class PerformanceMonitor:
     
     def _check_alerts(self, stats: Dict[str, Any]) -> bool:
         """アラート条件をチェック"""
+        if not stats:
+            return False
         alerts = []
-        
+
         # メモリチェック
         if stats["memory"]["percent"] > self.thresholds["memory"]:
             alerts.append(f"メモリ使用率が{self.thresholds['memory']}%を超過")
@@ -162,13 +164,17 @@ class PerformanceMonitor:
             
             # アラート通知（プラットフォームに応じて）
             if os.name == 'nt':
-                import win10toast
-                toaster = win10toast.ToastNotifier()
-                toaster.show_toast(
-                    "Satin Performance Alert",
-                    message,
-                    duration=10
-                )
+                try:
+                    import win10toast
+                    toaster = win10toast.ToastNotifier()
+                    toaster.show_toast(
+                        "Satin Performance Alert",
+                        message,
+                        duration=10
+                    )
+                except ImportError:
+                    logger.warning("win10toast not installed; falling back to console output")
+                    print(f"\n警告: {message}")
             else:
                 print(f"\n警告: {message}")
             
@@ -177,6 +183,8 @@ class PerformanceMonitor:
     
     def _log_stats(self, stats: Dict[str, Any]) -> None:
         """パフォーマンス統計をログに記録"""
+        if not stats:
+            return
         log_msg = f"パフォーマンス統計 - {stats['timestamp']}\n"
         log_msg += f"メモリ: {stats['memory']['percent']}%\n"
         log_msg += f"CPU: {stats['cpu']['usage']}%\n"
