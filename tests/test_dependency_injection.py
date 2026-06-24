@@ -196,5 +196,25 @@ class GlobalContainerTests(unittest.TestCase):
         self.assertIsInstance(resolved, _Service)
 
 
+class ScopeTrackingTests(unittest.TestCase):
+    """Regression: create_scope() appended weakref.ref(scope) to _scopes but
+    nothing ever pruned dead refs, so the list grew unbounded (slow leak)."""
+
+    def test_dead_scope_refs_are_pruned(self):
+        c = ServiceContainer()
+        # Create and drop many scopes; dead weakrefs must not accumulate.
+        for _ in range(50):
+            c.create_scope()  # not held → eligible for GC
+        import gc
+        gc.collect()
+        # Creating one more triggers the prune; live refs should be tiny.
+        live = c.create_scope()
+        alive = [r for r in c._scopes if r() is not None]
+        self.assertLessEqual(len(alive), 1)
+        # The list itself must not retain all 51 dead refs.
+        self.assertLessEqual(len(c._scopes), 2)
+        del live
+
+
 if __name__ == "__main__":
     unittest.main()

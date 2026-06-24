@@ -101,6 +101,24 @@ class ConfigVersionManagerTests(unittest.TestCase):
         self.assertEqual(result['differences']['key']['old'], 'value')
         self.assertEqual(result['differences']['key']['new'], 'different')
 
+    def test_same_second_saves_do_not_overwrite(self):
+        # Regression: 1-second-resolution timestamps made two saves in the same
+        # second collide and silently overwrite each other (version data loss).
+        paths = [cvm.save_config_version(self.config_path) for _ in range(5)]
+        self.assertEqual(len(set(paths)), 5,
+                         "each save must produce a unique version file")
+        for p in paths:
+            self.assertTrue(os.path.exists(p))
+
+    def test_restore_leaves_no_temp_files(self):
+        # The atomic restore writes to a tempfile then os.replace()s it; verify
+        # no mkstemp leftovers remain in the config directory afterward.
+        cvm.save_config_version(self.config_path)
+        versions = cvm.list_config_versions(self.config_path)
+        cvm.restore_config_version(versions[0]['path'], self.config_path)
+        leftovers = [f for f in os.listdir(self._tmp) if f.startswith("tmp")]
+        self.assertEqual(leftovers, [], f"atomic restore left temp files: {leftovers}")
+
     def test_no_duplicate_main_block(self):
         """The duplicate __main__ block has been removed."""
         import inspect

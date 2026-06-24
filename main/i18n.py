@@ -46,7 +46,12 @@ class I18N:
         except Exception:
             return {}
     def t(self, key, default=None):
-        return self.translations.get(key, default or key)
+        # `default or key` would collapse a falsy-but-intentional default (""，0)
+        # to the raw key. Distinguish "no default given" (None) from a falsy one.
+        val = self.translations.get(key)
+        if val is not None:
+            return val
+        return key if default is None else default
     def get_font(self, size=12, weight="normal"):
         return (self.font, size, weight)
 # --- Flask/Web用: 言語切替はリクエストやセッションから ---

@@ -130,6 +130,10 @@ class NotificationSystem:
     def get_history(self, n: int = _HISTORY_LIMIT) -> List[Dict]:
         """最近 n 件の通知履歴を返す（新しい順）。"""
         items = list(self._history)
+        if n <= 0:
+            # items[-0:] == items[0:] returns everything; guard so "last 0"
+            # (or a negative count) correctly yields an empty list.
+            return []
         return items[-n:][::-1]
 
     def clear_history(self) -> None:

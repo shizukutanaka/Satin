@@ -274,6 +274,9 @@ class ServiceContainer:
     def create_scope(self) -> 'ServiceScope':
         """Create a new service scope."""
         scope = ServiceScope(self)
+        # Prune dead references first so this list doesn't grow unbounded with
+        # stale weakrefs over the container's lifetime (nothing else evicts them).
+        self._scopes = [ref for ref in self._scopes if ref() is not None]
         self._scopes.append(weakref.ref(scope))
         return scope
 

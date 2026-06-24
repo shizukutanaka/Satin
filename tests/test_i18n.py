@@ -36,6 +36,9 @@ class I18nModuleTests(unittest.TestCase):
         self.assertEqual(i.t("definitely_missing_key", "fallback"), "fallback")
         # missing key with no default falls back to the key itself
         self.assertEqual(i.t("another_missing_key"), "another_missing_key")
+        # Regression: a falsy-but-intentional default ("") must be honored, not
+        # collapsed to the key by the old `default or key` idiom.
+        self.assertEqual(i.t("yet_another_missing", ""), "")
 
     def test_detect_language_from_env(self):
         module = _load_i18n_module()

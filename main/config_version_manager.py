@@ -27,7 +27,10 @@ def save_config_version(config_path: str = "config.json", description: Optional[
             raise ConfigError(f"Configuration file not found: {config_path}")
             
         os.makedirs(VERSIONS_DIR, exist_ok=True)
-        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Include microseconds so two saves in the same second (e.g. a manual save
+        # plus restore's "before_restore" backup) don't produce an identical
+        # filename and silently overwrite each other (version data loss).
+        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         base = os.path.basename(config_path)
         
         # Create version filename
@@ -107,9 +110,21 @@ def restore_config_version(version_path: str, config_path: str = "config.json") 
             
         # Backup current config before restoring
         save_config_version(config_path, description="before_restore")
-        
-        # Restore the version
-        shutil.copy2(version_path, config_path)
+
+        # Restore the version atomically: copy to a temp file in the same
+        # directory, then os.replace() (atomic rename on the same filesystem) so
+        # an interruption mid-copy can't leave config.json truncated/corrupt.
+        import tempfile
+        dest_dir = os.path.dirname(os.path.abspath(config_path)) or "."
+        fd, tmp_path = tempfile.mkstemp(dir=dest_dir)
+        os.close(fd)
+        try:
+            shutil.copy2(version_path, tmp_path)
+            os.replace(tmp_path, config_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
         log_info(f"Restored configuration from: {version_path}")
         
     except Exception as e:

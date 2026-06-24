@@ -79,6 +79,17 @@ class NotificationHistoryTests(unittest.TestCase):
         hist = self.ns.get_history(100)
         self.assertEqual(len(hist), 1)
 
+    def test_get_history_zero_returns_empty(self):
+        # Regression: items[-0:] == items[0:] returned the whole history for n=0.
+        for i in range(3):
+            self.ns.send_notification(f"T{i}", "M")
+        self.assertEqual(self.ns.get_history(0), [])
+
+    def test_get_history_negative_returns_empty(self):
+        for i in range(3):
+            self.ns.send_notification(f"T{i}", "M")
+        self.assertEqual(self.ns.get_history(-1), [])
+
     def test_clear_history_empties_history(self):
         self.ns.send_notification("T", "M")
         self.ns.clear_history()
