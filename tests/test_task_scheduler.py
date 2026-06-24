@@ -185,5 +185,64 @@ class StopSentinelCollisionTests(unittest.TestCase):
             sched.stop(wait=True)
 
 
+class RestartTests(unittest.TestCase):
+    """Regression: scheduler_thread was created once in __init__ and started in
+    start(); calling start() after stop() raised RuntimeError (threads can only
+    be started once) and leftover shutdown sentinels made fresh workers exit."""
+
+    def test_start_after_stop_restarts_cleanly(self):
+        sched = TaskScheduler(num_workers=1)
+        sched.start()
+        tid1 = sched.schedule(lambda: 11)
+        self.assertEqual(sched.get_task_result(tid1, timeout=5), 11)
+        sched.stop(wait=True)
+
+        # Restart must not raise and must run new tasks.
+        sched.start()
+        try:
+            tid2 = sched.schedule(lambda: 22)
+            self.assertEqual(sched.get_task_result(tid2, timeout=5), 22)
+        finally:
+            sched.stop(wait=True)
+
+    def test_workers_not_accumulated_across_restarts(self):
+        sched = TaskScheduler(num_workers=2)
+        sched.start()
+        sched.stop(wait=True)
+        sched.start()
+        try:
+            # workers list is reset on each start(); never grows past num_workers.
+            self.assertEqual(len(sched.workers), 2)
+        finally:
+            sched.stop(wait=True)
+
+
+class PeriodicDriftTests(unittest.TestCase):
+    """Regression: periodic tasks rescheduled with a flat delay=interval from the
+    finally block, so the real period was interval+execution_time and drifted."""
+
+    def test_period_accounts_for_execution_time(self):
+        sched = TaskScheduler(num_workers=1)
+        sched.start()
+        try:
+            stamps = []
+
+            def work():
+                stamps.append(time.time())
+                time.sleep(0.08)  # execution time comparable to the interval
+
+            sched.schedule_periodic(work, interval=0.15)
+            time.sleep(0.85)
+        finally:
+            sched.stop(wait=True)
+
+        self.assertGreaterEqual(len(stamps), 4)
+        gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+        avg = sum(gaps) / len(gaps)
+        # With the drift bug the period would be ~0.15+0.08=0.23s; the fix keeps
+        # it near the requested 0.15s. Allow generous slack for scheduler latency.
+        self.assertLess(avg, 0.20, f"period drifted: avg gap {avg:.3f}s")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -61,6 +61,22 @@ class GracefulShutdownManager:
         self.cleanup_handlers.append((name, handler))
         self.logger.debug(f"Registered cleanup handler: {name}")
 
+    def unregister_cleanup(self, name: str) -> bool:
+        """登録済みクリーンアップハンドラを名前で解除する。
+
+        コンテキストマネージャ等が正常終了時に自前でクリーンアップした場合、
+        シャットダウン時の二重実行を防ぐために登録を取り消す。
+
+        Returns:
+            解除できたら True、該当ハンドラが無ければ False
+        """
+        for i, (n, _) in enumerate(self.cleanup_handlers):
+            if n == name:
+                del self.cleanup_handlers[i]
+                self.logger.debug(f"Unregistered cleanup handler: {name}")
+                return True
+        return False
+
     def register_task(self, task: asyncio.Task) -> None:
         """実行中のタスクを登録"""
         self.active_tasks.append(task)
@@ -348,7 +364,13 @@ class AsyncContextResource:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """クリーンアップ"""
-        if self.resource:
+        # 正常終了時はここでクリーンアップするので、シャットダウンマネージャに
+        # 登録したハンドラを解除して二重クリーンアップ (二重 close 等) を防ぐ。
+        if self.shutdown_manager:
+            self.shutdown_manager.unregister_cleanup(self.name)
+        # `is not None` で判定する。falsy だが有効なリソース (0・空コレクション等)
+        # を truthiness で誤ってスキップしてリークさせないため。
+        if self.resource is not None:
             if asyncio.iscoroutinefunction(self.cleanup_func):
                 await self.cleanup_func(self.resource)
             else:

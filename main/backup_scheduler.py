@@ -109,6 +109,9 @@ class BackupScheduler:
         if self._scheduler is None:
             raise BackupError("schedule パッケージが必要です: pip install schedule")
 
+        # Clear any set-from-a-previous-stop() flag so this run's wait() actually
+        # blocks for 60s instead of returning immediately (busy-spin) on restart.
+        self._stop_event.clear()
         self.running = True
         self.notification_system.send_notification(
             title="Backup Scheduler", message="Backup scheduler started", level="info"
@@ -124,6 +127,10 @@ class BackupScheduler:
                 title="Backup Scheduler Error", message=msg, level="error"
             )
             raise BackupError(msg) from e
+        finally:
+            # Always reset running on exit so a crashed loop doesn't wedge the
+            # scheduler in a permanent "already running" state.
+            self.running = False
 
     def stop(self) -> None:
         """スケジューラーを停止する。"""

@@ -111,5 +111,47 @@ class HistoryManagementTests(unittest.TestCase):
         self.assertFalse(sched.running)
 
 
+class LifecycleResetTests(unittest.TestCase):
+    """Regression: start() left running=True on the error path (permanently
+    wedging the scheduler in 'already running'), and never cleared _stop_event
+    (busy-spin on restart). These tests inject a fake scheduler to drive start()."""
+
+    def test_running_reset_after_loop_crash(self):
+        sched, _, _ = _make_scheduler()
+        sched._scheduler = mock.MagicMock()
+        sched._scheduler.run_pending.side_effect = RuntimeError("loop crash")
+
+        with self.assertRaises(BackupError):
+            sched.start()
+        self.assertFalse(sched.running, "running must reset to False after a loop crash")
+
+        # Must be restartable, not permanently stuck on the 'already running' guard.
+        sched._scheduler.run_pending.side_effect = RuntimeError("again")
+        with self.assertRaises(BackupError):
+            sched.start()
+
+    def test_stop_event_cleared_on_start(self):
+        sched, _, _ = _make_scheduler()
+        sched._scheduler = mock.MagicMock()
+        # Simulate a leftover set event from a previous stop().
+        sched._stop_event.set()
+
+        observed = {}
+
+        def first_iter():
+            observed["cleared"] = not sched._stop_event.is_set()
+            # Exit the loop and let the trailing wait() return immediately.
+            sched.running = False
+            sched._stop_event.set()
+
+        sched._scheduler.run_pending.side_effect = first_iter
+        sched.start()  # blocks one iteration, then exits cleanly
+
+        self.assertTrue(
+            observed.get("cleared"),
+            "start() must clear _stop_event so wait() blocks instead of busy-spinning",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

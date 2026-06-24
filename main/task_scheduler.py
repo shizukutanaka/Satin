@@ -95,6 +95,26 @@ class TaskScheduler:
         if self.running:
             return
 
+        # A Thread can only be started once, so (re)create the scheduler thread
+        # and worker handles on every start() to support stop()/start() restart
+        # cycles. Also clear the wakeup flag and drain any leftover shutdown
+        # sentinels (None payloads enqueued by a prior stop()) so freshly started
+        # workers don't immediately see a shutdown signal and exit.
+        self._wakeup.clear()
+        with self.lock:
+            kept = []
+            try:
+                while True:
+                    item = self.ready_queue.get_nowait()
+                    if item[2] is not None:
+                        kept.append(item)
+            except queue.Empty:
+                pass
+            for item in kept:
+                self.ready_queue.put(item)
+        self.workers = []
+        self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
+
         self.running = True
         self.scheduler_thread.start()
 
@@ -191,6 +211,11 @@ class TaskScheduler:
             self._cancelled.discard(task_id)
 
         def periodic_wrapper():
+            # Anchor the next run to the intended fire time, not to when func
+            # finishes. Rescheduling with a flat delay=interval from the finally
+            # block makes the real period interval+execution_time, which drifts
+            # cumulatively. Subtract the elapsed execution time instead.
+            start = time.time()
             try:
                 func(*args, **kwargs)
             finally:
@@ -200,19 +225,22 @@ class TaskScheduler:
                 with self.lock:
                     should_reschedule = self.running and task_id not in self._cancelled
                 if should_reschedule:
+                    next_delay = max(0.0, interval - (time.time() - start))
                     self.schedule(
                         periodic_wrapper,
-                        delay=interval,
+                        delay=next_delay,
                         priority=priority,
                         max_retries=max_retries,
                         task_id=task_id
                     )
         
-        # Schedule the first execution
+        # Schedule the first execution (carry max_retries so the first run uses
+        # the same retry policy as every subsequent reschedule).
         return self.schedule(
             periodic_wrapper,
             delay=interval,
             priority=priority,
+            max_retries=max_retries,
             task_id=task_id
         )
     

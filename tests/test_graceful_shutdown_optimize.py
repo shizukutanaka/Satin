@@ -130,6 +130,8 @@ class AsyncContextResourceTests(unittest.TestCase):
         self.assertIs(result, resource)
 
     def test_registers_cleanup_with_shutdown_manager(self):
+        """Handler is registered while inside the context, then unregistered on
+        exit so it is not run a second time at shutdown (double-cleanup guard)."""
         async def run():
             import graceful_shutdown as gs
             mgr = gs.GracefulShutdownManager()
@@ -140,11 +142,61 @@ class AsyncContextResourceTests(unittest.TestCase):
                 shutdown_manager=mgr,
             )
             async with ctx:
-                pass
-            return len(mgr.cleanup_handlers)
+                inside = len(mgr.cleanup_handlers)
+            after = len(mgr.cleanup_handlers)
+            return inside, after
 
-        count = asyncio.run(run())
-        self.assertEqual(count, 1)
+        inside, after = asyncio.run(run())
+        self.assertEqual(inside, 1, "cleanup must be registered while in context")
+        self.assertEqual(after, 0, "cleanup must be unregistered on exit to avoid double cleanup")
+
+    def test_no_double_cleanup_at_shutdown(self):
+        """Regression: cleanup ran in __aexit__ AND again at shutdown (the
+        registered handler was never removed), double-closing the resource."""
+        async def run():
+            import graceful_shutdown as gs
+            mgr = gs.GracefulShutdownManager()
+            calls = []
+            ctx = gs.AsyncContextResource(
+                "res",
+                init_func=lambda: object(),
+                cleanup_func=lambda r: calls.append(1),
+                shutdown_manager=mgr,
+            )
+            async with ctx:
+                pass
+            # Context exit cleaned up once; a later shutdown must not run it again.
+            await mgr.shutdown("TEST")
+            return len(calls)
+
+        n = asyncio.run(run())
+        self.assertEqual(n, 1, "cleanup must run exactly once, not twice")
+
+    def test_falsy_but_valid_resource_still_cleaned_up(self):
+        """Regression: `if self.resource:` skipped cleanup for falsy-but-valid
+        resources (0, empty collection), leaking them."""
+        async def run():
+            import graceful_shutdown as gs
+            cleaned = []
+            ctx = gs.AsyncContextResource(
+                "zero_res",
+                init_func=lambda: 0,  # falsy but a valid resource handle
+                cleanup_func=lambda r: cleaned.append(r),
+            )
+            async with ctx:
+                pass
+            return cleaned
+
+        cleaned = asyncio.run(run())
+        self.assertEqual(cleaned, [0], "falsy-but-valid resource must still be cleaned up")
+
+    def test_unregister_cleanup_returns_false_for_unknown(self):
+        import graceful_shutdown as gs
+        mgr = gs.GracefulShutdownManager()
+        self.assertFalse(mgr.unregister_cleanup("nope"))
+        mgr.register_cleanup("known", lambda: None)
+        self.assertTrue(mgr.unregister_cleanup("known"))
+        self.assertEqual(len(mgr.cleanup_handlers), 0)
 
 
 class GracefulShutdownHealthCheckerTests(unittest.TestCase):
