@@ -160,5 +160,97 @@ class PercentileEdgeCaseTests(unittest.TestCase):
         self.assertEqual(self.pm._calculate_percentile([42.0], 99), 42.0)
 
 
+class CacheResultCompressionTests(unittest.TestCase):
+    """Regression: cache_result with compression=True returned compressed bytes
+    on the first (non-cached) call while subsequent cache-hit calls returned the
+    original (decompressed) value — inconsistent behavior.
+
+    Fix: always return the original result; only the cached copy is compressed.
+    """
+
+    def setUp(self):
+        from optimize import cache_result
+        self._cache_result = cache_result
+
+    def test_first_call_returns_original_not_bytes(self):
+        """First call must NOT return raw compressed bytes."""
+        call_count = [0]
+
+        @self._cache_result(ttl=60, compression=True)
+        def expensive(x):
+            call_count[0] += 1
+            return {"value": x, "computed": True}
+
+        result = expensive(42)
+        self.assertIsInstance(result, dict,
+            "First call with compression=True must return the original dict, "
+            "not compressed bytes (the old bug returned bytes on first call).")
+        self.assertEqual(result["value"], 42)
+        self.assertEqual(call_count[0], 1)
+
+    def test_second_call_also_returns_original(self):
+        """Both first and second calls must return the same value type."""
+        @self._cache_result(ttl=60, compression=True)
+        def compute(x):
+            return [x, x * 2]
+
+        first = compute(7)
+        second = compute(7)
+        self.assertEqual(first, [7, 14])
+        self.assertEqual(second, [7, 14],
+            "Cache-hit call (2nd) must return the original list, not bytes.")
+        self.assertIsInstance(second, list)
+
+    def test_compression_false_still_returns_original(self):
+        """With compression=False the decorator must also return the original."""
+        @self._cache_result(ttl=60, compression=False)
+        def compute(x):
+            return {"key": x}
+
+        self.assertEqual(compute(5), {"key": 5})
+        self.assertEqual(compute(5), {"key": 5})
+
+    def test_async_first_call_returns_original_not_bytes(self):
+        """Async wrapper: first call must return original, not compressed bytes."""
+        @self._cache_result(ttl=60, compression=True)
+        async def async_compute(x):
+            return {"async": True, "x": x}
+
+        result = asyncio.run(async_compute(99))
+        self.assertIsInstance(result, dict,
+            "Async first call with compression=True must return original dict.")
+        self.assertEqual(result["x"], 99)
+
+    def test_async_second_call_returns_original(self):
+        """Async wrapper: cache-hit call must also return the original value."""
+        @self._cache_result(ttl=60, compression=True)
+        async def async_compute(x):
+            return [x, x + 1]
+
+        async def scenario():
+            first = await async_compute(3)
+            second = await async_compute(3)
+            return first, second
+
+        first, second = asyncio.run(scenario())
+        self.assertEqual(first, [3, 4])
+        self.assertEqual(second, [3, 4])
+
+    def test_underlying_function_called_only_once_within_ttl(self):
+        """Cache must still suppress repeated function calls (basic TTL check)."""
+        call_count = [0]
+
+        @self._cache_result(ttl=60, compression=True)
+        def work(x):
+            call_count[0] += 1
+            return x * 10
+
+        work(5)
+        work(5)
+        work(5)
+        self.assertEqual(call_count[0], 1,
+            "Function should only be invoked once within TTL.")
+
+
 if __name__ == "__main__":
     unittest.main()

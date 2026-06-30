@@ -825,23 +825,24 @@ def cache_result(ttl: int = 300, max_size: int = 1000, compression: bool = False
             
             # Call function and cache result
             result = await func(*args, **kwargs)
-            
-            # Compress result if enabled
-            if compression:
-                result = compress_result(result)
-            
-            cache[key] = (result, time.time(), compression)
-            
+
+            # Store compressed in cache but always return the original value.
+            # Bug fixed: previously `result` was overwritten with compressed bytes
+            # and then returned to the caller on the first (non-cached) call, while
+            # subsequent cache-hit calls correctly decompressed — an inconsistency.
+            to_store = compress_result(result) if compression else result
+            cache[key] = (to_store, time.time(), compression)
+
             # Enforce size limit
             if len(cache) > max_size:
                 cache.popitem(last=False)
-            
+
             return result
-            
+
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
             key = (args, frozenset(kwargs.items()))
-            
+
             # Check cache
             if key in cache:
                 result, timestamp, compressed = cache[key]
@@ -849,20 +850,18 @@ def cache_result(ttl: int = 300, max_size: int = 1000, compression: bool = False
                     if compressed and compression:
                         result = decompress_result(result)
                     return result
-            
+
             # Call function and cache result
             result = func(*args, **kwargs)
-            
-            # Compress result if enabled
-            if compression:
-                result = compress_result(result)
-            
-            cache[key] = (result, time.time(), compression)
-            
+
+            # Store compressed in cache but always return the original value.
+            to_store = compress_result(result) if compression else result
+            cache[key] = (to_store, time.time(), compression)
+
             # Enforce size limit
             if len(cache) > max_size:
                 cache.popitem(last=False)
-            
+
             return result
             
         if asyncio.iscoroutinefunction(func):
