@@ -528,6 +528,76 @@ class GiftDailyMoodMultiplierTests(unittest.TestCase):
         self.assertAlmostEqual(actual_bonus, 5.0, places=1)
 
 
+class ShortAliasSubstringTests(unittest.TestCase):
+    """Regression tests for the single-kanji alias false-positive bug.
+
+    Before the fix, `alias in norm` had no minimum-length guard on the alias
+    side, so single-kanji aliases ("本", "花") would match any compound word
+    containing that kanji — e.g. "日本のケーキ" matched the book gift because
+    "本" ⊂ "日本", and "花見ケーキ" matched the flowers gift because "花" ⊂ "花見".
+
+    Fix: `alias in norm` now requires `len(alias) >= 2`, so single-char aliases
+    only match via exact lookup (which still works correctly).
+    """
+
+    def test_nihon_no_cake_matches_cake_not_book(self):
+        """'日本のケーキ' contains '本' (book alias) but must match cake."""
+        result = lookup_gift("日本のケーキ", lang="ja")
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("日本のケーキ", lang="ja")
+        self.assertEqual(key, "cake",
+            "Single-kanji alias '本' must not false-match '日本のケーキ'; "
+            "the 3-char 'ケーキ' alias should win instead.")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_hanami_cake_matches_cake_not_flowers(self):
+        """'花見ケーキ' contains '花' (flower alias) but must match cake."""
+        result = lookup_gift("花見ケーキ", lang="ja")
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("花見ケーキ", lang="ja")
+        self.assertEqual(key, "cake",
+            "Single-kanji alias '花' must not false-match '花見ケーキ'; "
+            "the 3-char 'ケーキ' alias should win instead.")
+        self.assertIsNotNone(result)
+
+    def test_single_kanji_flower_exact_still_works(self):
+        """After the fix, the single-kanji alias '花' must still work via exact match."""
+        result = lookup_gift("花", lang="ja")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_single_kanji_book_exact_still_works(self):
+        """After the fix, the single-kanji alias '本' must still work via exact match."""
+        result = lookup_gift("本", lang="ja")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_two_char_alias_substring_still_matches(self):
+        """2-char aliases ('お花') in a longer string still trigger fuzzy match."""
+        result = lookup_gift("お花をどうぞ", lang="ja")
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("お花をどうぞ", lang="ja")
+        self.assertEqual(key, "flowers",
+            "2-char alias 'お花' must still match via substring when embedded in input.")
+
+    def test_hon_in_compound_does_not_match_book(self):
+        """'一本ください' contains '本' but must NOT match the book gift."""
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("一本ください", lang="ja")
+        self.assertNotEqual(key, "book",
+            "Counter usage '一本' (one flower) must not false-match the book gift.")
+
+    def test_lookup_gift_key_shares_same_fix(self):
+        """lookup_gift_key() uses the same matching logic; the fix must apply there too."""
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("日本のケーキ", lang="ja")
+        self.assertEqual(key, "cake")
+
+
 class DeclineMessageCompletenessTests(unittest.TestCase):
     """Every min_level value used in the gift catalog must have a corresponding
     entry in _DECLINE_MESSAGES for both 'ja' and 'en'.  Without it, declined
