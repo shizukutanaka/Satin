@@ -112,12 +112,15 @@ DEFAULT_DASHBOARD_PORT = 5003
 def _resolve_port(default: int = DEFAULT_DASHBOARD_PORT) -> int:
     """SATIN_DASHBOARD_PORT を優先してポート番号を解決する。
 
-    値が未設定／非数値なら default にフォールバックする（不正値で起動失敗しない）。
+    値が未設定／非数値／範囲外（1-65535）なら default にフォールバックする
+    （不正値で起動失敗しない）。
     """
     raw = os.environ.get('SATIN_DASHBOARD_PORT')
     if raw:
         try:
-            return int(raw)
+            port = int(raw)
+            if 1 <= port <= 65535:
+                return port
         except (TypeError, ValueError):
             pass
     return default
