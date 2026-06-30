@@ -435,5 +435,61 @@ class GetPersonaNameTests(unittest.TestCase):
         self.assertIn(result, ("FallbackName",) + (result,))  # doesn't crash
 
 
+class LevelRankArrowTests(unittest.TestCase):
+    """Regression: the milestone arrow used `affinity_val >= 50` to pick ↑ vs ↓.
+    This was wrong for transitions where affinity stays >= 50 but the level
+    decreases (e.g. close→friendly at affinity 65 showed ↑ instead of ↓).
+
+    Fix: compare level ranks using `_LEVEL_ORDER` so the arrow reflects the
+    actual direction of the level transition, not the absolute affinity value.
+    """
+
+    def setUp(self):
+        from dashboard import _level_rank, _LEVEL_ORDER
+        self._rank = _level_rank
+        self._order = _LEVEL_ORDER
+
+    def test_level_order_has_five_entries(self):
+        self.assertEqual(len(self._order), 5)
+        self.assertEqual(self._order[0], "distant")
+        self.assertEqual(self._order[-1], "close")
+
+    def test_higher_level_has_greater_rank(self):
+        self.assertGreater(self._rank("friendly"), self._rank("neutral"))
+        self.assertGreater(self._rank("close"), self._rank("friendly"))
+
+    def test_unknown_level_rank_is_minus_one(self):
+        self.assertEqual(self._rank("unknown_level"), -1)
+
+    def test_arrow_up_for_level_increase(self):
+        """neutral → friendly must give ↑ (8593)."""
+        prev, curr = "neutral", "friendly"
+        arrow = "&#8593;" if self._rank(curr) > self._rank(prev) else "&#8595;"
+        self.assertEqual(arrow, "&#8593;",
+                         "Upward transition must show ↑")
+
+    def test_arrow_down_for_level_decrease(self):
+        """close → friendly must give ↓ (8595), NOT ↑ (old bug: affinity 65 >= 50 → ↑)."""
+        prev, curr = "close", "friendly"
+        arrow = "&#8593;" if self._rank(curr) > self._rank(prev) else "&#8595;"
+        self.assertEqual(
+            arrow, "&#8595;",
+            "close→friendly is a level DECREASE; must show ↓. "
+            "Old bug: affinity 65 >= 50 was True → showed ↑ instead.",
+        )
+
+    def test_arrow_up_neutral_to_close_high_affinity(self):
+        """neutral → close (affinity 82) must give ↑."""
+        prev, curr = "neutral", "close"
+        arrow = "&#8593;" if self._rank(curr) > self._rank(prev) else "&#8595;"
+        self.assertEqual(arrow, "&#8593;")
+
+    def test_arrow_down_friendly_to_neutral(self):
+        """friendly → neutral must give ↓."""
+        prev, curr = "friendly", "neutral"
+        arrow = "&#8593;" if self._rank(curr) > self._rank(prev) else "&#8595;"
+        self.assertEqual(arrow, "&#8595;")
+
+
 if __name__ == "__main__":
     unittest.main()

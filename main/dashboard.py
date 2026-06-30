@@ -705,7 +705,12 @@ def mood_history(i18n):
                 milestone_html = ""
                 if e.get("level_changed"):
                     prev = _html.escape(str(e.get("prev_level", "?")))
-                    arrow = "&#8593;" if affinity_val >= 50 else "&#8595;"
+                    # Compare level ranks, not raw affinity, to get the correct
+                    # direction. Old bug: affinity_val >= 50 showed UP even when
+                    # transitioning close→friendly (a decrease in level).
+                    arrow = ("&#8593;"
+                             if _level_rank(str(e.get("level", ""))) > _level_rank(str(e.get("prev_level", "")))
+                             else "&#8595;")
                     milestone_html = (
                         f'<span style="color:#e07000;font-weight:bold">'
                         f'{arrow} {prev} &rarr; {level}'
@@ -733,6 +738,18 @@ def mood_history(i18n):
         )
 
     return _render_page(content, i18n, lang, switcher)
+
+
+# Ordered lowest→highest, mirroring mood._LEVELS.
+_LEVEL_ORDER = ["distant", "reserved", "neutral", "friendly", "close"]
+
+
+def _level_rank(name: str) -> int:
+    """Return ordinal rank of a level name; -1 for unknown."""
+    try:
+        return _LEVEL_ORDER.index(name)
+    except ValueError:
+        return -1
 
 
 def _coerce_affinity(value, default: float = 0.0) -> float:
