@@ -68,13 +68,10 @@ class HTTPMethod(str, Enum):
 
 def validate_url(v: str) -> str:
     """Validate URL format."""
-    try:
-        result = urlparse(v)
-        if not all([result.scheme, result.netloc]):
-            raise ValueError("Invalid URL format")
-        return v
-    except Exception as e:
-        raise ValueError(f"URL validation failed: {e}") from e
+    result = urlparse(v)
+    if not all([result.scheme, result.netloc]):
+        raise ValueError("Invalid URL format")
+    return v
 
 
 def validate_api_key(v: str) -> str:
@@ -304,7 +301,7 @@ class ArxivSearchRequest(BaseModel):
     def validate_categories(cls, v: Optional[List[str]]) -> Optional[List[str]]:
         """Validate arxiv category format."""
         if v:
-            valid_pattern = re.compile(r'^[a-z]+(\.[A-Z]{2})?$')
+            valid_pattern = re.compile(r'^[a-z][a-z0-9-]*(\.[A-Z]{2})?$')
             for cat in v:
                 if not valid_pattern.match(cat):
                     raise ValueError(f"Invalid arxiv category format: {cat}")
