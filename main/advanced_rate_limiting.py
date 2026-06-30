@@ -304,7 +304,11 @@ class SlidingWindowLimiter(RateLimiter):
         """Remove requests outside current window."""
         now = time.time()
         cutoff = now - self.window_seconds
-        self.requests = [r for r in self.requests if r > cutoff]
+        # 旧実装は r > cutoff（開区間）で、cutoff と等しいタイムスタンプを持つ
+        # リクエストを破棄していた。ウィンドウ境界に同時にリクエストが集中すると
+        # max_requests 件が丸ごと消え、直後に同数を再許可する二重消費が起きた。
+        # 修正: r >= cutoff（閉区間）で境界上のリクエストを保持する。
+        self.requests = [r for r in self.requests if r >= cutoff]
 
     async def check_rate_limit(self, tokens: int = 1) -> RateLimitStatus:
         """Check if within sliding window."""

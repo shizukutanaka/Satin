@@ -199,6 +199,80 @@ class SlidingWindowTests(unittest.TestCase):
         self.assertAlmostEqual(status.current_rate, 5.0)
 
 
+class SlidingWindowBoundaryTests(unittest.TestCase):
+    """Regression: _cleanup_window used ``r > cutoff`` which evicted requests
+    at exactly the window boundary (r == cutoff).
+
+    Scenario: 3 requests arrive at t=T. At t=T+window_seconds, cutoff=T.
+    With ``r > T``: all 3 are removed (0 counted), allowing 3 more requests
+    immediately — 6 total within the window, violating max_requests=3.
+    With ``r >= T``: all 3 are kept (3 counted), correctly blocking the 4th.
+
+    Fix: change ``r > cutoff`` to ``r >= cutoff`` in _cleanup_window.
+    """
+
+    def test_requests_at_exact_boundary_are_not_evicted(self):
+        """Requests with timestamp == cutoff must count against the limit."""
+        from unittest import mock as _mock
+
+        FIXED_NOW = 1_000.0
+        WINDOW = 10.0
+
+        limiter = SlidingWindowLimiter(max_requests=3, window_seconds=WINDOW)
+        # Inject 3 requests at exactly the window boundary
+        boundary = FIXED_NOW - WINDOW  # == cutoff when time.time() == FIXED_NOW
+        limiter.requests = [boundary, boundary, boundary]
+
+        async def run():
+            with _mock.patch("advanced_rate_limiting.time.time", return_value=FIXED_NOW):
+                return await limiter.check_rate_limit(1)
+
+        status = asyncio.run(run())
+        self.assertFalse(
+            status.allowed,
+            "Requests at r == cutoff must NOT be evicted — they still count "
+            "against the limit (old bug: r > cutoff dropped them silently).",
+        )
+
+    def test_requests_just_inside_window_are_always_kept(self):
+        """Requests 1 µs inside the window must never be evicted."""
+        from unittest import mock as _mock
+
+        FIXED_NOW = 1_000.0
+        WINDOW = 10.0
+
+        limiter = SlidingWindowLimiter(max_requests=3, window_seconds=WINDOW)
+        just_inside = FIXED_NOW - WINDOW + 0.000001  # 1 µs inside the window
+        limiter.requests = [just_inside, just_inside, just_inside]
+
+        async def run():
+            with _mock.patch("advanced_rate_limiting.time.time", return_value=FIXED_NOW):
+                return await limiter.check_rate_limit(1)
+
+        status = asyncio.run(run())
+        self.assertFalse(status.allowed,
+                         "Requests 1 µs inside the window must be counted.")
+
+    def test_requests_just_outside_window_are_evicted(self):
+        """Requests 1 µs past the window boundary must be cleaned up."""
+        from unittest import mock as _mock
+
+        FIXED_NOW = 1_000.0
+        WINDOW = 10.0
+
+        limiter = SlidingWindowLimiter(max_requests=3, window_seconds=WINDOW)
+        just_outside = FIXED_NOW - WINDOW - 0.000001  # 1 µs outside
+        limiter.requests = [just_outside, just_outside, just_outside]
+
+        async def run():
+            with _mock.patch("advanced_rate_limiting.time.time", return_value=FIXED_NOW):
+                return await limiter.check_rate_limit(1)
+
+        status = asyncio.run(run())
+        self.assertTrue(status.allowed,
+                        "Requests 1 µs outside the window must be evicted.")
+
+
 class GCRALimiterTests(unittest.TestCase):
     """GCRALimiter must be created inside asyncio.run() so its asyncio.Lock
     is bound to the same event loop used by the test coroutine."""
