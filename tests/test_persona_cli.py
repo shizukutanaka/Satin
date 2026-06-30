@@ -2106,5 +2106,69 @@ class InterestRecallTests(unittest.TestCase):
         self.assertGreater(len(result), 0)
 
 
+# ---------------------------------------------------------------------------
+# _give_gift — bonus display uses round() not int()
+# ---------------------------------------------------------------------------
+class GiftBonusDisplayTests(unittest.TestCase):
+    """Regression: the gift notification used int(bonus) which truncates 3.5→3.
+    The catalog text already uses round(), so both must agree.
+    """
+
+    def _run_give_gift(self, item, bonus_float, reply="Great!", lang="en"):
+        from unittest import mock
+        import persona_cli as pc
+        out = []
+        # Neutralise the daily-mood multiplier so effective_bonus == bonus_float exactly.
+        with mock.patch.object(pc, "_lookup_gift",
+                               lambda i, lang=lang, level=None: (bonus_float, reply)), \
+             mock.patch.object(pc, "_lookup_gift_key",
+                               lambda i, lang=lang: "test_gift"), \
+             mock.patch.object(pc, "_mood_affinity_multiplier",
+                               lambda mood_key: 1.0):
+            mood_stub = mock.MagicMock()
+            mood_stub.level = "neutral"
+            mood_stub.gift_received_today.return_value = False
+            pc._give_gift(item, mood_stub, "Avatar", lang, out.append)
+        return "\n".join(out)
+
+    def test_integer_bonus_displays_correctly(self):
+        output = self._run_give_gift("flower", 5.0)
+        self.assertIn("+5", output)
+
+    def test_fractional_bonus_rounds_up(self):
+        """Regression: int(3.5) = 3 but round(3.5) = 4.
+        Catalog shows +4 for 'book'; notification must also show +4."""
+        output = self._run_give_gift("book", 3.5)
+        self.assertIn("+4", output)
+        self.assertNotIn("+3", output)
+
+    def test_fractional_bonus_rounds_down(self):
+        """bonus=2.2: round(2.2)=2, int(2.2)=2 — both agree; ensures general coverage."""
+        output = self._run_give_gift("ribbon", 2.2)
+        self.assertIn("+2", output)
+
+    def test_bonus_display_in_japanese(self):
+        """Japanese notification also uses round()."""
+        output = self._run_give_gift("book", 3.5, lang="ja")
+        self.assertIn("+4", output)
+        self.assertNotIn("+3", output)
+
+    def test_zero_bonus_does_not_show_notification(self):
+        """bonus<=0 means min_level not met: no affinity notification printed."""
+        from unittest import mock
+        import persona_cli as pc
+        out = []
+        with mock.patch.object(pc, "_lookup_gift",
+                               lambda i, lang="en", level=None: (0.0, "Not yet!")), \
+             mock.patch.object(pc, "_lookup_gift_key",
+                               lambda i, lang="en": "test_gift"):
+            mood_stub = mock.MagicMock()
+            mood_stub.level = "neutral"
+            mood_stub.gift_received_today.return_value = False
+            pc._give_gift("widget", mood_stub, "Avatar", "en", out.append)
+        combined = "\n".join(out)
+        self.assertNotIn("+0", combined)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -916,9 +916,9 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
         except Exception:
             pass
     if lang == "en":
-        output_fn(f"(+{int(effective_bonus)} affinity)")
+        output_fn(f"(+{round(effective_bonus)} affinity)")
     else:
-        output_fn(f"（好感度 +{int(effective_bonus)}）")
+        output_fn(f"（好感度 +{round(effective_bonus)}）")
     return reply
 
 
