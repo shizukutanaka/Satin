@@ -17,6 +17,7 @@ from dependency_injection import (  # noqa: E402
     ServiceLifetime,
     ServiceNotFoundError,
     CircularDependencyError,
+    ServiceBuilder,
     get_service_container,
     set_service_container,
 )
@@ -214,6 +215,80 @@ class ScopeTrackingTests(unittest.TestCase):
         # The list itself must not retain all 51 dead refs.
         self.assertLessEqual(len(c._scopes), 2)
         del live
+
+
+class ServiceBuilderTests(unittest.TestCase):
+    """Regression: ServiceBuilder.add_singleton(SomeType) with no implementation
+    called register_singleton(SomeType, None), which stored None as the singleton.
+    Resolving the type then returned None instead of a new instance.
+
+    Root cause: isinstance(None, type) is False, so the else-branch ran:
+      register_singleton(service_type, None)
+    which set _singletons[service_type] = None.  The fast path in _resolve
+    (`if service_type in _singletons: return _singletons[service_type]`)
+    found the key and returned None.
+
+    Fix: check `implementation is None` before `isinstance` so the None case
+    falls into the type-based registration path (impl_type = service_type).
+    """
+
+    def test_add_singleton_no_impl_resolves_to_instance(self):
+        """add_singleton(MyClass) with no second arg must return a MyClass, not None."""
+        class _Svc:
+            pass
+
+        container = (
+            ServiceBuilder()
+            .add_singleton(_Svc)
+            .build()
+        )
+        result = _run(container.resolve(_Svc))
+        self.assertIsInstance(
+            result, _Svc,
+            f"add_singleton(_Svc) returned {result!r} instead of a _Svc instance; "
+            "old bug: isinstance(None, type) is False so None was stored as singleton.",
+        )
+
+    def test_add_singleton_with_type_returns_instance(self):
+        """add_singleton(Base, Impl) must return an Impl instance."""
+        class _Base:
+            pass
+
+        class _Impl(_Base):
+            pass
+
+        container = ServiceBuilder().add_singleton(_Base, _Impl).build()
+        result = _run(container.resolve(_Base))
+        self.assertIsInstance(result, _Impl)
+
+    def test_add_singleton_with_instance_returns_that_instance(self):
+        """add_singleton(Base, instance) must return the exact same instance."""
+        class _Base:
+            pass
+
+        obj = _Base()
+        container = ServiceBuilder().add_singleton(_Base, obj).build()
+        result = _run(container.resolve(_Base))
+        self.assertIs(result, obj)
+
+    def test_add_singleton_no_impl_returns_same_instance_on_second_resolve(self):
+        """Auto-created singleton must be reused (same object) on second resolve."""
+        class _Svc:
+            pass
+
+        container = ServiceBuilder().add_singleton(_Svc).build()
+        a = _run(container.resolve(_Svc))
+        b = _run(container.resolve(_Svc))
+        self.assertIs(a, b)
+
+    def test_add_transient_resolves_different_instances(self):
+        class _Svc:
+            pass
+
+        container = ServiceBuilder().add_transient(_Svc).build()
+        a = _run(container.resolve(_Svc))
+        b = _run(container.resolve(_Svc))
+        self.assertIsNot(a, b)
 
 
 if __name__ == "__main__":

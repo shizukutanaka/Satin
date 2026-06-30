@@ -355,7 +355,7 @@ class ServiceBuilder:
         implementation: Optional[Union[Type[T], T]] = None
     ) -> 'ServiceBuilder':
         """Add singleton service."""
-        if isinstance(implementation, type):
+        if implementation is None or isinstance(implementation, type):
             self._container.register(
                 service_type,
                 implementation,
