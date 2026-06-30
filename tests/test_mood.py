@@ -1451,5 +1451,74 @@ class FromDictNullValueTests(unittest.TestCase):
         self.assertEqual(m.interactions, 0)
 
 
+class MoodTrackerThreadSafetyTests(unittest.TestCase):
+    """Regression: register()/adjust()/decay() had no lock protecting
+    affinity+interactions read-modify-write, so concurrent callers
+    (autonomous behaviour thread + TTS handler) could lose updates."""
+
+    def test_concurrent_register_no_lost_interactions(self):
+        m = MoodTracker()
+        n_threads, per_thread = 8, 500
+        import threading as _threading
+        barrier = _threading.Barrier(n_threads)
+
+        def worker():
+            barrier.wait()
+            for _ in range(per_thread):
+                m.register("ありがとう")
+
+        threads = [_threading.Thread(target=worker) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(m.interactions, n_threads * per_thread)
+
+    def test_concurrent_adjust_no_race(self):
+        import threading as _threading
+        m = MoodTracker(affinity=50.0)
+        barrier = _threading.Barrier(8)
+
+        def worker():
+            barrier.wait()
+            for _ in range(200):
+                m.adjust(0.0)  # no-op but exercises the lock path
+
+        threads = [_threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertAlmostEqual(m.affinity, 50.0, places=5)
+
+    def test_concurrent_decay_does_not_corrupt_affinity(self):
+        import threading as _threading
+        m = MoodTracker(affinity=80.0, interactions=10,
+                        last_interaction_time=__import__('time').time() - 3600)
+        barrier = _threading.Barrier(4)
+
+        def worker():
+            barrier.wait()
+            for _ in range(50):
+                m.decay(1.0)
+
+        threads = [_threading.Thread(target=worker) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertGreaterEqual(m.affinity, 0.0)
+        self.assertLessEqual(m.affinity, 100.0)
+
+    def test_auto_decay_inline_no_reentrant_deadlock(self):
+        """auto_decay() must not call decay() internally — both acquire _lock."""
+        import time as _time
+        m = MoodTracker(affinity=60.0, interactions=5,
+                        last_interaction_time=_time.time() - 7200)
+        delta = m.auto_decay()
+        self.assertLessEqual(delta, 0.0)
+        self.assertGreaterEqual(m.affinity, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

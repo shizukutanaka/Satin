@@ -202,6 +202,10 @@ class MoodTracker:
         self._first_interaction_time = float(first_interaction_time)
         # 既に祝った記念日節目の最大日数（重複祝いを防ぐ）。
         self._last_anniversary_days = int(last_anniversary_days)
+        # シングルトン共有時の競合を防ぐ: affinity / interactions /
+        # last_interaction_time は複数スレッド（自律モード + TTS ハンドラ等）から
+        # 同時に更新されうるため、Lock で read-modify-write を保護する。
+        self._lock = threading.Lock()
 
     # ---- 状態参照 -------------------------------------------------------- #
     @property
@@ -237,15 +241,16 @@ class MoodTracker:
         delta = pos_hits * self.positive_delta - neg_hits * self.negative_delta
         delta = max(-_MAX_DELTA_PER_MESSAGE, min(_MAX_DELTA_PER_MESSAGE, delta))
 
-        before = self.affinity
-        self.affinity = _clamp(self.affinity + delta)
-        self.interactions += 1
-        now = time.time()
-        # 初回交流なら関係の始まりとして記録（記念日計算の起点）
-        if self._first_interaction_time <= 0:
-            self._first_interaction_time = now
-        self._last_interaction_time = now
-        return self.affinity - before
+        with self._lock:
+            before = self.affinity
+            self.affinity = _clamp(self.affinity + delta)
+            self.interactions += 1
+            now = time.time()
+            # 初回交流なら関係の始まりとして記録（記念日計算の起点）
+            if self._first_interaction_time <= 0:
+                self._first_interaction_time = now
+            self._last_interaction_time = now
+            return self.affinity - before
 
     def adjust(self, delta: float) -> float:
         """好感度を delta だけ直接増減して 0–100 にクランプし、実変化量を返す。
@@ -257,9 +262,10 @@ class MoodTracker:
             d = float(delta)
         except (TypeError, ValueError):
             return 0.0
-        before = self.affinity
-        self.affinity = _clamp(self.affinity + d)
-        return self.affinity - before
+        with self._lock:
+            before = self.affinity
+            self.affinity = _clamp(self.affinity + d)
+            return self.affinity - before
 
     def decay(
         self,
@@ -271,13 +277,16 @@ class MoodTracker:
         一度も会話したことが無い場合（interactions == 0）は低下させない。
         elapsed_seconds が 0 以下の場合も変化なし。
         """
-        if elapsed_seconds <= 0 or self.interactions == 0:
+        if elapsed_seconds <= 0:
             return 0.0
-        hours = elapsed_seconds / 3600.0
-        delta = -hours * rate_per_hour
-        before = self.affinity
-        self.affinity = _clamp(self.affinity + delta)
-        return self.affinity - before
+        with self._lock:
+            if self.interactions == 0:
+                return 0.0
+            hours = elapsed_seconds / 3600.0
+            delta = -hours * rate_per_hour
+            before = self.affinity
+            self.affinity = _clamp(self.affinity + delta)
+            return self.affinity - before
 
     def auto_decay(self, rate_per_hour: float = _DEFAULT_DECAY_RATE) -> float:
         """最後の会話からの経過時間を基に decay() を適用する。変化量を返す。
@@ -289,13 +298,19 @@ class MoodTracker:
         （例: 自律モードの ON/OFF を繰り返す）、同じ経過時間を二重に減衰してしまい
         好感度が不当に急落する。
         """
-        if self._last_interaction_time <= 0 or self.interactions == 0:
-            return 0.0
-        now = time.time()
-        elapsed = now - self._last_interaction_time
-        delta = self.decay(elapsed, rate_per_hour)
-        self._last_interaction_time = now
-        return delta
+        with self._lock:
+            if self._last_interaction_time <= 0 or self.interactions == 0:
+                return 0.0
+            now = time.time()
+            elapsed = now - self._last_interaction_time
+            if elapsed <= 0:
+                return 0.0
+            hours = elapsed / 3600.0
+            d = -hours * rate_per_hour
+            before = self.affinity
+            self.affinity = _clamp(self.affinity + d)
+            self._last_interaction_time = now
+            return self.affinity - before
 
     # ---- 永続化 ---------------------------------------------------------- #
     def gift_received_today(self, gift_key: str) -> bool:
