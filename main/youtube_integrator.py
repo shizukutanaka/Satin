@@ -165,7 +165,7 @@ class YouTubeIntegrator:
         - https://m.youtube.com/watch?v=VIDEO_ID
         """
         patterns = [
-            r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
+            r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})',
             r'youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})',
         ]
 
@@ -365,17 +365,21 @@ class YouTubeIntegrator:
             )
 
     def _parse_duration(self, duration_str: str) -> int:
-        """ISO 8601 duration (PT1H2M3S) を秒数に変換"""
-        pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+        """ISO 8601 duration (PT1H2M3S, P1DT2H) を秒数に変換"""
+        # 日 (D) コンポーネントを含むパターン (例: P1DT2H30M0S)。
+        # 旧パターン r'PT...' はPの直後にTを要求するため、1日以上の動画/
+        # ライブ配信 (P1DT2H) に対して 0 を返していた。
+        pattern = r'P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
         match = re.match(pattern, duration_str)
         if not match:
             return 0
 
-        hours = int(match.group(1) or 0)
-        minutes = int(match.group(2) or 0)
-        seconds = int(match.group(3) or 0)
+        days = int(match.group(1) or 0)
+        hours = int(match.group(2) or 0)
+        minutes = int(match.group(3) or 0)
+        seconds = int(match.group(4) or 0)
 
-        return hours * 3600 + minutes * 60 + seconds
+        return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
     @handle_error(RetryStrategy(max_retries=2, backoff_factor=1.5))
     def get_transcript(self, video_id: str, languages: Optional[List[str]] = None) -> Optional[str]:
