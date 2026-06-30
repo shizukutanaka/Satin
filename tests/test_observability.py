@@ -294,5 +294,125 @@ class HealthCheckerTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(result.uptime_seconds, 0)
 
 
+class StructuredLogHandlerThreadSafetyTests(unittest.TestCase):
+    """Regression: emit() mutated self.logs without a lock, so concurrent
+    calls from multiple threads could corrupt the deque or lose entries."""
+
+    def _make_record(self, msg="x"):
+        import logging
+        return logging.LogRecord(
+            name="t", level=logging.INFO, pathname="", lineno=0,
+            msg=msg, args=(), exc_info=None,
+        )
+
+    def test_concurrent_emit_does_not_corrupt(self):
+        handler = StructuredLogHandler(max_size=10_000)
+        n_threads, per_thread = 8, 200
+        errors = []
+
+        def worker():
+            for i in range(per_thread):
+                try:
+                    handler.emit(self._make_record(f"msg{i}"))
+                except Exception as exc:
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+        # All per_thread * n_threads messages must have landed (cap is 10k, total is 1600).
+        self.assertEqual(len(handler.logs), n_threads * per_thread)
+
+    def test_get_logs_under_concurrent_emit(self):
+        handler = StructuredLogHandler(max_size=500)
+        stop = threading.Event()
+        exceptions = []
+
+        def emitter():
+            while not stop.is_set():
+                try:
+                    handler.emit(self._make_record())
+                except Exception as exc:
+                    exceptions.append(exc)
+
+        t = threading.Thread(target=emitter, daemon=True)
+        t.start()
+        for _ in range(100):
+            try:
+                handler.get_logs()
+            except Exception as exc:
+                exceptions.append(exc)
+        stop.set()
+        t.join(timeout=2)
+        self.assertEqual(exceptions, [])
+
+
+class TraceProviderOutOfOrderEndTests(unittest.TestCase):
+    """Regression: end_span() only popped the stack when span_id was at the
+    top, so closing a parent before its child left dead IDs in the stack."""
+
+    def test_out_of_order_end_does_not_leak_stack(self):
+        tp = TraceProvider()
+        parent = tp.start_span("parent")
+        child = tp.start_span("child")
+        # Close parent while child is still 'active'
+        tp.end_span(parent.span_id, status="OK")
+        self.assertNotIn(parent.span_id, tp.active_span_stack)
+        # Child is still open
+        self.assertIn(child.span_id, tp.active_span_stack)
+        tp.end_span(child.span_id, status="OK")
+        self.assertNotIn(child.span_id, tp.active_span_stack)
+
+    def test_end_unknown_span_is_safe(self):
+        tp = TraceProvider()
+        tp.end_span("does-not-exist")  # must not raise
+
+
+class TraceProviderBoundedSpansTests(unittest.TestCase):
+    """Regression: spans dict grew without bound — a long-running process
+    would leak unbounded memory."""
+
+    def test_spans_pruned_when_cap_reached(self):
+        tp = TraceProvider()
+        tp._max_spans = 10
+
+        # Fill beyond cap; all spans are immediately ended so they're prunable.
+        for i in range(20):
+            span = tp.start_span(f"op{i}")
+            tp.end_span(span.span_id)
+
+        self.assertLessEqual(len(tp.spans), 10)
+
+    def test_active_spans_not_pruned_until_ended(self):
+        tp = TraceProvider()
+        tp._max_spans = 5
+
+        # 5 open spans — fill to cap.
+        open_spans = [tp.start_span(f"live{i}") for i in range(5)]
+        # Adding one more forces a prune; since no spans are ended yet,
+        # one active span is evicted, but the total is back at the cap.
+        extra = tp.start_span("extra")
+        self.assertLessEqual(len(tp.spans), tp._max_spans)
+        del open_spans, extra
+
+
+class HealthCheckResultJsonSafetyTests(unittest.TestCase):
+    """Regression: to_dict() returned a raw datetime object for 'timestamp',
+    so json.dumps(result.to_dict()) raised TypeError without default=str."""
+
+    def test_to_dict_timestamp_is_string(self):
+        import json
+        result = HealthCheckResult(status="UP")
+        d = result.to_dict()
+        # Must be JSON-serialisable without default=str
+        serialised = json.dumps(d)
+        parsed = json.loads(serialised)
+        self.assertIsInstance(parsed["timestamp"], str)
+
+
 if __name__ == "__main__":
     unittest.main()

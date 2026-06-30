@@ -4,6 +4,7 @@ Observability 統合基盤
 OpenTelemetry 対応
 """
 
+import collections
 import logging
 import json
 import time
@@ -114,7 +115,8 @@ class StructuredLogHandler(logging.Handler):
         super().__init__()
         self.trace_provider = trace_provider
         self.max_size = max_size
-        self.logs: List[StructuredLog] = []
+        self.logs: collections.deque = collections.deque(maxlen=max_size)
+        self._logs_lock = threading.Lock()
 
     def emit(self, record: logging.LogRecord):
         """ログレコードを構造化ログに変換して出力"""
@@ -158,9 +160,8 @@ class StructuredLogHandler(logging.Handler):
                 custom_attributes=getattr(record, 'custom_attributes', {})
             )
 
-            if len(self.logs) >= self.max_size:
-                self.logs.pop(0)
-            self.logs.append(structured)
+            with self._logs_lock:
+                self.logs.append(structured)
 
             # 標準出力（JSON）
             print(structured.to_json())
@@ -170,7 +171,9 @@ class StructuredLogHandler(logging.Handler):
 
     def get_logs(self) -> List[Dict[str, Any]]:
         """すべてのログを取得"""
-        return [log.to_dict() for log in self.logs]
+        with self._logs_lock:
+            snapshot = list(self.logs)
+        return [log.to_dict() for log in snapshot]
 
 
 # ========================================================================
@@ -237,6 +240,7 @@ class TraceProvider:
         self.spans: Dict[str, Span] = {}
         self.active_trace_id: Optional[str] = None
         self.active_span_stack: List[str] = []
+        self._max_spans: int = 10_000
 
     def start_span(
         self,
@@ -247,6 +251,15 @@ class TraceProvider:
         """新しいスパンを開始"""
         trace_id = trace_id or str(uuid.uuid4())
         span_id = str(uuid.uuid4())
+
+        if len(self.spans) >= self._max_spans:
+            # Prune ended spans first; if still at limit drop the oldest entry.
+            ended = [sid for sid, s in self.spans.items() if s.end_time is not None]
+            for sid in ended:
+                del self.spans[sid]
+            if len(self.spans) >= self._max_spans:
+                oldest = next(iter(self.spans))
+                del self.spans[oldest]
 
         span = Span(
             span_id=span_id,
@@ -266,8 +279,10 @@ class TraceProvider:
         """スパンを終了"""
         if span_id in self.spans:
             self.spans[span_id].end(status, error)
-            if self.active_span_stack and self.active_span_stack[-1] == span_id:
-                self.active_span_stack.pop()
+            try:
+                self.active_span_stack.remove(span_id)
+            except ValueError:
+                pass  # already removed or never pushed
 
     def get_traces(self) -> Dict[str, List[Dict[str, Any]]]:
         """すべてのトレースを取得"""
@@ -370,7 +385,9 @@ class HealthCheckResult:
     uptime_seconds: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data['timestamp'] = self.timestamp.isoformat()
+        return data
 
 
 class HealthChecker:

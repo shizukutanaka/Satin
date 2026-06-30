@@ -12,11 +12,13 @@ Implements:
 - Async-aware profiling support
 """
 
+import collections
 import cProfile
 import pstats
 import io
 import functools
 import time
+import threading
 import tracemalloc
 import gc
 import asyncio
@@ -384,7 +386,8 @@ class PerformanceMonitor:
             window_size: Number of samples to keep in sliding window
         """
         self.window_size = window_size
-        self.metrics: Dict[str, List[float]] = {}
+        self.metrics: Dict[str, collections.deque] = {}
+        self._lock = threading.Lock()
 
     def record_operation(self, operation_name: str, duration_ms: float) -> None:
         """
@@ -394,13 +397,10 @@ class PerformanceMonitor:
             operation_name: Name of operation
             duration_ms: Duration in milliseconds
         """
-        if operation_name not in self.metrics:
-            self.metrics[operation_name] = []
-
-        self.metrics[operation_name].append(duration_ms)
-
-        if len(self.metrics[operation_name]) > self.window_size:
-            self.metrics[operation_name].pop(0)
+        with self._lock:
+            if operation_name not in self.metrics:
+                self.metrics[operation_name] = collections.deque(maxlen=self.window_size)
+            self.metrics[operation_name].append(duration_ms)
 
     def get_statistics(self, operation_name: str) -> Dict[str, float]:
         """
@@ -413,7 +413,8 @@ class PerformanceMonitor:
         """
         import statistics
 
-        values = sorted(self.metrics.get(operation_name) or [])
+        with self._lock:
+            values = sorted(self.metrics.get(operation_name) or [])
         n = len(values)
 
         if n == 0:
@@ -473,10 +474,8 @@ class PerformanceMonitor:
         Returns:
             True if recent performance degraded beyond threshold
         """
-        if operation_name not in self.metrics:
-            return False
-
-        metrics = self.metrics[operation_name]
+        with self._lock:
+            metrics = list(self.metrics.get(operation_name) or [])
         if len(metrics) < 20:
             return False
 

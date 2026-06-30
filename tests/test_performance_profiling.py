@@ -193,5 +193,76 @@ class ProfileCallAsyncDecoratorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, 7)
 
 
+class PerformanceMonitorThreadSafetyTests(unittest.TestCase):
+    """Regression: record_operation() and get_statistics() had no lock,
+    so concurrent calls from ThreadPoolExecutor workers lost samples or
+    corrupted the internal deque."""
+
+    def test_concurrent_record_no_data_loss(self):
+        import threading
+        mon = PerformanceMonitor(window_size=10_000)
+        n_threads, per_thread = 8, 500
+        errors = []
+
+        def worker():
+            for i in range(per_thread):
+                try:
+                    mon.record_operation("op", float(i))
+                except Exception as exc:
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+        stats = mon.get_statistics("op")
+        self.assertEqual(stats["count"], n_threads * per_thread)
+
+    def test_window_size_enforced_under_concurrency(self):
+        import threading
+        mon = PerformanceMonitor(window_size=50)
+        threads = [
+            threading.Thread(target=lambda: [mon.record_operation("x", 1.0) for _ in range(200)])
+            for _ in range(4)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        stats = mon.get_statistics("x")
+        self.assertLessEqual(stats["count"], 50)
+
+    def test_detect_regression_thread_safe(self):
+        import threading
+        mon = PerformanceMonitor(window_size=200)
+        # Populate with 100 "fast" then 100 "slow" samples
+        for _ in range(100):
+            mon.record_operation("svc", 10.0)
+        for _ in range(100):
+            mon.record_operation("svc", 50.0)
+
+        results = []
+        errors = []
+
+        def checker():
+            try:
+                results.append(mon.detect_regression("svc"))
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=checker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [])
+        # All threads must agree on the answer — no partial-read corruption.
+        self.assertEqual(len(set(results)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

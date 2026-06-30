@@ -186,5 +186,127 @@ class PluginBaseValidationTests(unittest.TestCase):
             p.validate_config({"a": 1}, ["a", "missing_key"])
 
 
+class LoadPluginsIsolationTests(unittest.TestCase):
+    """Regression: load_plugins() propagated a single plugin's PluginError
+    and aborted the batch, leaving successfully-loaded earlier plugins
+    inaccessible and never loading plugins that came later in the glob."""
+
+    def _plugin_src(self, class_name):
+        return f"""\
+import sys
+sys.path.insert(0, {_MAIN!r})
+from plugin_base import PluginBase
+
+class {class_name}(PluginBase):
+    def configure(self, config): self.config = config
+    def start(self): pass
+    def stop(self): pass
+    def process(self, data): return data
+"""
+
+    def test_bad_plugin_does_not_prevent_good_plugins_loading(self):
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            # Write a valid plugin
+            with open(os.path.join(d, "good_plugin.py"), "w") as f:
+                f.write(self._plugin_src("GoodPlugin"))
+
+            # Write a plugin that raises on import
+            with open(os.path.join(d, "bad_plugin.py"), "w") as f:
+                f.write("raise RuntimeError('intentional import failure')\n")
+
+            warnings = []
+
+            class CapturingLogger(_StubLogger):
+                def warning(self, msg):
+                    warnings.append(msg)
+
+            pm = PluginManager(CapturingLogger())
+            pm.plugin_directory = Path(d)
+            pm._load_plugin_config = lambda: None
+            pm.plugin_config = {}
+
+            # Must not raise — the bad plugin is skipped, the good one loads.
+            pm.load_plugins()
+
+            self.assertIn("good_plugin", pm.plugins)
+            self.assertNotIn("bad_plugin", pm.plugins)
+            # A warning about the failure must be emitted.
+            self.assertTrue(any("bad_plugin" in w for w in warnings))
+
+
+class ReloadPluginStopTests(unittest.TestCase):
+    """Regression: reload_plugin() replaced the old plugin instance without
+    calling stop(), leaking any threads or file handles the plugin held."""
+
+    def _plugin_src(self, class_name, extra_body=""):
+        return f"""\
+import sys
+sys.path.insert(0, {_MAIN!r})
+from plugin_base import PluginBase
+
+class {class_name}(PluginBase):
+    def configure(self, config): self.config = config
+    def start(self): pass
+    def stop(self): pass
+    def process(self, data): return data
+{extra_body}
+"""
+
+    def test_stop_called_on_old_plugin_before_reload(self):
+        from pathlib import Path
+
+        stop_calls = []
+
+        with tempfile.TemporaryDirectory() as d:
+            plugin_path = os.path.join(d, "my_plugin.py")
+            with open(plugin_path, "w") as f:
+                f.write(self._plugin_src("MyPlugin"))
+
+            pm = PluginManager(_StubLogger())
+            pm.plugin_directory = Path(d)
+            pm._load_plugin_config = lambda: None
+            pm.plugin_config = {}
+            pm._load_plugin(Path(plugin_path))
+
+            # Monkey-patch stop() on the live instance to record the call.
+            pm.plugins["my_plugin"].stop = lambda: stop_calls.append(True)
+
+            pm.reload_plugin("my_plugin")
+
+        self.assertEqual(len(stop_calls), 1, "stop() must be called on the old plugin")
+
+    def test_stop_exception_does_not_abort_reload(self):
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            plugin_path = os.path.join(d, "crashing_plugin.py")
+            with open(plugin_path, "w") as f:
+                f.write(self._plugin_src("CrashingPlugin"))
+
+            warnings = []
+
+            class CapturingLogger(_StubLogger):
+                def warning(self, msg):
+                    warnings.append(msg)
+
+            pm = PluginManager(CapturingLogger())
+            pm.plugin_directory = Path(d)
+            pm._load_plugin_config = lambda: None
+            pm.plugin_config = {}
+            pm._load_plugin(Path(plugin_path))
+
+            # Make stop() raise
+            pm.plugins["crashing_plugin"].stop = lambda: (_ for _ in ()).throw(
+                RuntimeError("cleanup failed")
+            )
+
+            # Must not raise — the warning is logged, reload proceeds.
+            pm.reload_plugin("crashing_plugin")
+            self.assertIn("crashing_plugin", pm.plugins)
+            self.assertTrue(any("stop()" in w for w in warnings))
+
+
 if __name__ == "__main__":
     unittest.main()

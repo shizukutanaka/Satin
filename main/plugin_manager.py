@@ -23,16 +23,28 @@ class PluginManager:
         try:
             if not self.plugin_directory.exists():
                 raise PluginError(f"Plugin directory not found: {self.plugin_directory}")
-                
+
             # Load plugin configuration
             self._load_plugin_config()
-            
-            # Load each plugin
+
+            # Load each plugin; isolate failures so one bad plugin
+            # doesn't prevent the rest from loading.
+            failed = []
             for plugin_file in self.plugin_directory.glob("*.py"):
-                self._load_plugin(plugin_file)
-                
+                try:
+                    self._load_plugin(plugin_file)
+                except PluginError as exc:
+                    self.logger.error(f"Skipping plugin {plugin_file.stem}: {exc}")
+                    failed.append(plugin_file.stem)
+
+            if failed:
+                self.logger.warning(
+                    f"{len(failed)} plugin(s) failed to load: {failed}"
+                )
             self.logger.info(f"Loaded {len(self.plugins)} plugins")
-            
+
+        except PluginError:
+            raise
         except Exception as e:
             self.logger.error(f"Error loading plugins: {str(e)}")
             raise PluginError(f"Failed to load plugins: {str(e)}") from e
@@ -114,13 +126,18 @@ class PluginManager:
         try:
             if name not in self.plugins:
                 raise PluginError(f"Plugin not found: {name}")
-                
-            plugin = self.plugins[name]
+
+            old_plugin = self.plugins[name]
+            try:
+                old_plugin.stop()
+            except Exception as exc:
+                self.logger.warning(f"stop() raised during reload of {name}: {exc}")
+
             plugin_file = self.plugin_directory / f"{name}.py"
             self._load_plugin(plugin_file)
-            
+
             self.logger.info(f"Reloaded plugin: {name}")
-            
+
         except Exception as e:
             self.logger.error(f"Error reloading plugin {name}: {str(e)}")
             raise PluginError(f"Failed to reload plugin {name}: {str(e)}") from e
