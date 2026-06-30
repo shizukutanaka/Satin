@@ -2170,5 +2170,74 @@ class GiftBonusDisplayTests(unittest.TestCase):
         self.assertNotIn("+0", combined)
 
 
+class AffinityBannerLocalizationTests(unittest.TestCase):
+    """Regression: the affinity-level-change banner output '── 関係: ...' regardless
+    of the session language, so English users saw a Japanese label.
+
+    Fix: use 'Relationship' for lang='en', '関係' for lang='ja'.
+    """
+
+    def _banner_lines(self, lang: str) -> list:
+        """Run one chat exchange that crosses a level boundary and return banner output."""
+        import persona_cli as pc
+        from unittest import mock
+        from mood import MoodTracker
+
+        out = []
+        # tracker starts just below the neutral→friendly boundary (60)
+        tracker = MoodTracker(affinity=59.0, interactions=1)
+        p = pc.Persona.from_dict({
+            "name": "T",
+            "default_lang": lang,
+            "dialogue": {lang: {"talk": ["ok"], "greeting": ["hi"], "rest": [".."],
+                                "fallback": ["ok"]}},
+        })
+
+        # Force the mood tracker to jump past 60 in register() so the banner fires.
+        # We do this by making adjust() also fire when register() returns a delta,
+        # instead of fighting keyword matching. Easiest: mock register() directly.
+        original_register = tracker.register
+
+        def _forced_register(text):
+            tracker.affinity = 65.0  # crosses to friendly
+            tracker.interactions += 1
+            return 6.0  # positive delta
+
+        with mock.patch.object(tracker, "register", side_effect=_forced_register), \
+             mock.patch.object(pc, "_check_confession_event", lambda *a, **k: None), \
+             mock.patch.object(pc, "_check_interaction_milestone", lambda *a, **k: None), \
+             mock.patch.object(pc, "_get_daily_mood", lambda: "calm"), \
+             mock.patch.object(pc, "_mood_affinity_multiplier", lambda m: 1.0):
+            inputs = iter(["hello", "/quit"])
+            pc.run_chat(
+                persona=p,
+                conv_log=None,
+                input_fn=lambda _: next(inputs),
+                output_fn=out.append,
+                greet=False,
+                mood=tracker,
+                profile=None,
+            )
+        return [l for l in out if "──" in l]
+
+    def test_english_banner_says_relationship(self):
+        """With lang='en', the banner must use 'Relationship', not '関係'."""
+        banners = self._banner_lines("en")
+        self.assertTrue(banners, "Expected a level-change banner but got none.")
+        banner = " ".join(banners)
+        self.assertIn("Relationship", banner,
+            "English banner must say 'Relationship', not '関係'.")
+        self.assertNotIn("関係", banner,
+            "Japanese label '関係' must not appear in English banner.")
+
+    def test_japanese_banner_says_kankei(self):
+        """With lang='ja', the banner must use '関係'."""
+        banners = self._banner_lines("ja")
+        self.assertTrue(banners, "Expected a level-change banner but got none.")
+        banner = " ".join(banners)
+        self.assertIn("関係", banner,
+            "Japanese banner must say '関係'.")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -532,7 +532,8 @@ def run_chat(
                         fl = _affinity_label(before_affinity, lang)
                         tl = _affinity_label(after_affinity, lang)
                         arrow = "↑" if after_affinity > before_affinity else "↓"
-                        output_fn(f"── 関係: {fl} {arrow} {tl} ──")
+                        rel_label = "Relationship" if lang == "en" else "関係"
+                        output_fn(f"── {rel_label}: {fl} {arrow} {tl} ──")
                 # 会話回数マイルストーン（節目ごとに一言）
                 if not milestone_msg and _check_interaction_milestone is not None:
                     inter_ms = _check_interaction_milestone(
