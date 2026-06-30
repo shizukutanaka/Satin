@@ -335,5 +335,73 @@ class KnowledgeBaseMutationTests(unittest.TestCase):
                          "original content_data values must be unchanged")
 
 
+class FreshnessScoreMonotonicityTests(unittest.TestCase):
+    """Regression: freshness_score was non-monotonic at the 365-day boundary.
+
+    The first formula (age_days <= 365) evaluated to 0 at exactly 365 days,
+    while the second formula (365 < age_days <= 730) evaluates to ~5 at 366 days.
+    A 1-year-1-day-old item therefore outscored a 1-year-old item in freshness —
+    older content ranked *higher* than newer content.
+
+    Fix: change the first segment from ``10*(1 - age/365)`` (10→0) to
+    ``5 + 5*(1 - age/365)`` (10→5) so both segments meet continuously at
+    age_days=365 → freshness_score=5.
+    """
+
+    def setUp(self):
+        self._agg = _make_aggregator()
+
+    def _score_for_age(self, age_days):
+        """Return relevance_score for content of given age with no keywords or views.
+
+        Popularity and keyword components are constant across all calls, so
+        comparing scores from this helper directly measures the freshness ordering.
+        """
+        pub = datetime.now() - timedelta(days=age_days)
+        content = _make_content(title="test", published_date=pub,
+                                content_type=ContentType.VIDEO)
+        return self._agg.calculate_relevance_score(content, "", boost_recent=True)
+
+    def test_monotonically_decreasing_at_365_day_boundary(self):
+        """Score must decrease (or stay equal) as age grows across the 365-day boundary."""
+        s364 = self._score_for_age(364)
+        s365 = self._score_for_age(365)
+        s366 = self._score_for_age(366)
+        self.assertGreaterEqual(
+            s364, s365,
+            f"364-day score ({s364:.4f}) must be >= 365-day ({s365:.4f})",
+        )
+        self.assertGreaterEqual(
+            s365, s366,
+            f"365-day score ({s365:.4f}) must be >= 366-day ({s366:.4f})",
+        )
+
+    def test_older_content_never_scores_higher_than_newer(self):
+        """Full range: older content must never score above newer content."""
+        ages = [0, 100, 200, 300, 365, 366, 400, 500, 600, 700, 730]
+        scores = [self._score_for_age(a) for a in ages]
+        for i in range(len(scores) - 1):
+            self.assertGreaterEqual(
+                scores[i], scores[i + 1],
+                f"Age {ages[i]} days ({scores[i]:.4f}) must score >= "
+                f"age {ages[i + 1]} days ({scores[i + 1]:.4f})",
+            )
+
+    def test_new_content_scores_higher_than_two_year_old(self):
+        """Brand-new content must strictly outrank 2-year-old content."""
+        self.assertGreater(self._score_for_age(0), self._score_for_age(730))
+
+    def test_one_year_old_scores_higher_than_two_year_old(self):
+        """1-year-old content must score strictly above 2-year-old content."""
+        self.assertGreater(self._score_for_age(365), self._score_for_age(730))
+
+    def test_content_older_than_two_years_scores_same_as_two_year_old(self):
+        """Content >2 years old gets no freshness bonus — scores equal to 730-day content."""
+        self.assertAlmostEqual(
+            self._score_for_age(730), self._score_for_age(1000), places=2,
+            msg="Content older than 2 years must score the same as 2-year-old content",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
