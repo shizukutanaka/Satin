@@ -348,6 +348,10 @@ class DistributedCache:
     async def get(self, key: str) -> Optional[Any]:
         """キャッシュから値を取得"""
         if key not in self.memory_cache:
+            self.access_log.append({
+                'key': key, 'operation': 'get',
+                'timestamp': datetime.now(), 'hit': False,
+            })
             return None
 
         value, expiry_time = self.memory_cache[key]
@@ -355,6 +359,10 @@ class DistributedCache:
         # TTL チェック
         if datetime.now() > expiry_time:
             del self.memory_cache[key]
+            self.access_log.append({
+                'key': key, 'operation': 'get',
+                'timestamp': datetime.now(), 'hit': False,
+            })
             return None
 
         # アクセスログに記録

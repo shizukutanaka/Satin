@@ -360,5 +360,49 @@ class OpenCircuitCacheBypassTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(cb.last_failure_time)
 
 
+class CacheHitRateTests(unittest.IsolatedAsyncioTestCase):
+    """Regression: get() only logged hits, so get_stats() always reported
+    100% hit rate (or 0% when nothing was fetched). Misses — both key-not-found
+    and TTL-expired — must now be recorded so hit_rate reflects reality.
+    """
+
+    def _make_cache(self, ttl=60):
+        return DistributedCache(DistributedCacheConfig(ttl_seconds=ttl))
+
+    async def test_hit_rate_is_100_when_all_hits(self):
+        cache = self._make_cache()
+        await cache.set("k", "v")
+        await cache.get("k")
+        self.assertAlmostEqual(cache.get_stats()["cache_hit_rate"], 100.0)
+
+    async def test_hit_rate_is_0_when_all_misses(self):
+        cache = self._make_cache()
+        await cache.get("missing")
+        self.assertAlmostEqual(cache.get_stats()["cache_hit_rate"], 0.0)
+
+    async def test_hit_rate_is_50_with_mixed_accesses(self):
+        """One hit and one miss must give 50%, not 100%."""
+        cache = self._make_cache()
+        await cache.set("k", "v")
+        await cache.get("k")        # hit
+        await cache.get("missing")  # miss — was silently dropped (bug)
+        rate = cache.get_stats()["cache_hit_rate"]
+        self.assertAlmostEqual(
+            rate, 50.0, delta=1.0,
+            msg=f"Expected ~50% hit rate with 1 hit + 1 miss, got {rate:.1f}% "
+                f"(old bug: misses not logged → always 100%)",
+        )
+
+    async def test_expired_entry_counts_as_miss(self):
+        """A get() on a TTL-expired key must count as a miss, not a hit."""
+        import time as _time
+        cache = self._make_cache(ttl=0)
+        await cache.set("k", "v")
+        _time.sleep(0.01)
+        await cache.get("k")        # TTL-expired → miss
+        self.assertAlmostEqual(cache.get_stats()["cache_hit_rate"], 0.0,
+                               msg="Expired-key get must be logged as a miss")
+
+
 if __name__ == "__main__":
     unittest.main()
