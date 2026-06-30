@@ -517,7 +517,8 @@ class AsyncRateLimiterAdvanced:
 
         # Decide whether to grow or shrink the concurrency budget.
         if len(self.latencies) >= 10:
-            idx = min(int(len(self.latencies) * 0.99), len(self.latencies) - 1)
+            n = len(self.latencies)
+            idx = min((n * 99 + 99) // 100 - 1, n - 1)
             p99_latency = sorted(self.latencies)[idx]
 
             if (p99_latency > self.target_latency_ms

@@ -322,5 +322,73 @@ class GatherWithTimeoutTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(results[0], ValueError)
 
 
+class P99PercentileIndexTests(unittest.IsolatedAsyncioTestCase):
+    """Regression: AsyncRateLimiterAdvanced used ``int(N * 0.99)`` to compute the
+    p99 sample index.  When N == window_size (100), floating-point gives
+    ``0.99 * 100 == 99.00000000000001``, so ``int(...)`` yields 99 —
+    which is the last index, i.e. the maximum value (p100), not p99.
+
+    A window of [100ms×99, 9999ms×1] should have p99 = 100ms (index 98).
+    The bug reads index 99 = 9999ms (max), causing the adaptive limiter to
+    incorrectly shrink concurrency when the target is between 100ms and 9999ms.
+
+    Fix: replace ``int(N * 0.99)`` with ``(N * 99 + 99) // 100 - 1`` (ceiling
+    integer division) to avoid floating-point drift and correctly land at index 98
+    for N=100.
+    """
+
+    async def test_p99_with_full_window_excludes_single_outlier(self):
+        """Window [100ms×99, 9999ms×1] p99 must be 100ms, causing no concurrency
+        shrink when target=9000ms.  Old bug: p99=9999ms > 9000ms → shrinks.
+
+        Manually set current_concurrency > min so there is room to shrink,
+        making the bug observable (at min, shrink is always blocked by the guard).
+        """
+        limiter = AsyncRateLimiterAdvanced(
+            target_latency_ms=9000.0,
+            min_concurrency=1, max_concurrency=5,
+        )
+        # Start at concurrency=3 so the adaptive shrink guard (> min) can fire.
+        limiter.current_concurrency = 3
+        limiter.semaphore = asyncio.Semaphore(3)
+        await limiter.acquire()
+        initial = limiter.current_concurrency  # == 3
+
+        # Pre-fill with 99 fast samples + 1 extreme outlier (100 = window_size)
+        limiter.latencies = [100.0] * 99 + [9999.0]
+
+        # release(0.0) appends then trims → [100×98, 9999, 0.0] (100 samples).
+        # Correct p99 (index 98 = 100ms) < 9000ms → must NOT shrink (may grow).
+        # Buggy  p99 (index 99 = 9999ms) > 9000ms → shrinks 3→2.
+        limiter.release(0.0)
+
+        self.assertGreaterEqual(
+            limiter.current_concurrency, initial,
+            f"Concurrency shrank from {initial} to {limiter.current_concurrency}: "
+            f"p99 was incorrectly read as max (9999ms) not ~100ms. "
+            f"Root cause: int(100*0.99)=99 (last index) due to 0.99*100=99.00...001.",
+        )
+
+    async def test_concurrency_does_shrink_when_true_p99_exceeds_target(self):
+        """Control: when the true p99 exceeds the target, concurrency must shrink."""
+        limiter = AsyncRateLimiterAdvanced(
+            target_latency_ms=500.0,
+            min_concurrency=1, max_concurrency=5,
+        )
+        limiter.current_concurrency = 3
+        limiter.semaphore = asyncio.Semaphore(3)
+        await limiter.acquire()
+        initial = limiter.current_concurrency  # == 3
+
+        # All 100 samples are slow (9999ms > 500ms target) → p99 = 9999 → shrink.
+        limiter.latencies = [9999.0] * 100
+        limiter.release(9999.0)
+
+        self.assertLess(
+            limiter.current_concurrency, initial,
+            "When p99 genuinely exceeds the target, concurrency must decrease.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
