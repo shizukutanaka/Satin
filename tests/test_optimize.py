@@ -252,5 +252,113 @@ class CacheResultCompressionTests(unittest.TestCase):
             "Function should only be invoked once within TTL.")
 
 
+class BatchProcessNoDropTests(unittest.TestCase):
+    """Regression: batch_process(..., optimize=True) truncated each batch to
+    optimize_batch_size(len(batch)) items and silently dropped the rest.
+
+    When psutil reported memory > 80%, optimize_batch_size returned half the
+    batch length.  With batch_size=10 this dropped 5 items per call.
+
+    Fix: apply optimize_batch_size to the outer chunk size (before the loop),
+    not as a truncation inside each process_batch invocation.
+    """
+
+    def test_all_items_processed_with_optimize_true(self):
+        """All 100 items must appear in the result regardless of optimize flag."""
+        from optimize import batch_process
+        from unittest.mock import patch, MagicMock
+
+        processed = []
+
+        def collector(batch):
+            processed.extend(batch)
+            return batch
+
+        items = list(range(100))
+
+        # Simulate high memory to expose the truncation bug
+        mock_mem = MagicMock()
+        mock_mem.percent = 90.0
+        mock_psutil = MagicMock()
+        mock_psutil.virtual_memory.return_value = mock_mem
+        mock_psutil.cpu_count.return_value = 2
+
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
+            result = asyncio.run(batch_process(items, collector, batch_size=10, optimize=True))
+
+        self.assertEqual(
+            sorted(result), items,
+            f"Only {len(result)} of 100 items were returned; "
+            f"old bug: batch[:effective] truncated each batch, silently dropping items.",
+        )
+        self.assertEqual(
+            sorted(processed), items,
+            f"process_func only saw {len(processed)} items; rest were silently dropped.",
+        )
+
+    def test_all_items_processed_with_optimize_false(self):
+        """Baseline: optimize=False must never drop items."""
+        from optimize import batch_process
+
+        processed = []
+
+        def collector(batch):
+            processed.extend(batch)
+            return batch
+
+        items = list(range(50))
+        asyncio.run(batch_process(items, collector, batch_size=10, optimize=False))
+        self.assertEqual(sorted(processed), items)
+
+
+class AnalyzeResourcePatternsTests(unittest.TestCase):
+    """Regression: _analyze_resource_patterns checked for a 'history' key
+    that get_metrics() never includes (it returns summary stats only).
+
+    This made the function always return {}, so adaptive_optimize never
+    computed any patterns — the analysis was silently dead.
+
+    Fix: pass self.metrics (raw list dict) and compute variance/peak/avg
+    directly from the flat list of floats.
+    """
+
+    def test_patterns_non_empty_after_recording_metrics(self):
+        pm = PerformanceMonitor()
+        for v in [10.0, 20.0, 30.0, 40.0, 50.0]:
+            pm.record_metric("cpu", v)
+
+        patterns = pm._analyze_resource_patterns(pm.metrics)
+        self.assertIn(
+            "cpu", patterns,
+            "Old bug: _analyze_resource_patterns returned {} because it looked "
+            "for a 'history' key in get_metrics() output, which never exists.",
+        )
+
+    def test_patterns_contain_expected_keys(self):
+        pm = PerformanceMonitor()
+        for v in [1.0, 2.0, 3.0]:
+            pm.record_metric("mem", v)
+
+        patterns = pm._analyze_resource_patterns(pm.metrics)
+        self.assertIn("mem", patterns)
+        p = patterns["mem"]
+        self.assertIn("peak", p)
+        self.assertIn("avg", p)
+        self.assertIn("variance", p)
+
+    def test_empty_metric_list_excluded_from_patterns(self):
+        pm = PerformanceMonitor()
+        pm.metrics["empty"] = []
+        patterns = pm._analyze_resource_patterns(pm.metrics)
+        self.assertNotIn("empty", patterns)
+
+    def test_peak_is_max(self):
+        pm = PerformanceMonitor()
+        for v in [5.0, 15.0, 10.0]:
+            pm.record_metric("x", v)
+        p = pm._analyze_resource_patterns(pm.metrics)["x"]
+        self.assertAlmostEqual(p["peak"], 15.0)
+
+
 if __name__ == "__main__":
     unittest.main()

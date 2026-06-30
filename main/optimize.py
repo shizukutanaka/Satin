@@ -107,12 +107,12 @@ class PerformanceMonitor:
         metrics = self.get_metrics()
         if not metrics:
             return
-            
+
         # Forecast future usage
         predictions = await self._resource_forecaster.forecast_resources()
-        
-        # Analyze patterns
-        patterns = self._analyze_resource_patterns(metrics)
+
+        # Analyze patterns from raw metric lists (not from summary-stats dicts)
+        patterns = self._analyze_resource_patterns(self.metrics)
         
         # Determine optimization strategy
         strategy = self._adaptive_optimizer.determine_strategy(
@@ -126,20 +126,19 @@ class PerformanceMonitor:
         
         self._last_adaptive_optimization = current_time
     
-    def _analyze_resource_patterns(self, metrics: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """Analyze resource usage patterns"""
+    def _analyze_resource_patterns(self, raw_metrics: Dict[str, List[float]]) -> Dict[str, Dict[str, Any]]:
+        """Analyze resource usage patterns from raw metric lists."""
         patterns = {}
-        for name, metric in metrics.items():
-            if 'history' in metric:
-                values = [point['value'] for point in metric['history']]
-                timestamps = [point['timestamp'] for point in metric['history']]
-                patterns[name] = {
-                    'trend': self._calculate_trend(values),
-                    'seasonality': self._calculate_seasonality(values, timestamps),
-                    'variance': self._calculate_variance(values),
-                    'peak': max(values) if values else 0,
-                    'avg': sum(values) / len(values) if values else 0
-                }
+        for name, values in raw_metrics.items():
+            if not values:
+                continue
+            mean = sum(values) / len(values)
+            variance = sum((v - mean) ** 2 for v in values) / len(values)
+            patterns[name] = {
+                'variance': variance,
+                'peak': max(values),
+                'avg': mean,
+            }
         return patterns
     
     class AdaptiveOptimizer:
@@ -905,14 +904,17 @@ async def batch_process(items: List[T], process_func: Callable, batch_size: int 
             return min(total, 100)
         return min(total, 50)
 
+    # Apply optimization to the chunk size rather than truncating within each chunk.
+    # Truncating inside process_batch silently drops items from the tail of every batch.
+    effective_size = optimize_batch_size(batch_size) if optimize else batch_size
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         async def process_batch(batch: List[T]) -> List[T]:
             loop = asyncio.get_running_loop()
-            effective = optimize_batch_size(len(batch)) if optimize else len(batch)
-            return await loop.run_in_executor(executor, process_func, batch[:effective])
+            return await loop.run_in_executor(executor, process_func, batch)
 
-        for i in range(0, len(items), batch_size):
-            batch = items[i:i + batch_size]
+        for i in range(0, len(items), effective_size):
+            batch = items[i:i + effective_size]
             results.extend(await process_batch(batch))
 
     return results
