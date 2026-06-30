@@ -92,13 +92,21 @@ class GracefulShutdownManager:
         """すべてのクリーンアップハンドラを実行"""
         self.logger.info("Running cleanup handlers...")
 
-        for name, handler in self.cleanup_handlers:
+        # Snapshot the handler list before iterating.  Without this, an async
+        # handler that calls register_cleanup/unregister_cleanup would mutate
+        # self.cleanup_handlers mid-iteration, causing handlers to be skipped
+        # (unregister shifts list indices) or unexpectedly executed (register
+        # appends an element the iterator then picks up).
+        handlers = list(self.cleanup_handlers)
+        n = len(handlers)
+        if n == 0:
+            return
+        timeout_per = self.shutdown_timeout / n
+
+        for name, handler in handlers:
             try:
                 if asyncio.iscoroutinefunction(handler):
-                    await asyncio.wait_for(
-                        handler(),
-                        timeout=self.shutdown_timeout / len(self.cleanup_handlers)
-                    )
+                    await asyncio.wait_for(handler(), timeout=timeout_per)
                 else:
                     handler()
 
