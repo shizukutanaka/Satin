@@ -2011,5 +2011,100 @@ class SlashCommandPrefixBoundaryTests(unittest.TestCase):
                             for line in d.out))
 
 
+# ---------------------------------------------------------------------------
+# _next_interaction_milestone — pure-logic unit tests
+# ---------------------------------------------------------------------------
+
+class NextInteractionMilestoneTests(unittest.TestCase):
+    """Direct unit tests for _next_interaction_milestone()."""
+
+    def _call(self, n):
+        return persona_cli._next_interaction_milestone(n)
+
+    def test_zero_returns_first_milestone(self):
+        result = self._call(0)
+        self.assertIsNotNone(result)
+        self.assertEqual(result, 10)
+
+    def test_nine_returns_first_milestone(self):
+        self.assertEqual(self._call(9), 10)
+
+    def test_exactly_at_milestone_returns_next(self):
+        """interactions==10 is AT the milestone, so return the NEXT one (25)."""
+        self.assertEqual(self._call(10), 25)
+
+    def test_just_before_second_milestone(self):
+        self.assertEqual(self._call(24), 25)
+
+    def test_just_after_second_milestone(self):
+        self.assertEqual(self._call(25), 50)
+
+    def test_beyond_all_milestones_returns_none(self):
+        """After the last milestone (1000), no more milestones remain."""
+        self.assertIsNone(self._call(1000))
+        self.assertIsNone(self._call(9999))
+
+    def test_result_always_greater_than_interactions(self):
+        """The returned milestone must strictly exceed the input count."""
+        for n in [0, 5, 10, 24, 25, 49, 50, 99, 100, 249, 500, 999]:
+            result = self._call(n)
+            if result is not None:
+                self.assertGreater(result, n, f"milestone {result} <= interactions {n}")
+
+
+# ---------------------------------------------------------------------------
+# _interest_recall — pure-logic unit tests
+# ---------------------------------------------------------------------------
+
+class InterestRecallTests(unittest.TestCase):
+
+    def _make_profile(self, interests):
+        from user_profile import UserProfile
+        p = UserProfile()
+        for item in interests:
+            p.add_interest(item)
+        return p
+
+    def test_empty_interests_returns_empty_string(self):
+        prof = self._make_profile([])
+        result = persona_cli._interest_recall(prof, lang="ja")
+        self.assertEqual(result, "")
+
+    def test_none_profile_returns_empty_string(self):
+        result = persona_cli._interest_recall(None, lang="ja")
+        self.assertEqual(result, "")
+
+    def test_ja_result_contains_interest(self):
+        prof = self._make_profile(["アニメ"])
+        result = persona_cli._interest_recall(prof, lang="ja")
+        self.assertIn("アニメ", result)
+
+    def test_en_result_contains_interest(self):
+        prof = self._make_profile(["anime"])
+        result = persona_cli._interest_recall(prof, lang="en")
+        self.assertIn("anime", result)
+
+    def test_ja_result_is_japanese_template(self):
+        prof = self._make_profile(["サッカー"])
+        result = persona_cli._interest_recall(prof, lang="ja")
+        # Japanese templates contain Japanese characters
+        self.assertTrue(any(ord(c) > 0x3000 for c in result),
+                        f"Expected Japanese characters in: {result!r}")
+
+    def test_en_result_does_not_contain_japanese(self):
+        prof = self._make_profile(["soccer"])
+        result = persona_cli._interest_recall(prof, lang="en")
+        # English templates must not contain Japanese-specific phrases like "だ" or "ね"
+        japanese_markers = ["だよね", "聞かせて", "どんな感じ"]
+        for marker in japanese_markers:
+            self.assertNotIn(marker, result,
+                f"Japanese marker {marker!r} found in English result: {result!r}")
+
+    def test_returns_non_empty_when_interests_exist(self):
+        prof = self._make_profile(["音楽", "読書"])
+        result = persona_cli._interest_recall(prof, lang="ja")
+        self.assertGreater(len(result), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
