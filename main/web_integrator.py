@@ -480,8 +480,9 @@ class WebIntegrator:
         # ホストの小文字化
         netloc = parsed.netloc.lower()
 
-        # パスの正規化 (ルートパス "/" はそのまま保持)
-        path = parsed.path.rstrip('/') if parsed.path != '/' else '/'
+        # パスの正規化 (末尾スラッシュを除去; ルートパス "/" も "" に正規化して
+        # https://example.com と https://example.com/ が同一と判定されるようにする)
+        path = parsed.path.rstrip('/')
 
         # クエリパラメータの正規化 (ソート)
         query = ''

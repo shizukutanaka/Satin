@@ -166,6 +166,46 @@ class WebIntegratorNormalizeUrlTests(unittest.TestCase):
         url = self.wi.normalize_url("https://example.com/page")
         self.assertEqual(url, "https://example.com/page")
 
+    def test_root_with_slash_equals_root_without_slash(self):
+        """Regression: 'https://example.com/' and 'https://example.com' used to
+        normalise to different strings ('https://example.com/' vs 'https://example.com')
+        because the root path '/' was special-cased to be kept as-is.
+
+        Fix: strip trailing slashes uniformly, so both inputs yield the same
+        normalised URL and batch_fetch_pages de-duplication works correctly.
+        """
+        a = self.wi.normalize_url("https://example.com")
+        b = self.wi.normalize_url("https://example.com/")
+        self.assertEqual(a, b,
+            "Root URL with and without trailing slash must normalise identically.")
+
+    def test_http_and_https_root_both_normalise_to_https(self):
+        """http:// root and https:// root must both normalise to the same string."""
+        a = self.wi.normalize_url("http://example.com/")
+        b = self.wi.normalize_url("https://example.com")
+        self.assertEqual(a, b)
+
+    def test_dedup_works_for_root_with_and_without_slash(self):
+        """batch_fetch_pages de-duplication must treat root with/without slash as the same URL."""
+        wi = self.wi
+        # Feed both forms of the root URL and a known different URL
+        # We don't make real requests; just check the de-duplication logic via normalize_url.
+        urls = [
+            "https://example.com/",
+            "https://example.com",   # duplicate of the above after normalisation
+            "https://example.com/page",
+        ]
+        seen: set = set()
+        unique: list = []
+        for url in urls:
+            n = wi.normalize_url(url)
+            if n not in seen:
+                seen.add(n)
+                unique.append(n)
+        self.assertEqual(len(unique), 2,
+            "The two root URL forms must be treated as one unique URL, "
+            "leaving exactly 2 unique URLs total.")
+
 
 class WebIntegratorSearchTests(unittest.TestCase):
     def setUp(self):
