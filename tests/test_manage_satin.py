@@ -785,5 +785,91 @@ class PersonalDataPathsTests(unittest.TestCase):
         self.assertTrue(any("ユーザープロファイル" in d for d in descs))
 
 
+# --------------------------------------------------------------------------- #
+# _mood_level_arrow — regression for alphabetic comparison bug
+# --------------------------------------------------------------------------- #
+class MoodLevelArrowTests(unittest.TestCase):
+    """Regression: the old code used ``prev < curr`` (string comparison).
+    Alphabetically: close < distant < friendly < neutral < reserved.
+    Actual affinity order: distant < reserved < neutral < friendly < close.
+    So 'neutral' → 'friendly' (improvement) gave ↓ instead of ↑.
+    """
+
+    def _arrow(self, prev, curr):
+        return manage_satin._mood_level_arrow(prev, curr)
+
+    # --- improvements (should be ↑) ---
+    def test_distant_to_reserved_is_up(self):
+        self.assertEqual(self._arrow("distant", "reserved"), "↑")
+
+    def test_reserved_to_neutral_is_up(self):
+        # Regression: "reserved" > "neutral" lexicographically → old code gave ↓
+        self.assertEqual(self._arrow("reserved", "neutral"), "↑")
+
+    def test_neutral_to_friendly_is_up(self):
+        # Regression: "neutral" > "friendly" lexicographically → old code gave ↓
+        self.assertEqual(self._arrow("neutral", "friendly"), "↑")
+
+    def test_friendly_to_close_is_up(self):
+        # Regression: "friendly" > "close" lexicographically → old code gave ↓
+        self.assertEqual(self._arrow("friendly", "close"), "↑")
+
+    # --- declines (should be ↓) ---
+    def test_close_to_friendly_is_down(self):
+        self.assertEqual(self._arrow("close", "friendly"), "↓")
+
+    def test_friendly_to_neutral_is_down(self):
+        self.assertEqual(self._arrow("friendly", "neutral"), "↓")
+
+    def test_neutral_to_reserved_is_down(self):
+        self.assertEqual(self._arrow("neutral", "reserved"), "↓")
+
+    def test_reserved_to_distant_is_down(self):
+        self.assertEqual(self._arrow("reserved", "distant"), "↓")
+
+    # --- equal / unknown ---
+    def test_same_level_is_down(self):
+        self.assertEqual(self._arrow("neutral", "neutral"), "↓")
+
+    def test_unknown_level_returns_down(self):
+        self.assertEqual(self._arrow("unknown", "friendly"), "↓")
+        self.assertEqual(self._arrow("neutral", ""), "↓")
+
+
+class MoodShowTransitionArrowTests(unittest.TestCase):
+    """cmd_mood_show must display ↑ for transitions that improve affinity."""
+
+    def _run_show_with_transitions(self, transitions):
+        import mood as _mood
+        _mood.reset_mood_tracker()
+        try:
+            out = []
+            with mock.patch("mood.load_level_transitions", return_value=transitions), \
+                 mock.patch("mood._default_mood_history_path", return_value=""), \
+                 mock.patch("mood._default_mood_path", return_value=""), \
+                 mock.patch("builtins.print",
+                            side_effect=lambda *a, **k: out.append(" ".join(str(x) for x in a))):
+                manage_satin.cmd_mood_show()
+        finally:
+            _mood.reset_mood_tracker()
+        return "\n".join(out)
+
+    def test_neutral_to_friendly_shows_up_arrow(self):
+        transitions = [{"date": "2026-01-01", "prev_level": "neutral", "level": "friendly"}]
+        output = self._run_show_with_transitions(transitions)
+        self.assertIn("↑", output)
+        self.assertNotIn("↓", output.split("節目")[1] if "節目" in output else output)
+
+    def test_friendly_to_close_shows_up_arrow(self):
+        transitions = [{"date": "2026-01-02", "prev_level": "friendly", "level": "close"}]
+        output = self._run_show_with_transitions(transitions)
+        self.assertIn("↑", output)
+
+    def test_close_to_friendly_shows_down_arrow(self):
+        transitions = [{"date": "2026-01-03", "prev_level": "close", "level": "friendly"}]
+        output = self._run_show_with_transitions(transitions)
+        self.assertIn("↓", output)
+
+
 if __name__ == "__main__":
     unittest.main()

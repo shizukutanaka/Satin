@@ -35,6 +35,18 @@ for _p in (_MAIN, _ROOT):
         sys.path.insert(0, _p)
 
 
+# 好感度レベルの昇順（文字列の辞書順では distant>reserved の前後が逆になるため明示）
+_MOOD_LEVEL_ORDER = ("distant", "reserved", "neutral", "friendly", "close")
+
+
+def _mood_level_arrow(prev: str, curr: str) -> str:
+    """Return '↑' if curr is a higher affinity level than prev, '↓' otherwise."""
+    try:
+        return "↑" if _MOOD_LEVEL_ORDER.index(curr) > _MOOD_LEVEL_ORDER.index(prev) else "↓"
+    except ValueError:
+        return "↓"
+
+
 def _get_conversation_log():
     """絶対パスでシングルトン ConversationLog を初期化して返す。
 
@@ -177,7 +189,7 @@ def cmd_mood_show() -> None:
             print("関係の節目    :")
             for t in transitions[-5:]:  # 最近 5 件
                 # null/欠落レベルでも "" 扱い（None < str は TypeError）
-                arrow = "↑" if (t.get("prev_level") or "") < (t.get("level") or "") else "↓"
+                arrow = _mood_level_arrow(t.get("prev_level") or "", t.get("level") or "")
                 print(f"  {t.get('date', '?')} {arrow} {t.get('prev_level', '?')} → {t.get('level', '?')}")
         print(f"保存先        : {_default_mood_path()}")
     except ImportError:
