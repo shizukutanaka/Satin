@@ -105,7 +105,7 @@ def _sanitize_fact(text: Optional[str], max_len: int = _MAX_FACT_LEN) -> str:
     if not s:
         return ""
     if len(s) > max_len:
-        s = s[:max_len].strip()
+        s = s[:max_len].rstrip()
     return s
 
 

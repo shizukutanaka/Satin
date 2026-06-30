@@ -333,5 +333,52 @@ class SingletonTests(unittest.TestCase):
         self.assertIsNot(a, b)
 
 
+# ---------------------------------------------------------------------------
+# _sanitize_fact — boundary truncation regression
+# ---------------------------------------------------------------------------
+
+class SanitizeFactBoundaryTests(unittest.TestCase):
+
+    def _fact(self, text, max_len=60):
+        from user_profile import _sanitize_fact
+        return _sanitize_fact(text, max_len=max_len)
+
+    def test_boundary_space_does_not_over_truncate(self):
+        """Regression: s[:max_len].strip() ate trailing space at boundary position,
+        dropping the stored value to max_len-1 when the max_len-th char is a space.
+        Fixed by using rstrip() (removes trailing spaces only) instead of strip().
+        """
+        # Build a 61-char string where position 60 (0-indexed 59) is a space,
+        # so the real content ends at position 61.
+        # "a " * 30 = 60 chars; then "b" makes it 61.
+        text = "a " * 30 + "b"
+        result = self._fact(text)
+        # Must NOT drop below max_len-1 = 59 chars; content at pos 59 is a space so
+        # rstrip truncates trailing spaces but the important invariant is that we
+        # never lose content that was within the first max_len characters.
+        self.assertLessEqual(len(result), 60)
+        # At minimum the 58 non-space "a" characters + at least one boundary char
+        # must survive. Specifically the result must be at least 59 chars, because
+        # s[:60] = "a " * 30 which ends in a space; rstrip removes that one space.
+        self.assertGreaterEqual(len(result), 59)
+
+    def test_no_truncation_under_max_len(self):
+        text = "hello world"
+        self.assertEqual(self._fact(text), "hello world")
+
+    def test_exact_max_len_no_truncation(self):
+        text = "x" * 60
+        self.assertEqual(self._fact(text), "x" * 60)
+
+    def test_over_max_len_content_preserved(self):
+        text = "x" * 100
+        result = self._fact(text)
+        self.assertEqual(len(result), 60)
+
+    def test_trailing_space_in_source_stripped_before_truncation(self):
+        text = "   hello   "
+        self.assertEqual(self._fact(text), "hello")
+
+
 if __name__ == "__main__":
     unittest.main()

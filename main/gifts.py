@@ -289,7 +289,7 @@ def gift_catalog_text(lang: str = "ja") -> str:
     lines = []
     for g in _GIFTS:
         aliases = g[lang_key]["aliases"]
-        bonus = int(g["affinity"])
+        bonus = round(g["affinity"])
         main = aliases[0]
         min_level = g.get("min_level")
         if min_level:

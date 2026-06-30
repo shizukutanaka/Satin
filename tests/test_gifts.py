@@ -137,6 +137,21 @@ class CatalogTextTests(unittest.TestCase):
         lines = [l for l in text.splitlines() if l.strip()]
         self.assertEqual(len(lines), len(_KNOWN_KEYS))
 
+    def test_catalog_bonus_matches_rounded_affinity(self):
+        """Regression: int() truncated 3.5→3; round() gives the correct display value."""
+        import gifts as _g
+        for gift in _g._GIFTS:
+            expected = round(gift["affinity"])
+            for lang in ("ja", "en"):
+                text = gift_catalog_text(lang)
+                alias = gift[lang]["aliases"][0]
+                # find the line for this gift and check the bonus
+                for line in text.splitlines():
+                    if line.strip().startswith(alias):
+                        self.assertIn(f"+{expected}", line,
+                            f"Gift '{gift['key']}' (affinity={gift['affinity']}) "
+                            f"should show +{expected} in {lang} catalog")
+
 
 class CLIGiftIntegrationTests(unittest.TestCase):
     """Test _give_gift() helper via persona_cli."""
