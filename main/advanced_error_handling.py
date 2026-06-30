@@ -379,8 +379,9 @@ def with_error_context(operation: str) -> Callable:
         def wrapper(*args, **kwargs):
             with ErrorContextManager(operation) as ctx:
                 result = func(*args, **kwargs)
-                logger.debug(f"Operation '{operation}' completed in {ctx.context.duration_ms or 0:.1f}ms")
-                return result
+            # __exit__ has run; duration_ms is now set
+            logger.debug(f"Operation '{operation}' completed in {ctx.context.duration_ms or 0:.1f}ms")
+            return result
 
         return wrapper
     return decorator

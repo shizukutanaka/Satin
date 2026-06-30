@@ -314,5 +314,69 @@ class ErrorStatisticsTests(unittest.TestCase):
         self.assertIs(stats.last_error, exc)
 
 
+class WithErrorContextDurationTests(unittest.TestCase):
+    """Regression: with_error_context logged duration INSIDE the `with` block,
+    before ErrorContextManager.__exit__ set ctx.context.duration_ms.
+    The logged time was always '0.0ms'.
+
+    Root cause: logger.debug(f"... {ctx.context.duration_ms or 0:.1f}ms") ran
+    while duration_ms was still None — __exit__ only sets it after the block.
+
+    Fix: move the debug log outside the `with` block so __exit__ runs first.
+    """
+
+    def test_duration_ms_is_none_inside_block_and_set_after(self):
+        """Proves that reading duration_ms inside the block always gave None (→ 0ms)."""
+        mgr = ErrorContextManager("op")
+        captured = []
+
+        with mgr:
+            captured.append(mgr.context.duration_ms)  # must be None here
+
+        self.assertIsNone(
+            captured[0],
+            "duration_ms must be None inside the with block; "
+            "this is why the old log always showed '0.0ms'.",
+        )
+        self.assertIsNotNone(mgr.context.duration_ms,
+                             "After __exit__, duration_ms must be set.")
+        self.assertGreaterEqual(mgr.context.duration_ms, 0.0)
+
+    def test_log_shows_nonzero_duration(self):
+        """with_error_context must log a real elapsed time, not '0.0ms'."""
+        import time
+        import logging
+        import advanced_error_handling as _aeh
+
+        records = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+
+        handler = _Capture()
+        _log = logging.getLogger(_aeh.__name__)
+        _log.addHandler(handler)
+        _log.setLevel(logging.DEBUG)
+        try:
+            @with_error_context("timed_op")
+            def slow():
+                time.sleep(0.005)
+                return 1
+
+            slow()
+        finally:
+            _log.removeHandler(handler)
+
+        duration_msgs = [m for m in records if "completed in" in m]
+        self.assertTrue(len(duration_msgs) > 0, "No 'completed in' log message found")
+        for msg in duration_msgs:
+            self.assertNotIn(
+                "0.0ms", msg,
+                f"Old bug: duration was logged as '0.0ms'; got: {msg!r}. "
+                "Root cause: log ran before __exit__ set duration_ms.",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
