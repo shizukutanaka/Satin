@@ -343,5 +343,123 @@ class RateLimitTests(unittest.TestCase):
         self.assertIsInstance(s["reset_time"], str)
 
 
+class BatchGetVideosOrderTests(unittest.TestCase):
+    """Regression: batch_get_videos appended cached videos AFTER freshly-fetched
+    ones, scrambling the caller-supplied order.
+
+    Root cause: uncached videos were appended inside the try block, then
+    ``videos.extend(cached_videos)`` ran after it, so the output was always
+    [uncached..., cached...] instead of the original input order.
+
+    Fix: collect both cached and fetched results into a {vid_id: video} dict
+    for each batch, then append in the original input order.
+    """
+
+    def _make_video(self, vid_id):
+        return YouTubeVideo(
+            video_id=vid_id,
+            title=f"Title {vid_id}",
+            description="",
+            channel_title="Ch",
+            channel_id="UC0",
+            published_at=datetime(2024, 1, 1),
+            duration=60,
+            view_count=0,
+            like_count=0,
+            comment_count=0,
+            tags=[],
+            category_id="1",
+            thumbnail_url="",
+        )
+
+    def _make_integrator_with_service(self):
+        yi = _make_integrator()
+        yi.youtube_service = MagicMock()
+        yi._check_rate_limit = MagicMock(return_value=True)
+        yi.logger = MagicMock()
+        return yi
+
+    def test_cached_then_uncached_then_cached_preserves_order(self):
+        """[A(cached), B(uncached), C(cached)] must return [A, B, C]."""
+        yi = self._make_integrator_with_service()
+
+        vid_a = self._make_video("A")
+        vid_b = self._make_video("B")
+        vid_c = self._make_video("C")
+
+        def fake_cache_get(key):
+            if "A_" in key or key.endswith("A_False"):
+                return vid_a.to_dict()
+            if "C_" in key or key.endswith("C_False"):
+                return vid_c.to_dict()
+            return None
+
+        yi.cache_manager.get.side_effect = fake_cache_get
+        yi.cache_manager.set = MagicMock()
+
+        # Simulate batch API returning only B
+        mock_item_b = {"id": "B", "snippet": {}, "contentDetails": {}, "statistics": {}}
+        yi.youtube_service.videos.return_value.list.return_value.execute.return_value = {
+            "items": [mock_item_b]
+        }
+        yi._parse_video_item = MagicMock(return_value=vid_b)
+
+        result = yi.batch_get_videos(["A", "B", "C"])
+
+        ids = [v.video_id for v in result]
+        self.assertEqual(ids, ["A", "B", "C"],
+            f"Order must match input ['A','B','C'], got {ids} "
+            f"(old bug: uncached B came first → ['B','A','C'])")
+
+    def test_all_cached_preserves_order(self):
+        """All-cached batch must also preserve the original order."""
+        yi = self._make_integrator_with_service()
+
+        vids = {vid_id: self._make_video(vid_id) for vid_id in ["X", "Y", "Z"]}
+
+        def fake_cache_get(key):
+            for vid_id, vid in vids.items():
+                if f"_{vid_id}_" in key or key.endswith(f"_{vid_id}_False"):
+                    return vid.to_dict()
+            return None
+
+        yi.cache_manager.get.side_effect = fake_cache_get
+        yi._check_rate_limit = MagicMock(return_value=False)
+
+        result = yi.batch_get_videos(["X", "Y", "Z"])
+        ids = [v.video_id for v in result]
+        self.assertEqual(ids, ["X", "Y", "Z"],
+            f"All-cached order must be ['X','Y','Z'], got {ids}")
+
+    def test_no_cache_hits_order_still_correct(self):
+        """No-cache path: returned order must match the API response order mapped
+        back to the input order — not the API response order."""
+        yi = self._make_integrator_with_service()
+
+        vid_p = self._make_video("P")
+        vid_q = self._make_video("Q")
+
+        yi.cache_manager.get.return_value = None
+
+        parse_calls = []
+
+        def fake_parse(item):
+            vid_id = item.get("id")
+            parse_calls.append(vid_id)
+            return self._make_video(vid_id)
+
+        yi._parse_video_item = fake_parse
+        yi.youtube_service.videos.return_value.list.return_value.execute.return_value = {
+            "items": [{"id": "Q"}, {"id": "P"}]  # reversed from input
+        }
+        yi.cache_manager.set = MagicMock()
+
+        result = yi.batch_get_videos(["P", "Q"])
+        ids = [v.video_id for v in result]
+        self.assertEqual(ids, ["P", "Q"],
+            f"Output must follow input order ['P','Q'], got {ids} "
+            f"(API returned Q before P but input order must be preserved)")
+
+
 if __name__ == "__main__":
     unittest.main()

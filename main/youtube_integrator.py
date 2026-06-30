@@ -626,57 +626,62 @@ class YouTubeIntegrator:
         for i in range(0, len(video_ids), batch_size):
             batch = video_ids[i:i + batch_size]
 
-            # キャッシュチェック
-            cached_videos = []
+            # バッチ内の結果を {video_id: video} に集約してから元の順序で追加する。
+            # 旧実装は uncached 動画を先に videos.append し、その後
+            # videos.extend(cached_videos) を実行していたため、キャッシュ済み動画が
+            # 末尾に固まり入力順序が壊れていた（例: [A,B,C]→[B,A,C]）。
+            result_map: Dict[str, 'YouTubeVideo'] = {}
             uncached_ids = []
 
             for vid in batch:
                 cache_key = f"video_{vid}_{include_transcript}"
                 cached = self.cache_manager.get(cache_key)
                 if cached:
-                    cached_videos.append(YouTubeVideo.from_dict(cached))
+                    result_map[vid] = YouTubeVideo.from_dict(cached)
                 else:
                     uncached_ids.append(vid)
 
             # クォータ確認 (videos.list は1 quota消費)
-            if not uncached_ids or not self._check_rate_limit(quota_cost=1):
-                videos.extend(cached_videos)
-                continue
+            if uncached_ids and self._check_rate_limit(quota_cost=1):
+                try:
+                    # バッチAPI呼び出し (最大50個を1リクエストで取得)
+                    request = self.youtube_service.videos().list(
+                        part='snippet,contentDetails,statistics',
+                        id=','.join(uncached_ids)
+                    )
+                    response = request.execute()
 
-            try:
-                # バッチAPI呼び出し (最大50個を1リクエストで取得)
-                request = self.youtube_service.videos().list(
-                    part='snippet,contentDetails,statistics',
-                    id=','.join(uncached_ids)
-                )
-                response = request.execute()
+                    for item in response.get('items', []):
+                        video = self._parse_video_item(item)
+                        if video:
+                            # 字幕取得が必要な場合
+                            if include_transcript:
+                                transcript = self.get_transcript(video.video_id)
+                                video.transcript = transcript
+                                video.captions_available = bool(transcript)
 
-                for item in response.get('items', []):
-                    video = self._parse_video_item(item)
-                    if video:
-                        # 字幕取得が必要な場合
-                        if include_transcript:
-                            transcript = self.get_transcript(video.video_id)
-                            video.transcript = transcript
-                            video.captions_available = bool(transcript)
+                            # キャッシュ保存
+                            cache_key = f"video_{video.video_id}_{include_transcript}"
+                            self.cache_manager.set(cache_key, video.to_dict(), ttl=86400)
 
-                        # キャッシュ保存
-                        cache_key = f"video_{video.video_id}_{include_transcript}"
-                        self.cache_manager.set(cache_key, video.to_dict(), ttl=86400)
+                            result_map[video.video_id] = video
 
-                        videos.append(video)
+                    self.logger.info(
+                        f"Batch retrieved {len(result_map)} videos (batch size: {len(batch)})"
+                    )
 
-                self.logger.info(f"Batch retrieved {len(videos)} videos (batch size: {len(batch)})")
+                except Exception as e:
+                    self.logger.error(f"Batch retrieval failed: {e}, falling back to sequential")
+                    # フォールバック: 逐次取得
+                    for vid in uncached_ids:
+                        video = self.get_video_info(vid, include_transcript=include_transcript)
+                        if video:
+                            result_map[video.video_id] = video
 
-            except Exception as e:
-                self.logger.error(f"Batch retrieval failed: {e}, falling back to sequential")
-                # フォールバック: 逐次取得
-                for vid in uncached_ids:
-                    video = self.get_video_info(vid, include_transcript=include_transcript)
-                    if video:
-                        videos.append(video)
-
-            videos.extend(cached_videos)
+            # 元の入力順序で結果を追加
+            for vid in batch:
+                if vid in result_map:
+                    videos.append(result_map[vid])
 
         return videos
 
