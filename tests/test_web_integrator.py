@@ -299,6 +299,49 @@ class WebIntegratorFlagsTests(unittest.TestCase):
             pass
 
 
+class CrawlSiteDedupTests(unittest.TestCase):
+    """Regression: crawl_site() tracked `visited` and queued links using raw,
+    un-normalized URLs, even though normalize_url() already exists and is used
+    by batch_fetch_pages(). A page linking to itself via a trivially different
+    URL form (e.g. trailing slash) was fetched twice instead of once.
+    """
+
+    def setUp(self):
+        self.wi = WebIntegrator()
+
+    def tearDown(self):
+        try:
+            self.wi.cache_manager.shutdown(wait=False)
+        except Exception:
+            pass
+
+    def test_trailing_slash_variant_not_fetched_twice(self):
+        """A link back to the start URL in a different (but equivalent) form
+        must not trigger a second fetch of the same page."""
+        from unittest import mock
+
+        fetch_calls = []
+
+        def fake_fetch_page(url, use_cache=True):
+            fetch_calls.append(url)
+            # The start page links back to itself using the no-trailing-slash form.
+            links = ["https://example.com"] if url == "https://example.com/" else []
+            return _make_page(url=url, links=links)
+
+        with mock.patch.object(self.wi, "check_robots_txt", return_value=True), \
+             mock.patch.object(self.wi, "fetch_page", side_effect=fake_fetch_page), \
+             mock.patch("time.sleep", return_value=None):
+            pages = self.wi.crawl_site("https://example.com/", max_pages=10, depth_limit=3)
+
+        self.assertEqual(
+            len(fetch_calls), 1,
+            f"Expected exactly 1 fetch_page call (start URL and its normalized-"
+            f"equivalent self-link must dedup), got {len(fetch_calls)}: {fetch_calls}. "
+            f"Old bug: crawl_site compared raw URLs, not normalize_url() output.",
+        )
+        self.assertEqual(len(pages), 1)
+
+
 class SitemapXmlFallbackTests(unittest.TestCase):
     """Regression: 'xml' or 'html.parser' fallback was unreachable (BS4 objects are truthy).
 

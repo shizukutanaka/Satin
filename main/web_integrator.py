@@ -618,11 +618,14 @@ class WebIntegrator:
 
         while queue and len(pages) < max_pages:
             url, depth = queue.popleft()
+            # 正規化した URL で重複判定する（末尾スラッシュ・クエリ順序違い等で
+            # 同一ページを二重取得しないように normalize_url を通す）。
+            norm_url = self.normalize_url(url)
 
-            if url in visited or depth > depth_limit:
+            if norm_url in visited or depth > depth_limit:
                 continue
 
-            visited.add(url)
+            visited.add(norm_url)
 
             # robots.txt チェック (エントリ URL 以外のサブページも対象)
             if not self.check_robots_txt(url):
@@ -639,7 +642,7 @@ class WebIntegrator:
 
             # リンク追加
             for link in page.links:
-                if link not in visited:
+                if self.normalize_url(link) not in visited:
                     link_domain = urlparse(link).netloc
 
                     # 同一ドメインチェック
