@@ -90,5 +90,89 @@ class AsyncObserveMetricsTests(unittest.TestCase):
         self.assertEqual(f(), 42)
 
 
+class TraceOperationSpanExportTests(unittest.TestCase):
+    """Regression: trace_operation() created a throwaway `TraceProvider()`
+    inside the wrapper on every call. The span was started and ended on that
+    instance, then the instance was discarded — spans never accumulated
+    anywhere and ObservabilityExporter (which reads from a TraceProvider
+    instance) could never see them.
+
+    Fix: decorators now write to a shared `global_trace_provider` singleton,
+    mirroring the existing `global_metrics` singleton pattern.
+    """
+
+    def setUp(self):
+        obs.global_trace_provider.spans.clear()
+        obs.global_trace_provider.active_span_stack.clear()
+
+    def test_sync_call_span_is_recorded_in_global_trace_provider(self):
+        @trace_operation("exportable_sync_op")
+        def add(a, b):
+            return a + b
+
+        self.assertEqual(add(2, 3), 5)
+        traces = obs.global_trace_provider.get_traces()
+        all_ops = [span["operation_name"] for spans in traces.values() for span in spans]
+        self.assertIn(
+            "exportable_sync_op", all_ops,
+            "Span from a decorated sync call must be visible in "
+            "global_trace_provider.get_traces() (old bug: throwaway TraceProvider "
+            "instance per call meant spans were never accumulated).",
+        )
+
+    def test_async_call_span_is_recorded_in_global_trace_provider(self):
+        @trace_operation("exportable_async_op")
+        async def echo(x):
+            await asyncio.sleep(0)
+            return x
+
+        self.assertEqual(run(echo("hi")), "hi")
+        traces = obs.global_trace_provider.get_traces()
+        all_ops = [span["operation_name"] for spans in traces.values() for span in spans]
+        self.assertIn("exportable_async_op", all_ops)
+
+    def test_span_status_ok_recorded_on_success(self):
+        @trace_operation("status_ok_op")
+        def f():
+            return 1
+
+        f()
+        traces = obs.global_trace_provider.get_traces()
+        spans = [s for spans in traces.values() for s in spans if s["operation_name"] == "status_ok_op"]
+        self.assertTrue(spans)
+        self.assertEqual(spans[-1]["status"], "OK")
+
+    def test_span_status_error_recorded_on_exception(self):
+        @trace_operation("status_error_op")
+        def f():
+            raise ValueError("boom")
+
+        with self.assertRaises(ValueError):
+            f()
+        traces = obs.global_trace_provider.get_traces()
+        spans = [s for spans in traces.values() for s in spans if s["operation_name"] == "status_error_op"]
+        self.assertTrue(spans)
+        self.assertEqual(spans[-1]["status"], "ERROR")
+
+    def test_active_span_stack_does_not_leak_across_calls(self):
+        """Regression: decorators called span.end() directly instead of
+        trace_provider.end_span(span_id, ...), so active_span_stack was never
+        popped. With a persistent global provider (post-fix), this would leak
+        an entry per call forever if not fixed alongside the singleton change."""
+        @trace_operation("stack_leak_op")
+        def f():
+            return 1
+
+        for _ in range(20):
+            f()
+
+        self.assertEqual(
+            len(obs.global_trace_provider.active_span_stack), 0,
+            "active_span_stack must be empty after all spans complete; "
+            "old bug: span.end() bypassed trace_provider.end_span(), leaving "
+            "stale span_ids on the stack forever with a persistent provider.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -371,6 +371,12 @@ class Metrics:
 # グローバルメトリクス
 global_metrics = Metrics()
 
+# グローバルトレースプロバイダ（@trace_operation が書き込む先。
+# 各呼び出しで使い捨ての TraceProvider を作ると生成したスパンが
+# どこにも蓄積されず ObservabilityExporter からエクスポート不能になるため、
+# global_metrics と同様に単一インスタンスを共有する）。
+global_trace_provider = TraceProvider()
+
 
 # ========================================================================
 # 4. ヘルスチェック・ライブネス検査
@@ -463,32 +469,30 @@ def trace_operation(operation_name: str):
         if inspect.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                trace_provider = TraceProvider()
-                span = trace_provider.start_span(operation_name)
+                span = global_trace_provider.start_span(operation_name)
                 start_time = time.time()
                 try:
                     result = await func(*args, **kwargs)
                     elapsed_ms = (time.time() - start_time) * 1000
-                    span.end(status="OK")
+                    global_trace_provider.end_span(span.span_id, status="OK")
                     global_metrics.record_operation_latency(operation_name, elapsed_ms)
                     return result
                 except Exception as e:
-                    span.end(status="ERROR", error=str(e))
+                    global_trace_provider.end_span(span.span_id, status="ERROR", error=str(e))
                     global_metrics.record_error(type(e).__name__)
                     raise
             return async_wrapper
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            trace_provider = TraceProvider()
-            span = trace_provider.start_span(operation_name)
+            span = global_trace_provider.start_span(operation_name)
 
             start_time = time.time()
             try:
                 result = func(*args, **kwargs)
 
                 elapsed_ms = (time.time() - start_time) * 1000
-                span.end(status="OK")
+                global_trace_provider.end_span(span.span_id, status="OK")
 
                 # メトリクス記録
                 global_metrics.record_operation_latency(operation_name, elapsed_ms)
@@ -496,7 +500,7 @@ def trace_operation(operation_name: str):
                 return result
 
             except Exception as e:
-                span.end(status="ERROR", error=str(e))
+                global_trace_provider.end_span(span.span_id, status="ERROR", error=str(e))
                 global_metrics.record_error(type(e).__name__)
                 raise
 
