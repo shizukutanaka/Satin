@@ -72,6 +72,13 @@ AFFINITY_START = 50.0
 # 1 メッセージあたりの最大変化量（連投での急変を防ぐ）
 _MAX_DELTA_PER_MESSAGE = 10.0
 
+# 1 日あたりの会話由来の好感度「上昇」上限（同一の肯定語を連投して短時間で
+# 関係を最大化する行為を防ぐ）。ギフトの日次クールダウン（全種類を1回ずつ
+# 贈った場合の合計 ≈30.5）と同程度の水準に設定。減少（ネガティブな発言への
+# ペナルティ）はこの上限の対象外 — 上限は「稼ぎすぎ」だけを防ぎ、正当な
+# マイナス影響は薄めない。
+_MAX_DAILY_CONVERSATION_GAIN = 30.0
+
 # 非活動時の好感度低下レート（ポイント/時間）。長期離席で関係が冷える。
 _DEFAULT_DECAY_RATE = 2.0
 
@@ -182,6 +189,8 @@ class MoodTracker:
         last_login_date: str = "",
         login_streak: int = 0,
         gift_history: Optional[Dict[str, str]] = None,
+        daily_gain_date: str = "",
+        daily_gain_total: float = 0.0,
     ):
         self.affinity = _clamp(float(affinity))
         self.interactions = int(interactions)
@@ -193,6 +202,9 @@ class MoodTracker:
         self._gift_history: Dict[str, str] = (
             dict(gift_history) if isinstance(gift_history, dict) else {}
         )
+        # 会話由来の好感度「上昇」の日次累計（日付が変わるとリセット）
+        self._daily_gain_date = str(daily_gain_date or "")
+        self._daily_gain_total = float(daily_gain_total or 0.0)
         self._positive = positive if positive else _DEFAULT_POSITIVE
         self._negative = negative if negative else _DEFAULT_NEGATIVE
         self.positive_delta = float(positive_delta)
@@ -242,6 +254,8 @@ class MoodTracker:
         delta = max(-_MAX_DELTA_PER_MESSAGE, min(_MAX_DELTA_PER_MESSAGE, delta))
 
         with self._lock:
+            if delta > 0:
+                delta = self._apply_daily_gain_cap(delta)
             before = self.affinity
             self.affinity = _clamp(self.affinity + delta)
             self.interactions += 1
@@ -251,6 +265,22 @@ class MoodTracker:
                 self._first_interaction_time = now
             self._last_interaction_time = now
             return self.affinity - before
+
+    def _apply_daily_gain_cap(self, delta: float) -> float:
+        """会話由来の好感度「上昇」を日次上限まで切り詰める。呼び出し側で _lock 保持必須。
+
+        キーワード連投による短時間の関係最大化を防ぐ。ネガティブなペナルティ
+        （delta <= 0）はこの関数の対象外— 呼び出し元で delta > 0 のときのみ使う。
+        """
+        import datetime
+        today = datetime.date.today().isoformat()
+        if self._daily_gain_date != today:
+            self._daily_gain_date = today
+            self._daily_gain_total = 0.0
+        remaining = max(0.0, _MAX_DAILY_CONVERSATION_GAIN - self._daily_gain_total)
+        effective = min(delta, remaining)
+        self._daily_gain_total += effective
+        return effective
 
     def adjust(self, delta: float) -> float:
         """好感度を delta だけ直接増減して 0–100 にクランプし、実変化量を返す。
@@ -335,6 +365,8 @@ class MoodTracker:
             "last_login_date": self._last_login_date,
             "login_streak": self._login_streak,
             "gift_history": dict(self._gift_history),
+            "daily_gain_date": self._daily_gain_date,
+            "daily_gain_total": self._daily_gain_total,
         }
 
     def save(self, path: str) -> bool:
@@ -452,6 +484,8 @@ class MoodTracker:
             last_login_date=data.get("last_login_date", ""),
             login_streak=data.get("login_streak", 0),
             gift_history=raw_gh if isinstance(raw_gh, dict) else {},
+            daily_gain_date=data.get("daily_gain_date", ""),
+            daily_gain_total=_f(data.get("daily_gain_total"), 0.0),
             **kwargs,
         )
 

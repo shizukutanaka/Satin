@@ -1520,5 +1520,99 @@ class MoodTrackerThreadSafetyTests(unittest.TestCase):
         self.assertGreaterEqual(m.affinity, 0.0)
 
 
+class DailyConversationGainCapTests(unittest.TestCase):
+    """Socratic-method review found register() had a per-message cap
+    (_MAX_DELTA_PER_MESSAGE) but no daily aggregate cap, so a user could send
+    a handful of messages each containing 2-3 positive keywords and jump the
+    whole affinity scale (0-100) in well under a minute — trivially bypassing
+    the entire "relationship takes time" premise the mood system exists to
+    enforce. Gifts already had a per-gift daily cooldown; conversation had
+    nothing bounding total daily gain.
+
+    _MAX_DAILY_CONVERSATION_GAIN caps only positive (delta > 0) gains per
+    calendar day. Negative deltas (penalties for rude messages) and adjust()
+    calls (gifts, milestones — which have their own guards) are unaffected.
+    """
+
+    def _spam_positive(self, tracker, n=10):
+        deltas = []
+        for _ in range(n):
+            deltas.append(tracker.register("ありがとう、大好き、かわいい"))
+        return deltas
+
+    def test_repeated_positive_messages_are_capped_within_a_day(self):
+        from mood import _MAX_DAILY_CONVERSATION_GAIN
+        m = MoodTracker(affinity=0.0)
+        deltas = self._spam_positive(m, n=10)
+        self.assertLessEqual(
+            sum(deltas), _MAX_DAILY_CONVERSATION_GAIN + 0.001,
+            "Total same-day conversational gain must not exceed the daily cap, "
+            "even from many messages that individually hit the per-message cap.",
+        )
+
+    def test_gain_stops_once_cap_reached(self):
+        m = MoodTracker(affinity=0.0)
+        self._spam_positive(m, n=10)
+        affinity_at_cap = m.affinity
+        # One more positive message the same "day" must add nothing further.
+        extra = m.register("ありがとう、大好き")
+        self.assertEqual(extra, 0.0)
+        self.assertEqual(m.affinity, affinity_at_cap)
+
+    def test_negative_messages_are_never_capped(self):
+        """Penalties for rude messages must apply in full, even after the
+        daily positive-gain cap has been reached — the cap only prevents
+        farming positive affinity, it must not shield the user from
+        legitimate negative consequences."""
+        m = MoodTracker(affinity=50.0)
+        self._spam_positive(m, n=10)  # exhaust the daily positive cap
+        before = m.affinity
+        delta = m.register("嫌い、うざい")
+        self.assertLess(delta, 0.0)
+        self.assertLess(m.affinity, before)
+
+    def test_adjust_is_not_subject_to_the_conversation_cap(self):
+        """adjust() backs gifts/milestones, which have their own anti-farming
+        guards (e.g. gift_received_today); it must not additionally be
+        throttled by the conversational daily cap."""
+        m = MoodTracker(affinity=50.0)
+        self._spam_positive(m, n=10)  # exhaust the daily positive cap
+        before = m.affinity
+        delta = m.adjust(5.0)
+        self.assertEqual(delta, 5.0)
+        self.assertGreater(m.affinity, before)
+
+    def test_cap_resets_on_a_new_day(self):
+        m = MoodTracker(affinity=0.0)
+        self._spam_positive(m, n=10)
+        self.assertEqual(m.register("ありがとう"), 0.0, "cap should be exhausted")
+        # Simulate a day boundary by rewinding the tracked date directly,
+        # mirroring how other tests inject last_login_date/gift_history state.
+        m._daily_gain_date = "2000-01-01"
+        delta = m.register("ありがとう、大好き、かわいい")
+        self.assertGreater(delta, 0.0, "a new day must allow gains again")
+
+    def test_daily_gain_state_round_trips_through_dict(self):
+        m = MoodTracker(affinity=0.0)
+        self._spam_positive(m, n=10)
+        data = m.to_dict()
+        self.assertIn("daily_gain_date", data)
+        self.assertIn("daily_gain_total", data)
+        restored = MoodTracker.from_dict(data)
+        self.assertEqual(restored._daily_gain_date, m._daily_gain_date)
+        self.assertAlmostEqual(restored._daily_gain_total, m._daily_gain_total)
+        # The cap must still hold after a save/load round trip (no reset
+        # exploit via restarting the app).
+        self.assertEqual(restored.register("ありがとう、大好き"), 0.0)
+
+    def test_single_message_still_respects_per_message_cap_under_daily_cap(self):
+        """Sanity: with plenty of daily headroom, the existing per-message
+        cap (_MAX_DELTA_PER_MESSAGE) still applies unchanged."""
+        from mood import _MAX_DELTA_PER_MESSAGE
+        m = MoodTracker(affinity=0.0)
+        delta = m.register("ありがとう、大好き、かわいい、うれしい、すごい")
+        self.assertLessEqual(delta, _MAX_DELTA_PER_MESSAGE + 0.001)
+
+
 if __name__ == "__main__":
     unittest.main()
