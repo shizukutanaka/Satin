@@ -1,43 +1,48 @@
 # Satin — Python 依存パッケージ
 # pip install -r setup/requirements.txt
 #
+# バージョンは下限のみ指定（>=）。既知の安定版を下回らないようにしつつ、
+# 上限は設けず新しいマイナー/パッチ版を利用可能にする（再現性とロックの
+# バランス。完全固定が必要な場合は `pip freeze > setup/requirements.lock.txt`
+# を別途生成すること）。
+#
 # [必須]
-tqdm            # 進捗バー
+tqdm>=4.60            # 進捗バー
 
 # [GUI / アバター]
-pillow          # 画像処理 (avatar_loader, thumbnails)
+pillow>=9.0            # 画像処理 (avatar_loader, thumbnails)
 # tkinter は Python 標準ライブラリに含まれます
 
 # [3D / カメラ]
-numpy
-opencv-python   # cv2
-mediapipe
-pygltflib
+numpy>=1.24
+opencv-python>=4.7     # cv2
+mediapipe>=0.10
+pygltflib>=1.16
 
 # [音声]
-pyttsx3
-sounddevice
-pydub
+pyttsx3>=2.90
+sounddevice>=0.4
+pydub>=0.25
 
 # [Web / API]
-flask
-httpx
-beautifulsoup4  # bs4
-selenium
+flask>=2.3
+httpx>=0.24
+beautifulsoup4>=4.11   # bs4
+selenium>=4.10
 
 # [システム監視]
-psutil
+psutil>=5.9
 
 # [信頼性]
-tenacity        # リトライ戦略
+tenacity>=8.2          # リトライ戦略
 
 # [可視化]
-matplotlib
+matplotlib>=3.7
 
 # [学術論文検索 (任意)]
 # arxiv
 # scholarly
 
 # [開発・テスト]
-pytest
-pytest-asyncio
+pytest>=7.4
+pytest-asyncio>=0.21
