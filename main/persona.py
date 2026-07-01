@@ -169,6 +169,11 @@ _DEFAULT_RESPONSES: Dict[str, Dict] = {
             "へえ、もっと教えて！",
             "そっか{user}、いいね。",
         ],
+        "topic_repeat_fallback": [
+            "さっきも似たようなこと言ってたね。よっぽど気になるんだ？",
+            "うんうん、それさっきも聞いたよ。ちゃんと覚えてるからね。",
+            "また同じ話！そんなに大事なことなんだね。",
+        ],
         "follow_up": [
             "ところで{user}、今日はどんな一日だった？",
             "最近、何か楽しいことあった？",
@@ -226,6 +231,11 @@ _DEFAULT_RESPONSES: Dict[str, Dict] = {
             "Mhm, I'm listening, {user}.",
             "Oh, tell me more!",
             "Nice, sounds good, {user}.",
+        ],
+        "topic_repeat_fallback": [
+            "You mentioned that just now too. It must really be on your mind.",
+            "Yep, I heard that already — I'm keeping track, promise.",
+            "Same topic again! It must be important to you.",
         ],
         "follow_up": [
             "By the way {user}, how was your day?",
@@ -317,6 +327,11 @@ class Persona:
         self.lang = (lang or self.default_lang).lower()
         # カテゴリごとに直前に返したインデックスを記録して連続を避ける
         self._last: Dict[str, str] = {}
+        # respond() で直前に一致したルールのキー（同じ話題が連続したかの検出用）。
+        # 1 ターン先読みのみの軽量な「文脈」— conversation_log を読み返す本格的な
+        # 複数ターン記憶ではないが、キーワード一致だけの完全な無状態よりは
+        # 「さっきも同じ話をしていた」ことに気づける。
+        self._last_matched_rule_key: Optional[str] = None
 
     # ---- 言語解決 -------------------------------------------------------- #
     def _resolve_block(self, source: Dict[str, Dict], lang: Optional[str] = None) -> Dict:
@@ -448,6 +463,24 @@ class Persona:
             return self.talk(lang)
         return self._pick(f"greeting:{slot}:{lang or self.lang}", options)
 
+    def _respond_matched(
+        self,
+        rule_key: str,
+        replies: List[str],
+        pick_key: str,
+        topic_repeat_fallback: List[str],
+    ) -> str:
+        """ルール一致時の共通処理: 直前ターンと同じルールが連続していれば
+        （＝ユーザーが直前と同じ話題を繰り返している）topic_repeat_fallback
+        から、そうでなければ通常の replies から選ぶ。選んだ後は
+        _last_matched_rule_key を今回のルールに更新する（次ターンの判定用）。
+        """
+        if topic_repeat_fallback and rule_key == self._last_matched_rule_key:
+            self._last_matched_rule_key = rule_key
+            return self._pick(f"{pick_key}:topic_repeat", topic_repeat_fallback)
+        self._last_matched_rule_key = rule_key
+        return self._pick(pick_key, replies)
+
     def respond(
         self,
         text: str,
@@ -463,6 +496,13 @@ class Persona:
         ``respond_by_affinity[level]`` が定義されていれば、そのレベル専用の
         ルールを通常ルールより先に評価する。これにより関係性の深さで応答が
         変化する。一致しなければ通常ルール→fallback と順にフォールバックする。
+
+        直前のターンと同じルールが 2 回連続で一致した場合（＝ユーザーが同じ
+        話題を繰り返した場合）、そのルールの通常 replies の代わりに
+        ``topic_repeat_fallback``（設定されていれば）から選ぶ。これにより、
+        キーワード一致のみの完全な無状態応答よりも「さっきの話を覚えている」
+        という軽い文脈手がかりを与える（conversation_log を読み返す本格的な
+        複数ターン記憶の代替ではない、1 ターン先読みの軽量版）。
         """
         if not text or not str(text).strip():
             return ""
@@ -471,6 +511,8 @@ class Persona:
         block = self._resolve_responses_block(lang)
         rules = block.get("rules") or []
         fallback = list(block.get("fallback") or [])
+        topic_repeat_fallback = list(block.get("topic_repeat_fallback") or [])
+        lang_key = lang or self.lang
 
         # 好感度レベル専用ルールを先に評価
         level_fallback: list = []
@@ -492,9 +534,11 @@ class Persona:
                     if _kw_match(kw_norm, norm):
                         replies = list(rule.get("replies") or [])
                         if replies:
-                            return self._pick(
-                                f"respond_affinity:{level}:{lang or self.lang}:rule:{idx}",
+                            return self._respond_matched(
+                                f"level:{level}:{lang_key}:{idx}",
                                 replies,
+                                f"respond_affinity:{level}:{lang_key}:rule:{idx}",
+                                topic_repeat_fallback,
                             )
 
         for idx, rule in enumerate(rules):
@@ -506,13 +550,21 @@ class Persona:
                     replies = list(rule.get("replies") or [])
                     if replies:
                         # ルールごとに直前重複を避ける（キーはルール順インデックス）
-                        return self._pick(f"respond:{lang or self.lang}:rule:{idx}", replies)
+                        return self._respond_matched(
+                            f"normal:{lang_key}:{idx}",
+                            replies,
+                            f"respond:{lang_key}:rule:{idx}",
+                            topic_repeat_fallback,
+                        )
+        # どのルールにも一致しなかった＝話題が変わった（または最初から不一致）
+        # ので、話題継続の追跡をリセットする。
+        self._last_matched_rule_key = None
         # レベル専用 fallback → グローバル fallback の順でフォールバック
         if level_fallback:
-            return self._pick(f"respond_affinity:{level}:{lang or self.lang}:fallback",
+            return self._pick(f"respond_affinity:{level}:{lang_key}:fallback",
                               level_fallback)
         if fallback:
-            return self._pick(f"respond:{lang or self.lang}:fallback", fallback)
+            return self._pick(f"respond:{lang_key}:fallback", fallback)
         return ""
 
     def follow_up_question(

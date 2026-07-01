@@ -981,5 +981,78 @@ class GiftCatalogMinLevelTests(unittest.TestCase):
             self.assertNotIn("requires", line)
 
 
+class TopicRepeatAwarenessTests(unittest.TestCase):
+    """respond() tracks which rule matched the immediately preceding turn.
+    If the SAME rule matches two turns in a row (the user brought up the same
+    topic again), the reply is drawn from topic_repeat_fallback instead of the
+    rule's normal replies — a lightweight, single-turn "I noticed you're
+    repeating yourself" signal. Not full multi-turn memory (no conversation_log
+    involved), and fully backward compatible: without topic_repeat_fallback
+    configured, behavior is identical to before.
+    """
+
+    def _persona(self, lang="en", with_repeat_fallback=True):
+        rules = {
+            "rules": [
+                {"keywords": ["tired"], "replies": ["REST_A", "REST_B"]},
+                {"keywords": ["how are you"], "replies": ["FINE_A", "FINE_B"]},
+            ],
+            "fallback": ["FB_A", "FB_B"],
+        }
+        if with_repeat_fallback:
+            rules["topic_repeat_fallback"] = ["REPEAT_A", "REPEAT_B"]
+        data = {"default_lang": "en", "responses": {"en": rules}}
+        return Persona.from_dict(data, lang=lang)
+
+    def test_first_match_uses_normal_replies(self):
+        p = self._persona()
+        self.assertIn(p.respond("I'm tired"), {"REST_A", "REST_B"})
+
+    def test_second_consecutive_same_rule_uses_repeat_fallback(self):
+        p = self._persona()
+        p.respond("I'm tired")
+        second = p.respond("still so tired")
+        self.assertIn(second, {"REPEAT_A", "REPEAT_B"})
+
+    def test_different_rule_in_between_resets_repeat_tracking(self):
+        p = self._persona()
+        p.respond("I'm tired")
+        p.respond("how are you")  # different rule -> breaks the streak
+        third = p.respond("I'm tired")
+        self.assertIn(third, {"REST_A", "REST_B"},
+                       "A different topic in between must reset repeat tracking.")
+
+    def test_fallback_miss_in_between_resets_repeat_tracking(self):
+        p = self._persona()
+        p.respond("I'm tired")
+        p.respond("xyzzy plover")  # matches no rule -> falls to global fallback
+        third = p.respond("I'm tired")
+        self.assertIn(third, {"REST_A", "REST_B"},
+                       "An unmatched turn in between must reset repeat tracking.")
+
+    def test_without_repeat_fallback_configured_behavior_is_unchanged(self):
+        """Backward compatibility: no topic_repeat_fallback -> always normal replies."""
+        p = self._persona(with_repeat_fallback=False)
+        p.respond("I'm tired")
+        second = p.respond("still tired")
+        self.assertIn(second, {"REST_A", "REST_B"})
+
+    def test_third_consecutive_repeat_still_uses_repeat_fallback(self):
+        p = self._persona()
+        p.respond("I'm tired")
+        p.respond("still tired")
+        third = p.respond("tired again")
+        self.assertIn(third, {"REPEAT_A", "REPEAT_B"})
+
+    def test_repeat_tracking_does_not_leak_across_rules_on_first_pass(self):
+        """Two different rules matched back-to-back must not trigger repeat mode."""
+        p = self._persona()
+        first = p.respond("how are you")
+        self.assertIn(first, {"FINE_A", "FINE_B"})
+        second = p.respond("I'm tired")
+        self.assertIn(second, {"REST_A", "REST_B"},
+                       "Switching topics must not accidentally trigger repeat mode.")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -650,6 +650,11 @@
         "うん、わかった！",
         "なんか面白いね。"
       ],
+      "topic_repeat_fallback": [
+        "さっきも似たようなこと言ってたね。よっぽど気になるんだ？",
+        "うんうん、それさっきも聞いたよ。ちゃんと覚えてるからね。",
+        "また同じ話！そんなに大事なことなんだね。"
+      ],
       "follow_up": [
         "ところで、{user}、今日はどんな一日だった？",
         "最近、何か楽しいことあった？",
@@ -1184,6 +1189,11 @@
         "Nice, sounds good.",
         "Got it!",
         "That's interesting!"
+      ],
+      "topic_repeat_fallback": [
+        "You mentioned that just now too. It must really be on your mind.",
+        "Yep, I heard that already — I'm keeping track, promise.",
+        "Same topic again! It must be important to you."
       ],
       "follow_up": [
         "By the way {user}, how was your day?",
