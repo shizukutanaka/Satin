@@ -234,6 +234,9 @@ def cmd_mood_export(dest: str) -> None:
 # log
 # --------------------------------------------------------------------------- #
 def cmd_log_show(n: int = 20) -> None:
+    if n <= 0:
+        print(f"[ERROR] -n には正の整数を指定してください（指定値: {n}）")
+        sys.exit(1)
     try:
         log = _get_conversation_log()
         # ペルソナ名を取得してアバター側ラベルをカスタマイズする
@@ -764,7 +767,7 @@ def main(argv: list[str] | None = None) -> int:
 
     elif args.command == "mood":
         if not args.mood_cmd:
-            print("使用方法: manage_satin mood {show,reset,export}")
+            print("使用方法: manage_satin mood {show,reset,export,import}")
             return 1
         if args.mood_cmd == "show":
             cmd_mood_show()

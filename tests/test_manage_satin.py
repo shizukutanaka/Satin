@@ -223,6 +223,29 @@ class LogShowTests(unittest.TestCase):
                 manage_satin.cmd_log_show(n=10)
             self.assertTrue(any("空" in line for line in out))
 
+    def test_negative_n_rejected_not_reported_as_empty(self):
+        """Regression: cmd_log_show(-5) used to silently print '(会話ログが空です)'
+        even when the log had entries, because ConversationLog.recent(n<=0)
+        returns []. A negative -n must be rejected with a clear error instead
+        of masquerading as an empty log."""
+        import conversation_log as _cl
+        with mock.patch.object(_cl, "_conversation_log", self._log, create=True):
+            self._log.log_exchange("hello", "hi")
+            out = []
+            with mock.patch("builtins.print", side_effect=lambda *a, **k: out.append(" ".join(str(x) for x in a))):
+                with self.assertRaises(SystemExit):
+                    manage_satin.cmd_log_show(n=-5)
+            self.assertFalse(
+                any("空" in line for line in out),
+                "Negative -n must not be reported as an empty log; "
+                "old bug: recent(-5) returned [] and printed '(会話ログが空です)'.",
+            )
+            self.assertTrue(any("ERROR" in line for line in out))
+
+    def test_zero_n_rejected(self):
+        with self.assertRaises(SystemExit):
+            manage_satin.cmd_log_show(n=0)
+
 
 class LogExportTests(unittest.TestCase):
     def setUp(self):
@@ -389,6 +412,17 @@ class MainDispatcherTests(unittest.TestCase):
     def test_mood_no_subcommand_returns_1(self):
         rc = manage_satin.main(["mood"])
         self.assertEqual(rc, 1)
+
+    def test_mood_usage_message_lists_import(self):
+        """Regression: usage text omitted 'import' even though it's a real,
+        dispatched subcommand (mood_cmd == 'import' -> cmd_mood_import)."""
+        out = []
+        with mock.patch("builtins.print", side_effect=lambda *a, **k: out.append(" ".join(str(x) for x in a))):
+            manage_satin.main(["mood"])
+        self.assertTrue(
+            any("import" in line for line in out),
+            "Usage message must list 'import' as a valid mood subcommand.",
+        )
 
     def test_log_no_subcommand_returns_1(self):
         rc = manage_satin.main(["log"])
