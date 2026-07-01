@@ -824,6 +824,80 @@ class UserProfileIntegrationTests(unittest.TestCase):
         )
         self.assertTrue(any("xyz" in line for line in d.out))
 
+    def test_forget_fact_removes_matching_fact(self):
+        """Regression: before this command existed, a user had no way to
+        remove a single mis-recorded fact — only a full /forget-me wipe."""
+        prof = self._profile(facts={"hobby": "登山"})
+        d = _Driver(["/forget-fact 登山"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertNotIn("hobby", prof.facts)
+
+    def test_forget_fact_matches_by_partial_value_text(self):
+        """/whoami only shows the value, not the key, so matching must work
+        on a substring of the visible answer text, not the internal key."""
+        prof = self._profile(facts={"food": "ラーメンとうどんが好き"})
+        d = _Driver(["/forget-fact うどん"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertNotIn("food", prof.facts)
+
+    def test_forget_fact_leaves_other_facts_untouched(self):
+        prof = self._profile(facts={"hobby": "登山", "food": "ラーメン"})
+        d = _Driver(["/forget-fact 登山"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertNotIn("hobby", prof.facts)
+        self.assertIn("food", prof.facts)
+
+    def test_forget_fact_nonexistent_shows_message(self):
+        prof = self._profile(facts={"hobby": "登山"})
+        d = _Driver(["/forget-fact 存在しない話"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertIn("hobby", prof.facts)
+        self.assertTrue(any("存在しない話" in line for line in d.out))
+
+    def test_forget_fact_without_arg_shows_usage(self):
+        prof = self._profile(facts={"hobby": "登山"})
+        d = _Driver(["/forget-fact"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        self.assertTrue(any("/forget-fact" in line for line in d.out))
+        self.assertIn("hobby", prof.facts)  # usage message must not delete anything
+
+    def test_forget_fact_persists_to_disk(self):
+        prof = self._profile(facts={"hobby": "登山"})
+        d = _Driver(["/forget-fact 登山"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        loaded = self._up.UserProfile.load(self._ppath)
+        self.assertNotIn("hobby", loaded.facts)
+
+    def test_forget_fact_does_not_match_forget_prefix(self):
+        """/forget-fact must not be swallowed by the /forget prefix check."""
+        prof = self._profile(interests=["ゲーム"], facts={"hobby": "登山"})
+        d = _Driver(["/forget-fact 登山"])
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, profile=prof,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        # The interest must be untouched — only the fact should be removed.
+        self.assertIn("ゲーム", prof.interests)
+        self.assertNotIn("hobby", prof.facts)
+
     def test_whoami_shows_interests(self):
         prof = self._profile(interests=["アニメ", "ゲーム"])
         d = _Driver(["/whoami"])

@@ -17,6 +17,7 @@
   /birthday MM-DD      誕生日を覚えさせる（当日に祝ってくれる）
   /like <好きなもの>    好きなものを覚えさせる（例: /like アニメ）
   /forget <好きなもの>  覚えた好きなものを忘れさせる
+  /forget-fact <内容>   一問一答で覚えた事実のうち、内容が一致するものを1件忘れさせる
   /gift <プレゼント>    アバターにプレゼントを贈る（/gift list でカタログ表示）
   /whoami             今記憶している呼び名・誕生日・好きなものを表示
   /forget-me          覚えた個人情報（呼び名・誕生日・趣味・記憶）を全消去
@@ -210,6 +211,7 @@ def _help_text() -> str:
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
         "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | "
         "/like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | "
+        "/forget-fact <内容> 覚えた事実を忘れる | "
         "/gift <プレゼント> 贈る | /whoami 確認 | /forget-me 記憶を全消去 | "
         "/mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /feeling 気分 | /stats 統計 | /name 名前 | /quit 終了"
     )
@@ -430,6 +432,13 @@ def run_chat(
             else:
                 _forget_me(profile, lang, output_fn)
                 _forget_me_pending = False
+            continue
+        # /forget-fact は /forget より具体的なので先に判定する（前方一致の誤爆防止）
+        if text.lower() == "/forget-fact" or text.lower().startswith("/forget-fact "):
+            fact_text = text[len("/forget-fact"):].strip()
+            reply = _remove_fact(profile, fact_text, name, lang, output_fn)
+            if conv_log is not None and reply:
+                conv_log.log_exchange(text, reply)
             continue
         if text.lower() == "/forget" or text.lower().startswith("/forget "):
             thing = text[len("/forget"):].strip()
@@ -988,6 +997,58 @@ def _remove_interest(profile, thing: str, avatar_name: str, lang: str,
         else:
             output_fn(f"「{thing}」は覚えてないよ。")
         return ""
+
+
+def _remove_fact(profile, text: str, avatar_name: str, lang: str,
+                 output_fn: Callable[[str], None]) -> str:
+    """一問一答で覚えた事実を削除して永続化する。アバターの返事テキストを返す（ログ用）。
+
+    /whoami は fact のキーではなく回答テキスト（値）のみを表示するため、
+    ユーザーはキーを知らない。よって値の大文字小文字を無視した部分一致で
+    キーを逆引きしてから remove_fact(key) を呼ぶ（/forget が趣味を値で
+    削除するのと同じ操作感にする）。
+    """
+    if profile is None:
+        output_fn("(プロファイルは利用できません)")
+        return ""
+    if not text:
+        if lang == "en":
+            output_fn("Usage: /forget-fact <something I said I remember>")
+        else:
+            output_fn("使用方法: /forget-fact <覚えていることの一部>")
+        return ""
+    facts = getattr(profile, "facts", {}) or {}
+    needle = text.strip().lower()
+    matched_key: Optional[str] = None
+    for key, value in facts.items():
+        if needle in str(value).strip().lower():
+            matched_key = key
+            break
+    if matched_key is None:
+        if lang == "en":
+            output_fn(f"I don't have anything like '{text}' in my memory.")
+        else:
+            output_fn(f"「{text}」に近いことは覚えてないよ。")
+        return ""
+    try:
+        removed = profile.remove_fact(matched_key)
+        if removed and _profile_path is not None:
+            profile.save(_profile_path())
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(削除に失敗しました)")
+        return ""
+    if removed:
+        if lang == "en":
+            reply = "Okay, I've forgotten that."
+        else:
+            reply = "わかった、そのこと忘れておくね。"
+        output_fn(f"{avatar_name}: {reply}")
+        return reply
+    if lang == "en":
+        output_fn(f"I don't have anything like '{text}' in my memory.")
+    else:
+        output_fn(f"「{text}」に近いことは覚えてないよ。")
+    return ""
 
 
 def _print_user_name(profile, lang: str, output_fn: Callable[[str], None]) -> None:
