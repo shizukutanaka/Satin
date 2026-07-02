@@ -2313,5 +2313,133 @@ class AffinityBannerLocalizationTests(unittest.TestCase):
             "Japanese banner must say '関係'.")
 
 
+class ExportClearLogTests(unittest.TestCase):
+    """Socratic review: the REPL had privacy commands for profile (/forget-me)
+    and affinity (/reset-mood) but no way to export or erase the conversation
+    transcript itself — the most sensitive raw record. ConversationLog.to_csv()
+    existed but was never reachable from the chat. /export-log and /clear-log
+    close that asymmetry.
+    """
+
+    def setUp(self):
+        import tempfile
+        from conversation_log import ConversationLog
+        self._tmp = tempfile.mkdtemp()
+        self._logpath = os.path.join(self._tmp, "c.jsonl")
+        self._log = ConversationLog(self._logpath)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _run(self, inputs, conv_log="default"):
+        d = _Driver(inputs)
+        persona_cli.run_chat(
+            persona=_persona(),
+            conv_log=self._log if conv_log == "default" else conv_log,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        return d.out
+
+    # ---- /export-log ------------------------------------------------------ #
+    def test_export_log_writes_csv_with_content(self):
+        self._log.log_exchange("hello world", "hi there")
+        dest = os.path.join(self._tmp, "out.csv")
+        out = self._run([f"/export-log {dest}"])
+        self.assertTrue(os.path.exists(dest), "CSV file must be created")
+        with open(dest, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("hello world", content)
+        self.assertTrue(any(dest in line for line in out),
+                        "Output must confirm the export destination")
+
+    def test_export_log_none_conv_log_does_not_crash(self):
+        """Direct helper call: run_chat substitutes a default log for None,
+        so the None-guard is only reachable by calling the helper directly."""
+        out = []
+        persona_cli._export_log(None, "unused.csv", "ja", out.append)
+        self.assertTrue(any("利用できません" in line for line in out))
+        self.assertFalse(os.path.exists("unused.csv"))
+
+    def test_export_log_default_path_used_when_no_arg(self):
+        import contextlib
+        self._log.log_exchange("a", "b")
+        cwd = os.getcwd()
+        try:
+            os.chdir(self._tmp)
+            self._run(["/export-log"])
+            self.assertTrue(os.path.exists(os.path.join(self._tmp, "conversation_export.csv")))
+        finally:
+            with contextlib.suppress(OSError):
+                os.chdir(cwd)
+
+    # ---- /clear-log ------------------------------------------------------- #
+    def test_clear_log_first_invocation_only_asks_confirmation(self):
+        self._log.log_exchange("keep me", "for now")
+        out = self._run(["/clear-log"])
+        self.assertTrue(any("/clear-log" in line for line in out),
+                        "First invocation must ask for confirmation")
+        self.assertGreater(os.path.getsize(self._logpath), 0,
+                           "Log must remain intact after only one /clear-log")
+
+    def test_clear_log_double_invocation_erases_log(self):
+        self._log.log_exchange("erase me", "gone soon")
+        self._run(["/clear-log", "/clear-log"])
+        self.assertEqual(os.path.getsize(self._logpath), 0,
+                         "Two consecutive /clear-log must truncate the log")
+
+    def test_clear_log_confirmation_cancelled_by_other_command(self):
+        self._log.log_exchange("survivor", "still here")
+        self._run(["/clear-log", "/help", "/clear-log"])
+        self.assertGreater(
+            os.path.getsize(self._logpath), 0,
+            "A different command between the two /clear-log calls must cancel "
+            "the pending confirmation (same pattern as /forget-me).",
+        )
+
+    def test_clear_log_none_conv_log_does_not_crash(self):
+        """Direct helper call (see test_export_log_none_conv_log_does_not_crash)."""
+        out = []
+        persona_cli._clear_log(None, "ja", out.append)
+        self.assertTrue(any("利用できません" in line for line in out))
+
+
+class GiftListCooldownMarkerTests(unittest.TestCase):
+    """Socratic review: /gift list showed a static catalog; users discovered a
+    gift was on daily cooldown only by trying and being rejected. The list now
+    marks gifts already given today via MoodTracker.gift_received_today()."""
+
+    def _run(self, inputs, mood):
+        d = _Driver(inputs)
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None, mood=mood,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        return d.out
+
+    def test_gift_given_today_is_marked_in_list(self):
+        """The _persona() fixture is English, so use the en alias and marker."""
+        from mood import MoodTracker
+        mood = MoodTracker()
+        out = self._run(["/gift chocolate", "/gift list"], mood)
+        catalog = "\n".join(out)
+        self.assertIn("(given today)", catalog)
+        marked = [l for l in catalog.splitlines() if "(given today)" in l]
+        self.assertTrue(all("chocolate" in l for l in marked),
+                        f"Only chocolate should be marked; got: {marked}")
+
+    def test_no_gifts_given_list_has_no_markers(self):
+        from mood import MoodTracker
+        mood = MoodTracker()
+        out = self._run(["/gift list"], mood)
+        self.assertFalse(any("(given today)" in line for line in out),
+                         "Nothing given today -> no markers")
+
+    def test_list_without_mood_still_works(self):
+        out = self._run(["/gift list"], None)
+        self.assertTrue(any("+" in line for line in out),
+                        "Catalog must still render without a mood tracker")
+
+
 if __name__ == "__main__":
     unittest.main()

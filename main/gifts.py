@@ -285,8 +285,14 @@ _LEVEL_LABEL_JA = {
 }
 
 
-def gift_catalog_text(lang: str = "ja") -> str:
-    """プレゼントカタログを表示用テキストとして返す。min_level がある場合は必要な仲良し度も表示。"""
+def gift_catalog_text(lang: str = "ja", given_keys: Optional[set] = None) -> str:
+    """プレゼントカタログを表示用テキストとして返す。min_level がある場合は必要な仲良し度も表示。
+
+    given_keys（今日すでに贈ったギフトキーの集合）を渡すと、該当行の末尾に
+    「（今日は贈り済み）」/ " (given today)" を付加する。None なら従来出力のまま。
+    これによりユーザーは贈ってから断られるのではなく、カタログの時点で
+    クールダウン中のギフトが分かる。
+    """
     lang_key = "en" if str(lang).lower().startswith("en") else "ja"
     lines = []
     for g in _GIFTS:
@@ -296,10 +302,13 @@ def gift_catalog_text(lang: str = "ja") -> str:
         min_level = g.get("min_level")
         if min_level:
             if lang_key == "en":
-                lines.append(f"  {main} (+{bonus}, requires: {min_level}+)")
+                line = f"  {main} (+{bonus}, requires: {min_level}+)"
             else:
                 lvl_label = _LEVEL_LABEL_JA.get(min_level, min_level)
-                lines.append(f"  {main} (+{bonus}, {lvl_label}以上)")
+                line = f"  {main} (+{bonus}, {lvl_label}以上)"
         else:
-            lines.append(f"  {main} (+{bonus})")
+            line = f"  {main} (+{bonus})"
+        if given_keys and g["key"] in given_keys:
+            line += " (given today)" if lang_key == "en" else "（今日は贈り済み）"
+        lines.append(line)
     return "\n".join(lines)

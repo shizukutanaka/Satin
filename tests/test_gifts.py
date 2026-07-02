@@ -152,6 +152,31 @@ class CatalogTextTests(unittest.TestCase):
                             f"Gift '{gift['key']}' (affinity={gift['affinity']}) "
                             f"should show +{expected} in {lang} catalog")
 
+    def test_given_keys_marks_gift_ja(self):
+        """Gifts in given_keys get the 'given today' marker (ja)."""
+        text = gift_catalog_text("ja", given_keys={"chocolate"})
+        for line in text.splitlines():
+            if line.strip().startswith("チョコ"):
+                self.assertIn("今日は贈り済み", line)
+            else:
+                self.assertNotIn("今日は贈り済み", line)
+
+    def test_given_keys_marks_gift_en(self):
+        text = gift_catalog_text("en", given_keys={"flowers"})
+        for line in text.splitlines():
+            if line.strip().startswith("flowers"):
+                self.assertIn("(given today)", line)
+            else:
+                self.assertNotIn("(given today)", line)
+
+    def test_given_keys_none_matches_legacy_output(self):
+        """Backward compat: given_keys=None must produce byte-identical output."""
+        self.assertEqual(gift_catalog_text("ja"), gift_catalog_text("ja", given_keys=None))
+        self.assertEqual(gift_catalog_text("en"), gift_catalog_text("en", given_keys=None))
+
+    def test_empty_given_keys_matches_legacy_output(self):
+        self.assertEqual(gift_catalog_text("ja"), gift_catalog_text("ja", given_keys=set()))
+
 
 class CLIGiftIntegrationTests(unittest.TestCase):
     """Test _give_gift() helper via persona_cli."""

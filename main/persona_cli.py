@@ -13,6 +13,8 @@
   /help               コマンド一覧
   /history            会話履歴の直近を表示
   /search <キーワード> 会話履歴をキーワード検索（アーカイブ含む）
+  /export-log [パス]   会話履歴を CSV へエクスポート（既定: conversation_export.csv）
+  /clear-log          会話履歴を全消去（アーカイブ含む・二段階確認）
   /callme <名前>       アバターに呼んでほしい名前を覚えさせる
   /birthday MM-DD      誕生日を覚えさせる（当日に祝ってくれる）
   /like <好きなもの>    好きなものを覚えさせる（例: /like アニメ）
@@ -94,12 +96,14 @@ try:
         lookup_gift_key as _lookup_gift_key,
         gift_catalog_text as _gift_catalog_text,
         cooldown_message as _gift_cooldown_message,
+        all_gift_keys as _all_gift_keys,
     )
 except Exception:  # pragma: no cover - defensive
     _lookup_gift = None  # type: ignore
     _lookup_gift_key = None  # type: ignore
     _gift_catalog_text = None  # type: ignore
     _gift_cooldown_message = None  # type: ignore
+    _all_gift_keys = None  # type: ignore
 
 try:
     from daily_summary import summary_greeting as _summary_greeting
@@ -145,6 +149,8 @@ _HISTORY_DEFAULT = 10
 _MOOD_RESET_COMMANDS = {"/reset-mood", "/resetmood"}
 # 個人情報（呼び名・誕生日・趣味・記憶）を消去するプライバシーコマンド
 _FORGET_ME_COMMANDS = {"/forget-me", "/forgetme"}
+
+_CLEAR_LOG_COMMANDS = {"/clear-log", "/clearlog"}
 # N 回ごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
 _FOLLOW_UP_EVERY = 4
 
@@ -209,6 +215,7 @@ def respond_to(
 def _help_text() -> str:
     return (
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
+        "/export-log [パス] CSV出力 | /clear-log 履歴全消去 | "
         "/callme <名前> 呼び名設定 | /birthday MM-DD 誕生日設定 | "
         "/like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | "
         "/forget-fact <内容> 覚えた事実を忘れる | "
@@ -362,6 +369,8 @@ def run_chat(
     _reset_mood_pending: bool = False
     # /forget-me の二段階確認フラグ（誤操作による個人情報全消去を防ぐ）
     _forget_me_pending: bool = False
+    # /clear-log の二段階確認フラグ（誤操作による会話履歴全消去を防ぐ）
+    _clear_log_pending: bool = False
     while True:
         try:
             raw = input_fn("You: ")
@@ -382,6 +391,9 @@ def run_chat(
         # /forget-me の確認待ちが他のコマンド/テキストでキャンセルされた場合
         if _forget_me_pending and text.lower() not in _FORGET_ME_COMMANDS:
             _forget_me_pending = False
+        # /clear-log の確認待ちが他のコマンド/テキストでキャンセルされた場合
+        if _clear_log_pending and text.lower() not in _CLEAR_LOG_COMMANDS:
+            _clear_log_pending = False
 
         # コマンド処理
         if text.lower() in _QUIT_COMMANDS:
@@ -480,6 +492,23 @@ def run_chat(
         if text.lower() == "/search" or text.lower().startswith("/search "):
             query = text[len("/search"):].strip()
             _print_search(conv_log, query, output_fn)
+            continue
+        if text.lower() == "/export-log" or text.lower().startswith("/export-log "):
+            dest = text[len("/export-log"):].strip() or "conversation_export.csv"
+            _export_log(conv_log, dest, lang, output_fn)
+            continue
+        if text.lower() in _CLEAR_LOG_COMMANDS:
+            if not _clear_log_pending:
+                if lang == "en":
+                    output_fn(f"{name}: This will erase the ENTIRE conversation history "
+                              "(including archives). Type /clear-log again to confirm.")
+                else:
+                    output_fn(f"{name}: 会話履歴を（アーカイブも含めて）すべて消去します。"
+                              "本当によければ、もう一度 /clear-log を入力してください。")
+                _clear_log_pending = True
+            else:
+                _clear_log(conv_log, lang, output_fn)
+                _clear_log_pending = False
             continue
 
         # 一問一答の回答待ちなら、このコマンド以外の発話を答えとして記憶する。
@@ -859,7 +888,16 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
     """
     if not item or item.lower() == "list":
         if _gift_catalog_text is not None:
-            cat = _gift_catalog_text(lang)
+            # 今日すでに贈ったギフトをマーク（贈ってから断られる体験を避ける）
+            given_today: set = set()
+            if mood is not None and _all_gift_keys is not None \
+                    and hasattr(mood, "gift_received_today"):
+                try:
+                    given_today = {k for k in _all_gift_keys()
+                                   if mood.gift_received_today(k)}
+                except Exception:
+                    given_today = set()
+            cat = _gift_catalog_text(lang, given_keys=given_today or None)
             if lang == "en":
                 output_fn("Available gifts (bonus):")
             else:
@@ -1218,6 +1256,80 @@ def _print_search(conv_log, query: str, output_fn: Callable[[str], None]) -> Non
         prefix = "You" if ev.get("event_type") in USER_EVENT_TYPES else "Avatar"
         text = (ev.get("details") or {}).get("text", "")
         output_fn(f"[{dt_str}] {prefix}: {text}")
+
+
+def _export_log(conv_log, dest: str, lang: str,
+                output_fn: Callable[[str], None]) -> None:
+    """会話履歴（アーカイブ含む全件）を CSV ファイルへエクスポートする。
+
+    /forget-me・/reset-mood と同じく「自分のデータを自分で扱える」対称性の
+    ための出口。ConversationLog.to_csv() は実装済みだったが REPL から到達
+    できなかった（manage_satin log csv のみ）。失敗しても例外は送出しない。
+    """
+    if conv_log is None:
+        output_fn("(会話履歴は利用できません)")
+        return
+    avatar_label = "Avatar"
+    try:
+        p = get_persona()
+        if p and p.name:
+            avatar_label = p.name
+    except Exception:
+        pass
+    try:
+        csv_text = conv_log.to_csv(avatar_label=avatar_label, include_archives=True)
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write(csv_text)
+    except Exception:  # pragma: no cover - defensive
+        if lang == "en":
+            output_fn(f"(Failed to export the log to '{dest}')")
+        else:
+            output_fn(f"(会話履歴のエクスポートに失敗しました: {dest})")
+        return
+    if lang == "en":
+        output_fn(f"Conversation history exported to: {dest}")
+    else:
+        output_fn(f"会話履歴をエクスポートしました: {dest}")
+
+
+def _clear_log(conv_log, lang: str, output_fn: Callable[[str], None]) -> None:
+    """会話履歴（ライブファイル + gzip アーカイブ）を消去する。
+
+    manage_satin.cmd_log_clear と同じ実体処理だが、あちらは input() 対話
+    前提のため REPL では二段階確認（呼び出し側）+ 本ヘルパで行う。
+    """
+    if conv_log is None:
+        output_fn("(会話履歴は利用できません)")
+        return
+    try:
+        import os as _os
+        from conversation_log import _find_archives
+        path = conv_log.logfile
+        archives = _find_archives(path)
+        total = (1 if _os.path.exists(path) else 0) + len(archives)
+        if total == 0:
+            output_fn("(ログファイルが存在しません)" if lang != "en"
+                      else "(No log file exists)")
+            return
+        if _os.path.exists(path):
+            open(path, "w", encoding="utf-8").close()
+        removed_archives = 0
+        for gz in archives:
+            try:
+                _os.remove(gz)
+                removed_archives += 1
+            except OSError:
+                pass
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(会話履歴の消去に失敗しました)" if lang != "en"
+                  else "(Failed to clear the conversation history)")
+        return
+    if lang == "en":
+        note = f" ({removed_archives} archive(s) removed)" if removed_archives else ""
+        output_fn(f"Conversation history cleared.{note}")
+    else:
+        note = f"（アーカイブ {removed_archives} 件を削除）" if removed_archives else ""
+        output_fn(f"会話履歴を消去しました。{note}")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
