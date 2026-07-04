@@ -1,8 +1,8 @@
 """
 Unit tests for the GUI slash commands added to AutonomousAvatarViewer:
-/forget-fact, /export-log, /clear-log.
+/forget-fact, /export-log, /clear-log, /history, /search, /recap, /feeling.
 
-Socratic-review finding: these three commands existed in the headless CLI
+Socratic-review finding: these commands existed in the headless CLI
 (persona_cli.py) but were completely unreachable from the actual 3D avatar
 GUI (avatar_3d_autonomous_tts.py) — the product's default interface. This
 file verifies the GUI-side wiring added to close that gap.
@@ -59,9 +59,14 @@ class _FakeConvLog:
     def __init__(self, logfile):
         self.logfile = logfile
         self.exchanges = []
+        self._events = []  # raw event dicts for recent()/search()
 
     def log_exchange(self, user_text, reply):
         self.exchanges.append((user_text, reply))
+        self._events.append({"event_type": "user_comment",
+                             "details": {"text": user_text}, "timestamp": 0})
+        self._events.append({"event_type": "avatar_reply",
+                             "details": {"text": reply}, "timestamp": 0})
 
     def to_csv(self, avatar_label="Avatar", include_archives=True):
         lines = ["speaker,text"]
@@ -69,6 +74,15 @@ class _FakeConvLog:
             lines.append(f"You,{user_text}")
             lines.append(f"{avatar_label},{reply}")
         return "\n".join(lines) + "\n"
+
+    def recent_texts(self, n=10):
+        return [f"{ev['event_type']}: {ev['details']['text']}" for ev in self._events[-n:]]
+
+    def recent(self, n=20):
+        return list(self._events[-n:])
+
+    def search(self, query, include_archives=True):
+        return [ev for ev in self._events if query.lower() in ev["details"]["text"].lower()]
 
 
 class ForgetFactGuiTests(unittest.TestCase):
@@ -273,6 +287,131 @@ class DispatchTests(unittest.TestCase):
         # If /forget (interests) had swallowed this, facts would be untouched
         # and the reply would talk about a missing interest instead.
         self.assertNotIn("hobby", prof.facts)
+
+
+class HistoryGuiTests(unittest.TestCase):
+    def test_shows_recent_exchanges(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        conv_log.log_exchange("hello", "hi there")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_history_gui("ja")
+        self.assertIn("hello", v.comment_text)
+
+    def test_no_conv_log_does_not_crash(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", None):
+            v._cmd_history_gui("ja")
+        self.assertIn("利用できません", v.comment_text)
+
+    def test_empty_history_shows_message(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_history_gui("ja")
+        self.assertIn("ありません", v.comment_text)
+
+
+class SearchGuiTests(unittest.TestCase):
+    def test_finds_matching_exchange(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        conv_log.log_exchange("I like ramen", "Ramen is great!")
+        conv_log.log_exchange("unrelated", "ok")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_search_gui("ramen", "ja")
+        self.assertIn("ramen", v.comment_text.lower())
+
+    def test_no_match_shows_message(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        conv_log.log_exchange("hello", "hi")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_search_gui("xyzzy", "ja")
+        self.assertIn("見つかりませんでした", v.comment_text)
+
+    def test_empty_query_shows_usage(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_search_gui("", "ja")
+        self.assertIn("/search", v.comment_text)
+
+    def test_no_conv_log_does_not_crash(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", None):
+            v._cmd_search_gui("anything", "ja")
+        self.assertIn("利用できません", v.comment_text)
+
+
+class RecapGuiTests(unittest.TestCase):
+    def test_shows_greeting_and_recent_exchanges(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        conv_log.log_exchange("hello", "hi there")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log), \
+             mock.patch.object(_mod, "_summary_greeting_gui", return_value="Good to see you!"):
+            v._cmd_recap_gui("ja")
+        self.assertIn("Good to see you!", v.comment_text)
+        self.assertIn("hello", v.comment_text)
+
+    def test_nothing_available_shows_fallback_message(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", None), \
+             mock.patch.object(_mod, "_summary_greeting_gui", None):
+            v._cmd_recap_gui("ja")
+        self.assertIn("まだ会話が記録されていません", v.comment_text)
+
+
+class FeelingGuiTests(unittest.TestCase):
+    def test_unavailable_when_wellbeing_module_missing(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "_wellbeing_summary_gui", None), \
+             mock.patch.object(_mod, "_wellbeing_message_gui", None):
+            v._cmd_feeling_gui("ja")
+        self.assertIn("利用できません", v.comment_text)
+
+    def test_uses_wellbeing_message_when_available(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "_wellbeing_summary_gui", return_value={"sample_size": 5}), \
+             mock.patch.object(_mod, "_wellbeing_message_gui", return_value="Take it easy today."):
+            v._cmd_feeling_gui("en")
+        self.assertEqual(v.comment_text, "Take it easy today.")
+
+    def test_low_sample_size_shows_neutral_message(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "_wellbeing_summary_gui", return_value={"sample_size": 1}), \
+             mock.patch.object(_mod, "_wellbeing_message_gui", return_value=""):
+            v._cmd_feeling_gui("ja")
+        self.assertIn("もう少し", v.comment_text)
+
+
+class NewCommandDispatchTests(unittest.TestCase):
+    """Confirm /history, /search, /recap, /feeling are reachable through the
+    dispatcher (the crux of the original gap), not just directly callable."""
+
+    def test_history_dispatches(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", return_value=_FakeConvLog("/tmp/c.jsonl")):
+            self.assertTrue(v._handle_slash_command_gui("history", "ja", None))
+
+    def test_search_dispatches(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", return_value=_FakeConvLog("/tmp/c.jsonl")):
+            self.assertTrue(v._handle_slash_command_gui("search ramen", "ja", None))
+
+    def test_recap_dispatches(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", None), \
+             mock.patch.object(_mod, "_summary_greeting_gui", None):
+            self.assertTrue(v._handle_slash_command_gui("recap", "ja", None))
+
+    def test_feeling_and_checkin_alias_dispatch(self):
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "_wellbeing_summary_gui", None), \
+             mock.patch.object(_mod, "_wellbeing_message_gui", None):
+            self.assertTrue(v._handle_slash_command_gui("feeling", "ja", None))
+            self.assertTrue(v._handle_slash_command_gui("checkin", "ja", None))
 
 
 if __name__ == "__main__":

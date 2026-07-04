@@ -69,6 +69,20 @@ except Exception:  # pragma: no cover - defensive
     _acknowledge_answer_gui = None
 
 try:
+    from daily_summary import summary_greeting as _summary_greeting_gui
+except Exception:  # pragma: no cover - defensive
+    _summary_greeting_gui = None
+
+try:
+    from user_wellbeing import wellbeing_summary as _wellbeing_summary_gui
+    from user_wellbeing import wellbeing_message as _wellbeing_message_gui
+except Exception:  # pragma: no cover - defensive
+    _wellbeing_summary_gui = None
+    _wellbeing_message_gui = None
+
+_HISTORY_DEFAULT_GUI = 10
+
+try:
     from daily_mood import (  # noqa: E402
         get_daily_mood as _get_daily_mood_gui,
         mood_affinity_multiplier as _mood_affinity_multiplier_gui,
@@ -378,6 +392,18 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l == "clear-log" or cmd_l == "clearlog":
             self._cmd_clear_log_gui(lang)
             return True
+        if cmd_l == "history":
+            self._cmd_history_gui(lang)
+            return True
+        if cmd_l == "search" or cmd_l.startswith("search "):
+            self._cmd_search_gui(cmd_text[len("search"):].strip(), lang)
+            return True
+        if cmd_l == "recap":
+            self._cmd_recap_gui(lang)
+            return True
+        if cmd_l in ("feeling", "checkin"):
+            self._cmd_feeling_gui(lang)
+            return True
         if cmd_l == "help":
             self._cmd_help_gui(lang)
             return True
@@ -389,12 +415,14 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             reply = ("Commands: /gift <item>, /callme <name>, /birthday MM-DD, "
                      "/like <thing>, /forget <thing>, /forget-fact <text>, "
                      "/whoami, /forget-me, /mood, /reset-mood, /stats, "
-                     "/export-log [path], /clear-log, /help")
+                     "/export-log [path], /clear-log, /history, /search <keyword>, "
+                     "/recap, /feeling, /help")
         else:
             reply = ("コマンド: /gift <プレゼント>、/callme <名前>、/birthday MM-DD、"
                      "/like <好きなもの>、/forget <好きなもの>、/forget-fact <内容>、"
                      "/whoami、/forget-me、/mood、/reset-mood、/stats、"
-                     "/export-log [パス]、/clear-log、/help")
+                     "/export-log [パス]、/clear-log、/history、/search <キーワード>、"
+                     "/recap、/feeling、/help")
         self._speak_reply(reply)
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
@@ -840,6 +868,115 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         else:
             note = f"（アーカイブ {removed_archives} 件を削除）" if removed_archives else ""
             reply = f"会話履歴を消去しました。{note}"
+        self._speak_reply(reply)
+
+    def _cmd_history_gui(self, lang: str) -> None:
+        """GUI の /history コマンドを処理する（直近の会話履歴を表示）。"""
+        if get_conversation_log is None:
+            self._speak_reply("(会話履歴は利用できません)" if lang != "en"
+                              else "(Conversation history unavailable)")
+            return
+        try:
+            lines = get_conversation_log().recent_texts(_HISTORY_DEFAULT_GUI)
+        except Exception as e:
+            logger.debug("/history 取得に失敗（GUI）: %s", e)
+            lines = []
+        if not lines:
+            self._speak_reply("(まだ会話履歴はありません)" if lang != "en"
+                              else "(No conversation history yet)")
+            return
+        self._speak_reply("\n".join(lines))
+
+    def _cmd_search_gui(self, query: str, lang: str) -> None:
+        """GUI の /search <キーワード> コマンドを処理する（アーカイブ含む）。"""
+        if get_conversation_log is None:
+            self._speak_reply("(会話履歴は利用できません)" if lang != "en"
+                              else "(Conversation history unavailable)")
+            return
+        if not query:
+            self._speak_reply("使用方法: /search <キーワード>" if lang != "en"
+                              else "Usage: /search <keyword>")
+            return
+        try:
+            from conversation_log import USER_EVENT_TYPES
+            from datetime import datetime as _dt
+            results = get_conversation_log().search(query, include_archives=True)
+        except Exception as e:
+            logger.debug("/search に失敗（GUI）: %s", e)
+            self._speak_reply("(検索に失敗しました)" if lang != "en" else "(Search failed)")
+            return
+        if not results:
+            self._speak_reply(f"(「{query}」に一致する会話は見つかりませんでした)" if lang != "en"
+                              else f"(No conversations matching '{query}' found)")
+            return
+        lines = [f"「{query}」の検索結果: {len(results)} 件" if lang != "en"
+                 else f"Search results for '{query}': {len(results)}"]
+        for ev in results[-20:]:
+            ts = ev.get("timestamp", 0)
+            try:
+                dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+            except (OSError, OverflowError, ValueError, TypeError):
+                dt_str = "?"
+            prefix = "You" if ev.get("event_type") in USER_EVENT_TYPES else "Avatar"
+            text = (ev.get("details") or {}).get("text", "")
+            lines.append(f"[{dt_str}] {prefix}: {text}")
+        self._speak_reply("\n".join(lines))
+
+    def _cmd_recap_gui(self, lang: str) -> None:
+        """GUI の /recap コマンドを処理する（今日のまとめと直近のやりとり）。"""
+        is_en = lang.startswith("en")
+        lines = []
+        if _summary_greeting_gui is not None:
+            try:
+                greeting = _summary_greeting_gui(lang=lang)
+                if greeting:
+                    lines.append(greeting)
+            except Exception as e:
+                logger.debug("/recap サマリー取得に失敗（GUI）: %s", e)
+        if get_conversation_log is not None:
+            try:
+                conv_log = get_conversation_log()
+                recent = conv_log.recent(3)
+                if recent:
+                    lines.append("── Recent exchanges ──" if is_en else "── 直近のやりとり ──")
+                    from conversation_log import USER_EVENT_TYPES
+                    for entry in recent:
+                        et = entry.get("event_type", "")
+                        text = (entry.get("details") or {}).get("text", "")
+                        if not text:
+                            continue
+                        label = ("You" if is_en else "あなた") if et in USER_EVENT_TYPES else "Satin"
+                        lines.append(f"  {label}: {text}")
+            except Exception as e:
+                logger.debug("/recap 履歴取得に失敗（GUI）: %s", e)
+        if not lines:
+            self._speak_reply("No conversations yet today." if is_en
+                              else "今日はまだ会話が記録されていません。")
+            return
+        self._speak_reply("\n".join(lines))
+
+    def _cmd_feeling_gui(self, lang: str) -> None:
+        """GUI の /feeling (/checkin) コマンドを処理する（気分の寄り添い）。"""
+        is_en = lang.startswith("en")
+        if _wellbeing_summary_gui is None or _wellbeing_message_gui is None:
+            self._speak_reply("(wellbeing unavailable)" if is_en
+                              else "(気分の寄り添い機能は利用できません)")
+            return
+        try:
+            summary = _wellbeing_summary_gui(days=3)
+            msg = _wellbeing_message_gui(summary, lang=lang)
+        except Exception as e:
+            logger.debug("/feeling に失敗（GUI）: %s", e)
+            summary, msg = {}, ""
+        if msg:
+            self._speak_reply(msg)
+            return
+        if summary.get("sample_size", 0) < 3:
+            reply = ("Let's talk a bit more and I'll get a feel for how you're doing."
+                     if is_en else "もう少しお話ししたら、あなたの調子がわかるよ。")
+        else:
+            reply = ("You seem steady lately — that's good." if is_en
+                     else "最近は落ち着いてるみたいだね。いい感じ。")
         self._speak_reply(reply)
 
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:
