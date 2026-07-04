@@ -150,6 +150,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         ]
         self.tts_queue = None
         self.pending_fact_key = None  # 一問一答: 回答待ちの質問キー
+        self._clear_log_pending = False  # /clear-log の二段階確認フラグ
 
     def set_tts_queue(self, tts_queue):
         self.tts_queue = tts_queue
@@ -169,6 +170,14 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 logger.debug("好感度レベルの取得に失敗（応答は継続）: %s", e)
         persona = self.persona
         lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
+
+        # /clear-log の確認待ちが他の発話（スラッシュ・非スラッシュ問わず）で
+        # キャンセルされた場合。persona_cli.py の同種フラグ処理と同じロジック。
+        # getattr の既定値 False は、__init__ を経由しないテスト用インスタンス
+        # （object.__new__ 経由）で属性未設定でも落ちないようにするための防御。
+        if getattr(self, "_clear_log_pending", False) \
+                and comment.strip().lower() not in ("/clear-log", "/clearlog"):
+            self._clear_log_pending = False
 
         # ---------- スラッシュコマンド (/gift, /callme) ----------
         if isinstance(comment, str) and comment.lstrip().startswith("/"):
@@ -338,9 +347,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l == "like" or cmd_l.startswith("like "):
             self._cmd_like_gui(cmd_text[4:].strip(), lang)
             return True
-        # /forget-me は /forget より具体的なので先に判定する
+        # /forget-me / /forget-fact は /forget より具体的なので先に判定する
         if cmd_l == "forget-me" or cmd_l.startswith("forget-me ") or cmd_l == "forgetme":
             self._cmd_forget_me_gui(lang)
+            return True
+        if cmd_l == "forget-fact" or cmd_l.startswith("forget-fact "):
+            self._cmd_forget_fact_gui(cmd_text[len("forget-fact"):].strip(), lang)
             return True
         if cmd_l == "forget" or cmd_l.startswith("forget "):
             self._cmd_forget_gui(cmd_text[6:].strip(), lang)
@@ -360,6 +372,12 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l == "reset-mood" or cmd_l == "resetmood":
             self._cmd_reset_mood_gui(lang)
             return True
+        if cmd_l == "export-log" or cmd_l.startswith("export-log "):
+            self._cmd_export_log_gui(cmd_text[len("export-log"):].strip(), lang)
+            return True
+        if cmd_l == "clear-log" or cmd_l == "clearlog":
+            self._cmd_clear_log_gui(lang)
+            return True
         if cmd_l == "help":
             self._cmd_help_gui(lang)
             return True
@@ -369,12 +387,14 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         """GUI の /help コマンドを処理する（利用可能なコマンド一覧を表示）。"""
         if lang == "en":
             reply = ("Commands: /gift <item>, /callme <name>, /birthday MM-DD, "
-                     "/like <thing>, /forget <thing>, /whoami, /forget-me, "
-                     "/mood, /reset-mood, /stats, /help")
+                     "/like <thing>, /forget <thing>, /forget-fact <text>, "
+                     "/whoami, /forget-me, /mood, /reset-mood, /stats, "
+                     "/export-log [path], /clear-log, /help")
         else:
             reply = ("コマンド: /gift <プレゼント>、/callme <名前>、/birthday MM-DD、"
-                     "/like <好きなもの>、/forget <好きなもの>、/whoami、/forget-me、"
-                     "/mood、/reset-mood、/stats、/help")
+                     "/like <好きなもの>、/forget <好きなもの>、/forget-fact <内容>、"
+                     "/whoami、/forget-me、/mood、/reset-mood、/stats、"
+                     "/export-log [パス]、/clear-log、/help")
         self._speak_reply(reply)
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
@@ -545,6 +565,59 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                      else f"{thing}はリストにないみたい。")
         self._speak_reply(reply)
 
+    def _cmd_forget_fact_gui(self, text: str, lang: str) -> None:
+        """GUI の /forget-fact <内容> コマンドを処理する。
+
+        一問一答で覚えた事実のうち、指定したテキストが回答（値）に部分一致
+        するものを 1 件忘れさせる。/whoami はキーではなく値のみを表示するため、
+        値の大文字小文字を無視した部分一致でキーを逆引きする
+        （persona_cli._remove_fact と同一ロジック）。
+        """
+        if not text:
+            self._speak_reply("使い方: /forget-fact <覚えていることの一部>" if lang != "en"
+                              else "Usage: /forget-fact <something I said I remember>")
+            return
+        if _get_user_profile_gui is None:
+            self._speak_reply("(プロファイルは利用できません)" if lang != "en"
+                              else "(Profile unavailable)")
+            return
+        try:
+            prof = _get_user_profile_gui()
+            if prof is None:
+                self._speak_reply("(プロファイルは利用できません)" if lang != "en"
+                                  else "(Profile unavailable)")
+                return
+            facts = getattr(prof, "facts", {}) or {}
+            needle = text.strip().lower()
+            matched_key = None
+            for key, value in facts.items():
+                if needle in str(value).strip().lower():
+                    matched_key = key
+                    break
+            removed = False
+            if matched_key is not None:
+                removed = prof.remove_fact(matched_key)
+                if removed and _default_profile_path_gui is not None:
+                    prof.save(_default_profile_path_gui())
+        except Exception as e:
+            logger.debug("/forget-fact に失敗（GUI）: %s", e)
+            self._speak_reply("(削除に失敗しました)" if lang != "en"
+                              else "(Failed to forget that)")
+            return
+
+        if removed:
+            reply = ("Okay, I've forgotten that." if lang == "en"
+                     else "わかった、そのこと忘れておくね。")
+            if get_conversation_log is not None:
+                try:
+                    get_conversation_log().log_exchange(f"/forget-fact {text}", reply)
+                except Exception:
+                    pass
+        else:
+            reply = (f"I don't have anything like '{text}' in my memory." if lang == "en"
+                     else f"「{text}」に近いことは覚えてないよ。")
+        self._speak_reply(reply)
+
     def _cmd_forget_me_gui(self, lang: str) -> None:
         """GUI の /forget-me コマンドを処理する（個人情報を全消去）。
 
@@ -681,6 +754,92 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         except Exception as e:
             logger.debug("/reset-mood に失敗（GUI）: %s", e)
             reply = "(好感度のリセットに失敗しました)" if lang != "en" else "(Reset failed)"
+        self._speak_reply(reply)
+
+    def _cmd_export_log_gui(self, dest: str, lang: str) -> None:
+        """GUI の /export-log [パス] コマンドを処理する。
+
+        会話履歴（アーカイブ含む全件）を CSV へエクスポートする
+        （persona_cli._export_log と同一ロジック）。
+        """
+        if not dest:
+            dest = "conversation_export.csv"
+        if get_conversation_log is None:
+            self._speak_reply("(会話履歴は利用できません)" if lang != "en"
+                              else "(Conversation history unavailable)")
+            return
+        avatar_label = "Avatar"
+        try:
+            if self.persona and self.persona.name:
+                avatar_label = self.persona.name
+        except Exception:
+            pass
+        try:
+            conv_log = get_conversation_log()
+            csv_text = conv_log.to_csv(avatar_label=avatar_label, include_archives=True)
+            with open(dest, "w", encoding="utf-8") as f:
+                f.write(csv_text)
+        except Exception as e:
+            logger.debug("/export-log に失敗（GUI）: %s", e)
+            reply = (f"(Failed to export the log to '{dest}')" if lang == "en"
+                     else f"(会話履歴のエクスポートに失敗しました: {dest})")
+            self._speak_reply(reply)
+            return
+        reply = (f"Conversation history exported to: {dest}" if lang == "en"
+                 else f"会話履歴をエクスポートしました: {dest}")
+        self._speak_reply(reply)
+
+    def _cmd_clear_log_gui(self, lang: str) -> None:
+        """GUI の /clear-log コマンドを処理する（会話履歴を全消去・二段階確認）。
+
+        ライブファイル + gzip アーカイブを消去する
+        （persona_cli._clear_log と同一ロジック）。破壊的操作のため、
+        /forget-me と異なり明示的な二段階確認を行う。
+        """
+        if not getattr(self, "_clear_log_pending", False):
+            reply = ("This will erase the ENTIRE conversation history (including "
+                     "archives). Say /clear-log again to confirm." if lang == "en"
+                     else "会話履歴を（アーカイブも含めて）すべて消去します。"
+                          "本当によければ、もう一度 /clear-log と言ってください。")
+            self._clear_log_pending = True
+            self._speak_reply(reply)
+            return
+        self._clear_log_pending = False
+        if get_conversation_log is None:
+            self._speak_reply("(会話履歴は利用できません)" if lang != "en"
+                              else "(Conversation history unavailable)")
+            return
+        try:
+            import os as _os
+            from conversation_log import _find_archives
+            conv_log = get_conversation_log()
+            path = conv_log.logfile
+            archives = _find_archives(path)
+            total = (1 if _os.path.exists(path) else 0) + len(archives)
+            if total == 0:
+                self._speak_reply("(ログファイルが存在しません)" if lang != "en"
+                                  else "(No log file exists)")
+                return
+            if _os.path.exists(path):
+                open(path, "w", encoding="utf-8").close()
+            removed_archives = 0
+            for gz in archives:
+                try:
+                    _os.remove(gz)
+                    removed_archives += 1
+                except OSError:
+                    pass
+        except Exception as e:
+            logger.debug("/clear-log に失敗（GUI）: %s", e)
+            self._speak_reply("(会話履歴の消去に失敗しました)" if lang != "en"
+                              else "(Failed to clear the conversation history)")
+            return
+        if lang == "en":
+            note = f" ({removed_archives} archive(s) removed)" if removed_archives else ""
+            reply = f"Conversation history cleared.{note}"
+        else:
+            note = f"（アーカイブ {removed_archives} 件を削除）" if removed_archives else ""
+            reply = f"会話履歴を消去しました。{note}"
         self._speak_reply(reply)
 
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:
