@@ -31,6 +31,7 @@ class BackupScheduler:
         backup_manager: BackupManager,
         notification_system: NotificationSystem,
         backup_target_dir: str = ".",
+        max_backups: Optional[int] = None,
     ):
         self.backup_manager = backup_manager
         self.notification_system = notification_system
@@ -39,6 +40,12 @@ class BackupScheduler:
         self._stop_event = threading.Event()
         self.backup_history: List[Dict[str, Any]] = []
         self.max_history = 30
+        # 自動保持件数の上限（None = 無効・既存の挙動を維持）。add_daily_backup /
+        # add_weekly_backup で定期実行を設定しても、これまで古いバックアップ
+        # ファイルを自動削除する経路が一切無く、無人運用（スケジューラの本来の
+        # 目的）でディスクを際限なく消費し続けていた。既存利用者の挙動を変えない
+        # よう既定は無効のままとし、明示的に指定した場合のみ有効にする。
+        self.max_backups = max_backups
 
         if _schedule is not None:
             self._scheduler = _schedule.Scheduler()
@@ -180,6 +187,9 @@ class BackupScheduler:
             # メッセージだけだと運用復旧時の切り分けが困難になる (Qiita 既知の落とし穴)。
             logger.error(f"Backup failed: {e}", exc_info=True)
 
+        if success and self.max_backups is not None:
+            self._enforce_retention()
+
         history_entry: Dict[str, Any] = {
             "timestamp": timestamp,
             "type": backup_type,
@@ -203,3 +213,22 @@ class BackupScheduler:
                 message=f"{backup_type.title()} backup failed: {error_msg}",
                 level="error",
             )
+
+    def _enforce_retention(self) -> None:
+        """max_backups を超えた分の最古のバックアップファイルを削除する。
+
+        list_backups() は新しい順（降順）を返す前提（BackupManager の実装通り）。
+        1 件の削除失敗が残りの削除を止めないよう、個別に例外を握り潰す。
+        """
+        try:
+            backups = self.backup_manager.list_backups()
+        except Exception as e:
+            logger.warning(f"バックアップ保持ポリシーの適用に失敗しました（一覧取得エラー）: {e}")
+            return
+        if len(backups) <= self.max_backups:
+            return
+        for old in backups[self.max_backups:]:
+            try:
+                self.backup_manager.delete_backup(old["path"])
+            except Exception as e:
+                logger.warning(f"古いバックアップの削除に失敗しました: {old.get('path')}: {e}")

@@ -153,5 +153,83 @@ class LifecycleResetTests(unittest.TestCase):
         )
 
 
+class RetentionTests(unittest.TestCase):
+    """Regression: BackupScheduler never called delete_backup() anywhere.
+    add_daily_backup/add_weekly_backup exist for unattended, recurring
+    backups, but with no automated retention, backups accumulated forever —
+    unbounded disk growth for anyone using the scheduler as intended. Fixed
+    with an opt-in max_backups parameter (default None preserves old
+    behavior exactly) enforced after each successful scheduled backup.
+    """
+
+    def _backups(self, n):
+        return [{"path": f"/backups/b{i}.zip", "created": f"2024-01-{20 - i:02d}"}
+                for i in range(n)]
+
+    def test_default_max_backups_none_disables_retention(self):
+        """Backward compatibility: without max_backups, no deletion ever happens."""
+        sched, mock_bm, _ = _make_scheduler()
+        mock_bm.create_backup.return_value = "/tmp/bk.zip"
+        mock_bm.list_backups.return_value = self._backups(50)
+        sched._run_backup("daily")
+        mock_bm.delete_backup.assert_not_called()
+
+    def test_retention_deletes_oldest_beyond_max(self):
+        mock_bm = mock.MagicMock()
+        mock_ns = mock.MagicMock()
+        sched = BackupScheduler(mock_bm, mock_ns, max_backups=3)
+        mock_bm.create_backup.return_value = "/tmp/bk.zip"
+        mock_bm.list_backups.return_value = self._backups(5)  # newest-first order
+
+        sched._run_backup("daily")
+
+        deleted_paths = [call.args[0] for call in mock_bm.delete_backup.call_args_list]
+        # backups()[3:] are the two oldest (list_backups() is newest-first).
+        self.assertEqual(sorted(deleted_paths), ["/backups/b3.zip", "/backups/b4.zip"])
+
+    def test_retention_not_applied_when_backup_count_within_limit(self):
+        mock_bm = mock.MagicMock()
+        mock_ns = mock.MagicMock()
+        sched = BackupScheduler(mock_bm, mock_ns, max_backups=10)
+        mock_bm.create_backup.return_value = "/tmp/bk.zip"
+        mock_bm.list_backups.return_value = self._backups(3)
+
+        sched._run_backup("daily")
+        mock_bm.delete_backup.assert_not_called()
+
+    def test_retention_not_applied_when_backup_fails(self):
+        """A failed create_backup must not trigger retention deletion."""
+        mock_bm = mock.MagicMock()
+        mock_ns = mock.MagicMock()
+        sched = BackupScheduler(mock_bm, mock_ns, max_backups=1)
+        mock_bm.create_backup.side_effect = RuntimeError("disk full")
+        mock_bm.list_backups.return_value = self._backups(5)
+
+        sched._run_backup("daily")
+        mock_bm.delete_backup.assert_not_called()
+
+    def test_one_delete_failure_does_not_abort_remaining_deletions(self):
+        mock_bm = mock.MagicMock()
+        mock_ns = mock.MagicMock()
+        sched = BackupScheduler(mock_bm, mock_ns, max_backups=1)
+        mock_bm.create_backup.return_value = "/tmp/bk.zip"
+        mock_bm.list_backups.return_value = self._backups(3)
+        mock_bm.delete_backup.side_effect = [RuntimeError("locked"), True]
+
+        sched._run_backup("daily")  # must not raise
+        self.assertEqual(mock_bm.delete_backup.call_count, 2)
+
+    def test_list_backups_failure_does_not_abort_run_backup(self):
+        mock_bm = mock.MagicMock()
+        mock_ns = mock.MagicMock()
+        sched = BackupScheduler(mock_bm, mock_ns, max_backups=1)
+        mock_bm.create_backup.return_value = "/tmp/bk.zip"
+        mock_bm.list_backups.side_effect = RuntimeError("io error")
+
+        sched._run_backup("daily")  # must not raise
+        self.assertEqual(len(sched.backup_history), 1)
+        self.assertTrue(sched.backup_history[0]["success"])
+
+
 if __name__ == "__main__":
     unittest.main()
