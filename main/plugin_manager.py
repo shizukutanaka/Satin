@@ -98,11 +98,18 @@ class PluginManager:
                 # Create plugin instance
                 plugin = plugin_class()
                 self.plugins[plugin_name] = plugin
-                
+
                 # Configure plugin if needed
                 plugin_config = self.plugin_config.get(plugin_name, {})
                 plugin.configure(plugin_config)
-                
+
+                # start() is a mandatory (@abstractmethod) part of PluginBase's
+                # lifecycle, paired with stop() which reload_plugin() already
+                # calls. Without this, whatever a plugin does in start() (e.g.
+                # open a connection, spawn a worker thread) never ran unless
+                # the plugin itself invoked it from __init__/configure.
+                plugin.start()
+
                 self.logger.info(f"Loaded plugin: {plugin_name}")
             else:
                 self.logger.warning(f"No plugin class found in {plugin_name}")
@@ -133,6 +140,14 @@ class PluginManager:
             except Exception as exc:
                 self.logger.warning(f"stop() raised during reload of {name}: {exc}")
 
+            # Drop the stopped instance before attempting the reload. If
+            # _load_plugin() below fails (malformed file, missing class,
+            # configure()/start() error), self.plugins no longer holds this
+            # already-torn-down instance under `name` — get_plugin(name) will
+            # correctly raise "not found" instead of silently handing back a
+            # dead, stopped plugin with no indication it's unusable.
+            del self.plugins[name]
+
             plugin_file = self.plugin_directory / f"{name}.py"
             self._load_plugin(plugin_file)
 
@@ -141,14 +156,23 @@ class PluginManager:
         except Exception as e:
             self.logger.error(f"Error reloading plugin {name}: {str(e)}")
             raise PluginError(f"Failed to reload plugin {name}: {str(e)}") from e
-    
+
     def reload_all_plugins(self) -> None:
         """Reload all plugins"""
         try:
+            # Unlike reload_plugin(), this used to clear() the dict directly
+            # without calling stop() on any outgoing instance — any plugin
+            # holding a thread/socket/file handle in its running state leaked
+            # on every reload_all_plugins() call.
+            for plugin_name, plugin in list(self.plugins.items()):
+                try:
+                    plugin.stop()
+                except Exception as exc:
+                    self.logger.warning(f"stop() raised during reload_all for {plugin_name}: {exc}")
             self.plugins.clear()
             self.load_plugins()
             self.logger.info("Reloaded all plugins")
-            
+
         except Exception as e:
             self.logger.error(f"Error reloading all plugins: {str(e)}")
             raise PluginError(f"Failed to reload all plugins: {str(e)}") from e

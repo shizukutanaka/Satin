@@ -308,5 +308,178 @@ class {class_name}(PluginBase):
             self.assertTrue(any("stop()" in w for w in warnings))
 
 
+class StartLifecycleTests(unittest.TestCase):
+    """Regression: PluginBase.start() is an @abstractmethod — a mandatory
+    part of every plugin's lifecycle, paired with stop() (which
+    reload_plugin() already called). But _load_plugin() only ever called
+    configure(), never start(), so whatever a plugin does in start() (open a
+    connection, spawn a worker thread) never ran unless the plugin invoked
+    it itself from __init__/configure.
+    """
+
+    def _plugin_src(self, class_name):
+        return f"""\
+import sys
+sys.path.insert(0, {_MAIN!r})
+from plugin_base import PluginBase
+
+class {class_name}(PluginBase):
+    def configure(self, config): self.config = config
+    def start(self): self.started = True
+    def stop(self): pass
+    def process(self, data): return data
+"""
+
+    def test_start_called_on_initial_load(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            plugin_path = os.path.join(d, "startable.py")
+            with open(plugin_path, "w") as f:
+                f.write(self._plugin_src("StartablePlugin"))
+
+            pm = PluginManager(_StubLogger())
+            pm.plugin_directory = Path(d)
+            pm._load_plugin_config = lambda: None
+            pm.plugin_config = {}
+            pm._load_plugin(Path(plugin_path))
+
+            self.assertTrue(getattr(pm.plugins["startable"], "started", False),
+                            "start() must be called when a plugin is loaded")
+
+    def test_start_called_again_on_reload(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            plugin_path = os.path.join(d, "startable.py")
+            with open(plugin_path, "w") as f:
+                f.write(self._plugin_src("StartablePlugin"))
+
+            pm = PluginManager(_StubLogger())
+            pm.plugin_directory = Path(d)
+            pm._load_plugin_config = lambda: None
+            pm.plugin_config = {}
+            pm._load_plugin(Path(plugin_path))
+            pm.reload_plugin("startable")
+
+            self.assertTrue(getattr(pm.plugins["startable"], "started", False))
+
+
+class ReloadAllPluginsStopTests(unittest.TestCase):
+    """Regression: reload_all_plugins() called self.plugins.clear() directly
+    with no stop() on any outgoing instance — unlike the singular
+    reload_plugin(), which does call stop(). Any plugin holding a thread,
+    socket, or file handle leaked on every reload_all_plugins() call.
+    """
+
+    def _plugin_src(self, class_name):
+        return f"""\
+import sys
+sys.path.insert(0, {_MAIN!r})
+from plugin_base import PluginBase
+
+class {class_name}(PluginBase):
+    def configure(self, config): self.config = config
+    def start(self): pass
+    def stop(self): pass
+    def process(self, data): return data
+"""
+
+    def test_stop_called_on_every_plugin_before_reload_all(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            for cls in ("PluginA", "PluginB"):
+                with open(os.path.join(d, f"{cls.lower()}.py"), "w") as f:
+                    f.write(self._plugin_src(cls))
+
+            pm = PluginManager(_StubLogger())
+            pm.plugin_directory = Path(d)
+            pm.load_plugins()
+            self.assertEqual(len(pm.plugins), 2)
+
+            stop_calls = []
+            for name, plugin in pm.plugins.items():
+                plugin.stop = (lambda n: lambda: stop_calls.append(n))(name)
+
+            pm.reload_all_plugins()
+
+            self.assertEqual(
+                sorted(stop_calls), ["plugina", "pluginb"],
+                "stop() must be called on every outgoing plugin before "
+                "reload_all_plugins() clears the dict — old bug leaked "
+                "resources by clearing without stopping.",
+            )
+
+    def test_reload_all_still_succeeds_when_a_stop_raises(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "plugina.py"), "w") as f:
+                f.write(self._plugin_src("PluginA"))
+
+            pm = PluginManager(_StubLogger())
+            pm.plugin_directory = Path(d)
+            pm.load_plugins()
+            pm.plugins["plugina"].stop = lambda: (_ for _ in ()).throw(
+                RuntimeError("cleanup failed"))
+
+            pm.reload_all_plugins()  # must not raise
+            self.assertIn("plugina", pm.plugins)
+
+
+class ReloadPluginFailureLeavesNoDeadInstanceTests(unittest.TestCase):
+    """Regression: if _load_plugin() failed during reload_plugin() (e.g. the
+    file on disk was overwritten with a broken plugin), the dict still held
+    the OLD, already-stopped instance under that name — get_plugin(name)
+    silently returned dead, torn-down state with no indication it was
+    unusable.
+    """
+
+    def _good_plugin_src(self, class_name):
+        return f"""\
+import sys
+sys.path.insert(0, {_MAIN!r})
+from plugin_base import PluginBase
+
+class {class_name}(PluginBase):
+    def configure(self, config): self.config = config
+    def start(self): pass
+    def stop(self): pass
+    def process(self, data): return data
+"""
+
+    def test_failed_reload_does_not_leave_stopped_instance_registered(self):
+        from pathlib import Path
+        from error_handling import PluginError
+
+        with tempfile.TemporaryDirectory() as d:
+            plugin_path = os.path.join(d, "flaky.py")
+            with open(plugin_path, "w") as f:
+                f.write(self._good_plugin_src("FlakyPlugin"))
+
+            pm = PluginManager(_StubLogger())
+            pm.plugin_directory = Path(d)
+            pm._load_plugin_config = lambda: None
+            pm.plugin_config = {}
+            pm._load_plugin(Path(plugin_path))
+            self.assertIn("flaky", pm.plugins)
+
+            stopped = []
+            pm.plugins["flaky"].stop = lambda: stopped.append(True)
+
+            # Overwrite the file on disk with something broken.
+            with open(plugin_path, "w") as f:
+                f.write("this is not valid python syntax !!!\n")
+
+            with self.assertRaises(PluginError):
+                pm.reload_plugin("flaky")
+
+            self.assertEqual(stopped, [True], "the old instance must still be stopped")
+            with self.assertRaises(PluginError):
+                pm.get_plugin("flaky")  # must NOT silently return the dead instance
+            self.assertNotIn(
+                "flaky", pm.plugins,
+                "A failed reload must not leave the old, already-stopped "
+                "instance registered under this name.",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
