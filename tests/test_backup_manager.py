@@ -247,5 +247,188 @@ class BackupPermissionTests(unittest.TestCase):
                          f"backup must not be readable by group/other; mode={oct(mode)}")
 
 
+class CreateBackupAtomicityTests(unittest.TestCase):
+    """Regression: create_backup() had shutil.make_archive write directly to
+    the final backup path. A crash mid-write (or reusing backup_name) left a
+    truncated/corrupt zip and destroyed any prior good backup at that path.
+    Fix: write to a temp path under backup_dir, then os.replace atomically.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mgr = _make_manager(self._tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_reusing_backup_name_after_partial_write_preserves_old_backup(self):
+        """A second create_backup() call that writes SOME bytes to whatever
+        path make_archive() was given, then fails, must not corrupt the
+        original good backup at backup_name — because the fix directs
+        make_archive() at a distinct temp path, not backup_path directly.
+
+        This fakes make_archive() by writing garbage to the path it's asked
+        to produce (simulating a partial/truncated write) and then raising,
+        rather than fully replacing the call — so it actually exercises
+        whether the destination path itself was ever touched.
+        """
+        target = _make_target(self._tmp, n=2)
+        path = self._mgr.create_backup(target, backup_name="daily")
+        with open(path, "rb") as f:
+            original_bytes = f.read()
+        self.assertTrue(len(original_bytes) > 0)
+
+        def fake_make_archive(base_name, fmt, root_dir):
+            # Simulate a real archiver: write partial/garbage bytes to
+            # <base_name>.zip, then crash before finishing.
+            with open(base_name + ".zip", "wb") as f:
+                f.write(b"PARTIAL-CORRUPT-DATA")
+            raise OSError("disk full")
+
+        with mock.patch.object(bm_mod.shutil, "make_archive", side_effect=fake_make_archive):
+            with self.assertRaises(OSError):
+                self._mgr.create_backup(target, backup_name="daily")
+
+        # The original backup must be untouched, not truncated/corrupted —
+        # only possible if make_archive wrote to a temp path, not backup_path.
+        with open(path, "rb") as f:
+            after_bytes = f.read()
+        self.assertEqual(original_bytes, after_bytes,
+                         "A failed re-create must not corrupt the prior good backup: "
+                         "old bug wrote make_archive's output directly to backup_path.")
+
+    def test_no_stray_temp_files_left_on_success(self):
+        target = _make_target(self._tmp, n=1)
+        self._mgr.create_backup(target, backup_name="clean")
+        leftovers = [p for p in self._mgr.backup_dir.iterdir() if p.name.startswith(".")]
+        self.assertEqual(leftovers, [], f"Temp files must be cleaned up: {leftovers}")
+
+
+class GetLatestBackupRaceTests(unittest.TestCase):
+    """Regression: get_latest_backup()'s sort key called x.stat() with no
+    error handling, unlike list_backups(). A file removed between glob() and
+    stat() (e.g. by a concurrent delete_backup() from backup_scheduler) raised
+    an uncaught FileNotFoundError instead of the Optional[Path] the signature
+    promises.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mgr = _make_manager(self._tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_file_removed_between_glob_and_stat_does_not_raise(self):
+        target = _make_target(self._tmp, n=1)
+        self._mgr.create_backup(target, backup_name="a")
+        self._mgr.create_backup(target, backup_name="b")
+
+        real_stat = Path.stat
+        raised = {"done": False}
+
+        def flaky_stat(self_path, *a, **kw):
+            # Only simulate the race for the .zip files being sorted, not
+            # internal directory-existence checks made by glob() itself.
+            if self_path.suffix == ".zip" and not raised["done"]:
+                raised["done"] = True
+                raise FileNotFoundError("removed concurrently")
+            return real_stat(self_path, *a, **kw)
+
+        with mock.patch.object(Path, "stat", flaky_stat):
+            result = self._mgr.get_latest_backup()
+        self.assertIsNotNone(result, "Must still return a backup, not raise")
+
+
+class ListBackupsTypeFieldTests(unittest.TestCase):
+    """Regression: list_backups() labeled every backup's "type" via
+    `"full" if "full_backup" in name else "incremental"`, but create_backup()
+    never produces a name containing "full_backup" (default is
+    backup_<timestamp>.zip) and there is no incremental-backup code path
+    anywhere in the class. Every real backup was mislabeled "incremental"."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mgr = _make_manager(self._tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_default_name_backup_reports_full(self):
+        target = _make_target(self._tmp, n=1)
+        self._mgr.create_backup(target)  # default timestamped name
+        entries = self._mgr.list_backups()
+        self.assertEqual(entries[0]["type"], "full")
+
+    def test_custom_name_without_full_backup_substring_still_reports_full(self):
+        target = _make_target(self._tmp, n=1)
+        self._mgr.create_backup(target, backup_name="daily_snapshot")
+        entries = self._mgr.list_backups()
+        self.assertEqual(entries[0]["type"], "full",
+                         "Old bug: only names containing 'full_backup' were "
+                         "labeled full; everything else was mislabeled incremental.")
+
+
+class RestoreBackupAtomicityTests(unittest.TestCase):
+    """Regression: restore_backup() extracted zip entries directly into
+    target_dir one at a time. A failure partway through (corrupt entry, disk
+    full) left already-extracted files in target_dir despite the method
+    returning False, silently mutating the directory callers were told
+    nothing had changed in.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mgr = _make_manager(self._tmp)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_normal_restore_still_works(self):
+        target = _make_target(self._tmp, n=3)
+        backup_path = self._mgr.create_backup(target)
+        restore_dir = os.path.join(self._tmp, "restored")
+        ok = self._mgr.restore_backup(backup_path, restore_dir)
+        self.assertTrue(ok)
+        for i in range(3):
+            self.assertTrue(os.path.exists(os.path.join(restore_dir, f"file_{i}.txt")))
+
+    def test_failure_partway_through_leaves_target_dir_untouched(self):
+        target = _make_target(self._tmp, n=3)
+        backup_path = self._mgr.create_backup(target)
+        restore_dir = os.path.join(self._tmp, "restored_partial")
+        os.makedirs(restore_dir, exist_ok=True)
+
+        real_copyfileobj = bm_mod.shutil.copyfileobj
+        call_count = {"n": 0}
+
+        def flaky_copyfileobj(src, dst, *a, **kw):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                raise OSError("disk full")
+            return real_copyfileobj(src, dst, *a, **kw)
+
+        with mock.patch.object(bm_mod.shutil, "copyfileobj", flaky_copyfileobj):
+            ok = self._mgr.restore_backup(backup_path, restore_dir)
+
+        self.assertFalse(ok)
+        remaining = os.listdir(restore_dir)
+        self.assertEqual(
+            remaining, [],
+            f"target_dir must be untouched on failure, found: {remaining}. "
+            "Old bug: partially-extracted files were left behind despite "
+            "returning False.",
+        )
+
+    def test_no_stray_staging_dirs_left_after_restore(self):
+        target = _make_target(self._tmp, n=1)
+        backup_path = self._mgr.create_backup(target)
+        restore_dir = os.path.join(self._tmp, "restored2")
+        self._mgr.restore_backup(backup_path, restore_dir)
+        leftovers = [p for p in self._mgr.backup_dir.iterdir()
+                    if p.is_dir() and p.name.startswith(".restore_staging_")]
+        self.assertEqual(leftovers, [], f"Staging dirs must be cleaned up: {leftovers}")
+
+
 if __name__ == "__main__":
     unittest.main()

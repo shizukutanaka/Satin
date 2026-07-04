@@ -42,7 +42,13 @@ class BackupManager:
     # ------------------------------------------------------------------
 
     def create_backup(self, target_dir: str, backup_name: Optional[str] = None) -> str:
-        """ディレクトリの ZIP バックアップを作成して保存パスを返す。"""
+        """ディレクトリの ZIP バックアップを作成して保存パスを返す。
+
+        shutil.make_archive は最終パスへ直接書き込むため、途中でクラッシュすると
+        壊れた zip が残り、backup_name を使い回した場合は以前の正常なバックアップ
+        まで巻き添えで破壊される。一時ファイルへ書いてから os.replace で
+        アトミックに差し替えることで、失敗時も既存の正常なバックアップを保持する。
+        """
         try:
             target_path = Path(target_dir)
             if not target_path.exists():
@@ -51,12 +57,15 @@ class BackupManager:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             name = backup_name or f"backup_{timestamp}"
             backup_path = self.backup_dir / f"{name}.zip"
+            tmp_stem = self.backup_dir / f".{name}.{timestamp}.tmp"
 
-            shutil.make_archive(
-                str(backup_path.with_suffix("")),
+            import os
+            archive_path = shutil.make_archive(
+                str(tmp_stem),
                 "zip",
                 target_path,
             )
+            os.replace(archive_path, backup_path)
 
             # バックアップ zip は config/mood.json / user_profile.json / 会話ログ等の
             # 個人データを含み得るため、生成直後に所有者のみ読み書き可へ制限する。
@@ -78,13 +87,22 @@ class BackupManager:
             raise
 
     def get_latest_backup(self) -> Optional[Path]:
-        """最新のバックアップ ZIP を返す。"""
-        files = sorted(
-            self.backup_dir.glob("*.zip"),
-            key=lambda x: x.stat().st_mtime,
-            reverse=True,
-        )
-        return files[0] if files else None
+        """最新のバックアップ ZIP を返す。
+
+        backup_scheduler がタイマー/別スレッドから delete_backup を呼びうるため、
+        glob() と stat() の間にファイルが消える競合がありうる。list_backups() と
+        同様に stat() 失敗（消えたファイル）は無視して継続する。
+        """
+        entries = []
+        for f in self.backup_dir.glob("*.zip"):
+            try:
+                entries.append((f, f.stat().st_mtime))
+            except OSError:
+                continue  # 別スレッドが glob 後に削除した
+        if not entries:
+            return None
+        entries.sort(key=lambda pair: pair[1], reverse=True)
+        return entries[0][0]
 
     def list_backups(self) -> List[Dict[str, Any]]:
         """バックアップ一覧を新しい順で返す。"""
@@ -99,7 +117,12 @@ class BackupManager:
                         backup_file.stat().st_mtime
                     ).strftime("%Y-%m-%d %H:%M:%S"),
                     "is_valid": self._validate_backup(backup_file),
-                    "type": "full" if "full_backup" in backup_file.name else "incremental",
+                    # create_backup() has no incremental code path — every
+                    # backup this class produces is a full zip snapshot.
+                    # The old "full_backup" in name check never matched the
+                    # real default name (backup_<timestamp>.zip), so every
+                    # backup was mislabeled "incremental".
+                    "type": "full",
                 }
                 backups.append(info)
             except Exception as e:
@@ -113,7 +136,16 @@ class BackupManager:
         ``shutil.unpack_archive`` (内部で ``zipfile.extractall``) は target_dir
         の外側にファイルを書き出してしまう (任意ファイル書き込み脆弱性)。
         各エントリの解決後パスが ``target_dir`` 配下に収まるか個別に検証する。
+
+        展開失敗時の一貫性: 全エントリをまず一時ステージングディレクトリへ
+        展開し、全件成功した場合のみ target_dir へ移す。target_dir へ直接
+        書き込むと、途中のエントリで失敗（ディスク満杯・壊れたzip等）した際に
+        既に書き込み済みのファイルが target_dir に残り、戻り値 False にも
+        関わらず target_dir が部分的に変更されてしまう。
         """
+        import os
+        import tempfile
+        staging_dir = None
         try:
             backup_path = Path(backup_file)
             if not backup_path.exists():
@@ -122,26 +154,38 @@ class BackupManager:
             target_path = Path(target_dir)
             target_path.mkdir(parents=True, exist_ok=True)
 
-            import os
-            target_real = os.path.realpath(target_path)
+            staging_dir = tempfile.mkdtemp(prefix=".restore_staging_", dir=str(self.backup_dir))
+            staging_real = os.path.realpath(staging_dir)
             with zipfile.ZipFile(backup_path, "r") as zf:
                 for entry in zf.namelist():
                     if entry.endswith("/"):  # ディレクトリエントリは skip
                         continue
-                    dest_path = os.path.realpath(os.path.join(target_real, entry))
-                    if (dest_path != target_real
-                            and not dest_path.startswith(target_real + os.sep)):
+                    dest_path = os.path.realpath(os.path.join(staging_real, entry))
+                    if (dest_path != staging_real
+                            and not dest_path.startswith(staging_real + os.sep)):
                         logger.warning(f"Zip Slip 検出、スキップ: {entry}")
                         continue
                     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                     with zf.open(entry) as src, open(dest_path, "wb") as dst:
                         shutil.copyfileobj(src, dst)
 
+            # 全件展開に成功した場合のみ target_dir へ反映する。
+            target_real = os.path.realpath(target_path)
+            for root, _dirs, files in os.walk(staging_real):
+                rel = os.path.relpath(root, staging_real)
+                dest_root = target_real if rel == "." else os.path.join(target_real, rel)
+                os.makedirs(dest_root, exist_ok=True)
+                for fname in files:
+                    os.replace(os.path.join(root, fname), os.path.join(dest_root, fname))
+
             logger.info(f"バックアップを復元しました: {backup_file} -> {target_dir}")
             return True
         except Exception as e:
             logger.error(f"バックアップの復元に失敗しました: {e}")
             return False
+        finally:
+            if staging_dir is not None:
+                shutil.rmtree(staging_dir, ignore_errors=True)
 
     def delete_backup(self, backup_file: str) -> bool:
         """バックアップファイルを削除する。"""
