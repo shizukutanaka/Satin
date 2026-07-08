@@ -38,9 +38,12 @@ except Exception:  # pragma: no cover - defensive fallback
 try:
     from conversation_log import USER_EVENT_TYPES as _USER_EVENT_TYPES
     from conversation_log import DEFAULT_LOGFILE as _DEFAULT_LOGFILE
+    from conversation_log import _find_archives
 except Exception:  # pragma: no cover - defensive fallback
     _USER_EVENT_TYPES = frozenset({"user_comment", "user"})
     _DEFAULT_LOGFILE = "avatar_event_log.jsonl"
+    def _find_archives(path: str) -> List[str]:
+        return []
 
 try:
     from fsutil import load_jsonl_dicts as _load_jsonl_dicts
@@ -64,6 +67,36 @@ except Exception:  # pragma: no cover - defensive fallback
         except OSError:
             return []
         return out
+
+
+def _load_jsonl_with_archives(path: str) -> List[Dict]:
+    """ライブ JSONL に加え、ローテート済み .gz アーカイブも読み込む。
+
+    wellbeing_summary は既定 days=3 と複数日にまたがって集計するが、
+    以前は _load_jsonl_dicts(path) でライブファイルしか読んでおらず、
+    avatar_event_log_rotate.rotate_log() によるサイズローテーションを
+    挟むとローテート済みアーカイブ内のユーザー発話が集計から消えていた
+    （daily_summary.py の _load_jsonl(include_archives=True) が既に
+    同じ問題を解決済みの箇所であり、同じパターンをここでも適用する）。
+    """
+    entries: List[Dict] = list(_load_jsonl_dicts(path))
+    for gz_path in _find_archives(path):
+        try:
+            import gzip
+            import json
+            with gzip.open(gz_path, "rt", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if not line.strip():
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(obj, dict):
+                        entries.append(obj)
+        except Exception:  # pragma: no cover - defensive
+            continue
+    return entries
 
 
 # 判定に必要な最低発話数。少なすぎると偶然に振り回されるため何も言わない。
@@ -164,7 +197,7 @@ def wellbeing_summary(
     cutoff = _start_of_day(real_now) - max(0, days - 1) * 86400
 
     pos = neg = neu = 0
-    for ev in _load_jsonl_dicts(path):
+    for ev in _load_jsonl_with_archives(path):
         if ev.get("event_type") not in _USER_EVENT_TYPES:
             continue
         ts = ev.get("timestamp")

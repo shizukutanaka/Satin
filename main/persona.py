@@ -356,6 +356,25 @@ class Persona:
                 return block
         return {}
 
+    @staticmethod
+    def _as_dict(value) -> Dict:
+        """value が dict ならそのまま、そうでなければ空 dict を返す。
+
+        persona.json の talk_by_daily_mood/talk_by_affinity/talk_by_time/
+        greeting_by_affinity/greeting/respond_by_affinity/
+        follow_up_by_affinity は from_dict() では形（トップレベルの
+        dialogue/responses が非空 dict であること）しか検証されず、
+        ネストしたキーの型は検証されない。構文的には正しいがこれらの
+        キーが dict でない persona.json（例: リストを渡してしまった）を
+        読み込むと load() 自体は成功し、その後 talk()/greeting()/
+        respond()/follow_up_question() を実際に呼んだ瞬間に
+        AttributeError（'list' object has no attribute 'get' 等）で
+        クラッシュしていた。autonomous_behavior.py・
+        avatar_3d_autonomous_tts.py の呼び出し側はこれらを try/except で
+        包んでいないため、実行中のアバターループを落としかねない。
+        """
+        return value if isinstance(value, dict) else {}
+
     def _resolve_lang_block(self, lang: Optional[str] = None) -> Dict:
         """要求言語の dialogue ブロックを、フォールバックを辿って返す。"""
         return self._resolve_block(self._dialogue, lang)
@@ -403,18 +422,18 @@ class Persona:
         block = self._resolve_lang_block(lang)
         # デイリームード台詞（1/3 の確率で差し込む）
         if mood_key:
-            by_mood = block.get("talk_by_daily_mood") or {}
+            by_mood = self._as_dict(block.get("talk_by_daily_mood"))
             mood_opts = list(by_mood.get(mood_key, []))
             if mood_opts and _random.random() < 0.33:
                 return self._pick(f"talk_mood:{mood_key}:{lang or self.lang}", mood_opts)
         if level:
-            by_affinity = block.get("talk_by_affinity") or {}
+            by_affinity = self._as_dict(block.get("talk_by_affinity"))
             level_opts = list(by_affinity.get(level, []))
             if level_opts:
                 return self._pick(f"talk_affinity:{level}:{lang or self.lang}", level_opts)
         # 時刻帯別台詞（25% の確率で差し込む）
         if time_bucket:
-            by_time = block.get("talk_by_time") or {}
+            by_time = self._as_dict(block.get("talk_by_time"))
             time_opts = list(by_time.get(time_bucket, []))
             if time_opts and _random.random() < 0.25:
                 return self._pick(f"talk_time:{time_bucket}:{lang or self.lang}", time_opts)
@@ -443,14 +462,14 @@ class Persona:
 
         # 好感度レベル専用あいさつを優先
         if level:
-            by_level = block.get("greeting_by_affinity") or {}
+            by_level = self._as_dict(block.get("greeting_by_affinity"))
             level_options = list(by_level.get(level, []))
             if level_options:
                 return self._pick(
                     f"greeting:level:{level}:{lang or self.lang}", level_options
                 )
 
-        greetings = block.get("greeting") or {}
+        greetings = self._as_dict(block.get("greeting"))
         slot = _time_of_day((now or datetime.now()).hour)
         options = list(greetings.get(slot, []))
         if not options:
@@ -517,7 +536,7 @@ class Persona:
         # 好感度レベル専用ルールを先に評価
         level_fallback: list = []
         if level:
-            by_affinity = block.get("respond_by_affinity") or {}
+            by_affinity = self._as_dict(block.get("respond_by_affinity"))
             level_rules = by_affinity.get(level) or []
             for idx, rule in enumerate(level_rules):
                 if not isinstance(rule, dict):
@@ -582,7 +601,7 @@ class Persona:
         """
         block = self._resolve_responses_block(lang)
         if level:
-            by_affinity = block.get("follow_up_by_affinity") or {}
+            by_affinity = self._as_dict(block.get("follow_up_by_affinity"))
             level_qs = list(by_affinity.get(level) or [])
             if level_qs:
                 return self._pick(

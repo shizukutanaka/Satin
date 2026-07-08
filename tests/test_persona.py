@@ -1054,5 +1054,66 @@ class TopicRepeatAwarenessTests(unittest.TestCase):
                        "Switching topics must not accidentally trigger repeat mode.")
 
 
+class MalformedNestedShapeTests(unittest.TestCase):
+    """Regression: from_dict() only validates that the top-level dialogue/
+    responses values are non-empty dicts — it never checks the shape of
+    nested keys like greeting/talk_by_affinity/respond_by_affinity/etc.
+    A syntactically valid persona.json where one of those keys is, say, a
+    list instead of a dict loaded successfully (load() only wraps JSON
+    parsing), and the crash only happened the first time the corresponding
+    method was actually called — AttributeError: 'list' object has no
+    attribute 'get'. Several real callers (autonomous_behavior.py,
+    avatar_3d_autonomous_tts.py) don't wrap these calls in try/except, so
+    this could crash the live avatar loop mid-session on a bad config.
+    """
+
+    def test_talk_by_daily_mood_wrong_type_does_not_crash(self):
+        p = Persona.from_dict({
+            "dialogue": {"en": {"talk": ["hi"], "talk_by_daily_mood": ["not", "a", "dict"]}},
+        }, lang="en")
+        self.assertEqual(p.talk(mood_key="good"), "hi")  # falls through to plain talk
+
+    def test_talk_by_affinity_wrong_type_does_not_crash(self):
+        p = Persona.from_dict({
+            "dialogue": {"en": {"talk": ["hi"], "talk_by_affinity": ["not", "a", "dict"]}},
+        }, lang="en")
+        self.assertEqual(p.talk(level="close"), "hi")
+
+    def test_talk_by_time_wrong_type_does_not_crash(self):
+        p = Persona.from_dict({
+            "dialogue": {"en": {"talk": ["hi"], "talk_by_time": ["not", "a", "dict"]}},
+        }, lang="en")
+        self.assertEqual(p.talk(time_bucket="morning"), "hi")
+
+    def test_greeting_by_affinity_wrong_type_does_not_crash(self):
+        p = Persona.from_dict({
+            "dialogue": {"en": {"greeting": {"morning": ["Morning!"]},
+                                "greeting_by_affinity": ["not", "a", "dict"]}},
+        }, lang="en")
+        self.assertTrue(p.greeting(level="close"))
+
+    def test_greeting_block_wrong_type_does_not_crash(self):
+        p = Persona.from_dict({
+            "dialogue": {"en": {"talk": ["hi"], "greeting": ["not", "a", "dict"]}},
+        }, lang="en")
+        self.assertTrue(p.greeting())  # falls through to talk/default fallback
+
+    def test_respond_by_affinity_wrong_type_does_not_crash(self):
+        p = Persona.from_dict({
+            "responses": {"en": {"rules": [], "fallback": ["hm"],
+                                 "respond_by_affinity": ["not", "a", "dict"]}},
+        }, lang="en")
+        self.assertEqual(p.respond("anything", level="close"), "hm")
+
+    def test_follow_up_by_affinity_wrong_type_does_not_crash(self):
+        p = Persona.from_dict({
+            "responses": {"en": {"rules": [], "fallback": [],
+                                 "follow_up_by_affinity": ["not", "a", "dict"]}},
+        }, lang="en")
+        # Must not raise; any string (including empty) is an acceptable result.
+        result = p.follow_up_question(level="close")
+        self.assertIsInstance(result, str)
+
+
 if __name__ == "__main__":
     unittest.main()

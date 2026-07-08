@@ -151,6 +151,62 @@ class WellbeingSummaryTests(unittest.TestCase):
         self.assertEqual(s2["sample_size"], 0)
 
 
+class WellbeingSummaryArchiveTests(unittest.TestCase):
+    """Regression: wellbeing_summary() only read the live event log file,
+    never the rotated .gz archives avatar_event_log_rotate.rotate_log()
+    creates. Since it looks back `days` (default 3, spanning multiple
+    days), a size-based rotation mid-window silently dropped every message
+    that got rotated into an archive — daily_summary.py's equivalent
+    _load_jsonl(include_archives=True) already solved this same problem
+    for the same reason (so "yesterday" doesn't read as empty right after
+    rotation).
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._log = os.path.join(self._tmp, "ev.jsonl")
+        self._now = time.time()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_archive(self, texts, ts):
+        import gzip
+        gz_name = os.path.basename(self._log) + ".20260101_000000.gz"
+        gz_path = os.path.join(self._tmp, gz_name)
+        with gzip.open(gz_path, "wt", encoding="utf-8") as fh:
+            for t in texts:
+                fh.write(json.dumps({
+                    "event_type": "user_comment", "timestamp": ts,
+                    "details": {"text": t},
+                }) + "\n")
+
+    def test_archived_messages_are_counted(self):
+        # Live file empty (just rotated); all messages are in the archive.
+        open(self._log, "w").close()
+        self._write_archive(["最悪", "むかつく", "つまらない"], ts=self._now - 3600)
+        s = uw.wellbeing_summary(event_log_path=self._log, days=3, now=self._now)
+        self.assertEqual(s["sample_size"], 3)
+        self.assertEqual(s["trend"], "low")
+
+    def test_archived_and_live_messages_are_combined(self):
+        open(self._log, "w", encoding="utf-8").write(
+            json.dumps({"event_type": "user_comment", "timestamp": self._now - 60,
+                       "details": {"text": "最悪"}}) + "\n"
+        )
+        self._write_archive(["むかつく", "つまらない"], ts=self._now - 3600)
+        s = uw.wellbeing_summary(event_log_path=self._log, days=3, now=self._now)
+        self.assertEqual(s["sample_size"], 3)
+        self.assertEqual(s["trend"], "low")
+
+    def test_archived_messages_outside_window_still_excluded(self):
+        open(self._log, "w").close()
+        self._write_archive(["最悪", "むかつく", "つまらない"], ts=self._now - 10 * 86400)
+        s = uw.wellbeing_summary(event_log_path=self._log, days=3, now=self._now)
+        self.assertEqual(s["sample_size"], 0)
+
+
 class WellbeingMessageTests(unittest.TestCase):
     def test_neutral_returns_empty(self):
         self.assertEqual(uw.wellbeing_message({"trend": "neutral"}), "")
