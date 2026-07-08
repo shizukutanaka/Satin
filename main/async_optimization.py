@@ -651,24 +651,30 @@ class AsyncConnectionPool:
         """
         timeout = timeout or self.timeout_seconds
 
+        # Fast path: an idle connection is immediately available.
         try:
-            conn = await asyncio.wait_for(
-                self._available.get(),
-                timeout=timeout
-            )
-            return conn
-        except asyncio.TimeoutError:
-            # Try to create an overflow connection. The check + create + append
-            # must be atomic, otherwise concurrent acquirers can race past the
-            # cap and create more than pool_size + max_overflow connections
-            # (which would later overflow the bounded queue on release()).
-            async with self._lock:
-                if len(self._all_connections) < self.pool_size + self.max_overflow:
-                    conn = await self.factory()
-                    self._all_connections.append(conn)
-                    return conn
+            return self._available.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
 
-            raise
+        # No idle connection — try an overflow connection immediately rather
+        # than waiting out `timeout` first. This used to be reached only
+        # after asyncio.wait_for's full timeout elapsed (default 30s), so
+        # every acquire() beyond pool_size stalled for up to 30 seconds even
+        # though overflow capacity was available right away — a real
+        # deadlock-like hang under any concurrent load exceeding pool_size.
+        # The check + create + append must be atomic, otherwise concurrent
+        # acquirers can race past the cap and create more than
+        # pool_size + max_overflow connections (which would later overflow
+        # the bounded queue on release()).
+        async with self._lock:
+            if len(self._all_connections) < self.pool_size + self.max_overflow:
+                conn = await self.factory()
+                self._all_connections.append(conn)
+                return conn
+
+        # Pool and overflow both exhausted — wait for a released connection.
+        return await asyncio.wait_for(self._available.get(), timeout=timeout)
 
     async def release(self, conn: Any) -> None:
         """Release connection back to pool, discarding it if the pool is full."""

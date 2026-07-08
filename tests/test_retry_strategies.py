@@ -55,7 +55,7 @@ class RetryWithMetricsTests(unittest.TestCase):
         except ImportError:
             self.skipTest("tenacity not installed")
         from main.retry_strategies import RetryConfiguration, retry_with_metrics
-        cfg = RetryConfiguration(max_retries=config.get("max_retries", 2))
+        cfg = RetryConfiguration(max_attempts=config.get("max_attempts", 2))
         metrics = RetryMetrics()
         decorated = retry_with_metrics(cfg, metrics=metrics)(func)
         return decorated, metrics
@@ -68,7 +68,7 @@ class RetryWithMetricsTests(unittest.TestCase):
             return "ok"
 
         try:
-            decorated, metrics = self._run_with_tenacity(succeed, {"max_retries": 3})
+            decorated, metrics = self._run_with_tenacity(succeed, {"max_attempts": 3})
         except unittest.SkipTest:
             return
 
@@ -82,7 +82,7 @@ class RetryWithMetricsTests(unittest.TestCase):
             raise ValueError("boom")
 
         try:
-            decorated, metrics = self._run_with_tenacity(always_fail, {"max_retries": 2})
+            decorated, metrics = self._run_with_tenacity(always_fail, {"max_attempts": 2})
         except unittest.SkipTest:
             return
 
