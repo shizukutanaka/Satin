@@ -47,6 +47,24 @@ def _mood_level_arrow(prev: str, curr: str) -> str:
         return "↓"
 
 
+def _confirm(prompt: str) -> bool:
+    """破壊的操作の前に y/N 確認を取る。stdin が閉じている場合も安全に扱う。
+
+    cmd_log_clear/cmd_backup_restore/cmd_data_purge は素の input() を直接
+    呼んでいた。cron・systemd・CI・`< /dev/null` などの非対話環境で stdin が
+    閉じていると input() は EOFError を送出し、この関数を呼ぶ側の
+    try/except ImportError では捕捉されずに未処理の traceback として
+    落ちていた（Ctrl+D/Ctrl+C も同様に KeyboardInterrupt で落ちる）。
+    どちらも「キャンセル」として扱い、他の失敗経路と同じ体裁で
+    グレースフルに終了する。
+    """
+    try:
+        return input(prompt).strip().lower() == "y"
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 def _get_conversation_log():
     """絶対パスでシングルトン ConversationLog を初期化して返す。
 
@@ -273,10 +291,9 @@ def cmd_log_clear(log_path: str | None = None) -> None:
             print("(ログファイルが存在しません)")
             return
         archive_note = f"（アーカイブ {len(archives)} 件を含む）" if archives else ""
-        ans = input(
+        if not _confirm(
             f"'{path}' の会話ログ{archive_note}をクリアします。よろしいですか？ [y/N]: "
-        ).strip().lower()
-        if ans != "y":
+        ):
             print("キャンセルしました。")
             return
         if os.path.exists(path):
@@ -401,8 +418,7 @@ def cmd_backup_restore(zip_path: str, dest_dir: str | None = None) -> None:
     print(f"設定ファイル : {len(config_entries)} 件")
     print(f"ログファイル : {len(log_entries)} 件")
     print()
-    ans = input("復元します。既存ファイルを上書きします。よろしいですか？ [y/N]: ").strip().lower()
-    if ans != "y":
+    if not _confirm("復元します。既存ファイルを上書きします。よろしいですか？ [y/N]: "):
         print("キャンセルしました。")
         return
 
@@ -443,19 +459,32 @@ def cmd_backup_restore(zip_path: str, dest_dir: str | None = None) -> None:
 def cmd_mood_import(src: str) -> None:
     """JSON ファイルから好感度をインポートして現在のトラッカーに適用する。"""
     try:
-        from mood import get_mood_tracker, _default_mood_path, AFFINITY_START
+        from mood import get_mood_tracker, _default_mood_path, MoodTracker
         with open(src, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             raise ValueError("JSON ファイルの形式が不正です（dict が必要）")
         tracker = get_mood_tracker()
-        def _f(val, default):
-            return float(val) if val is not None else float(default)
-        def _i(val, default):
-            return int(val) if val is not None else int(default)
-        tracker.affinity = _f(data.get("affinity"), AFFINITY_START)
-        tracker.interactions = _i(data.get("interactions"), 0)
-        tracker._last_interaction_time = _f(data.get("last_interaction_time"), 0.0)
+        # MoodTracker.from_dict() は to_dict() が書き出す全 11 フィールドを
+        # 正しいデフォルト処理付きで復元する。以前は affinity/interactions/
+        # last_interaction_time の 3 つしか復元しておらず、直後の save() は
+        # to_dict() の全フィールドを書き出すため、残り 8 フィールド
+        # （初回対話日時・記念日カウント・告白済みフラグ・ログイン連続日数・
+        # ギフト履歴・日次獲得量）が現在のシングルトンに残っていた値
+        # （多くは初期値）で静かに上書きされ、エクスポート→インポートという
+        # 一見非破壊的な操作がこれらのフィールドを失っていた。
+        restored = MoodTracker.from_dict(data)
+        tracker.affinity = restored.affinity
+        tracker.interactions = restored.interactions
+        tracker._last_interaction_time = restored._last_interaction_time
+        tracker._first_interaction_time = restored._first_interaction_time
+        tracker._last_anniversary_days = restored._last_anniversary_days
+        tracker._confession_done = restored._confession_done
+        tracker._last_login_date = restored._last_login_date
+        tracker._login_streak = restored._login_streak
+        tracker._gift_history = restored._gift_history
+        tracker._daily_gain_date = restored._daily_gain_date
+        tracker._daily_gain_total = restored._daily_gain_total
         tracker.save(_default_mood_path())
         print(f"好感度を '{src}' からインポートしました: affinity={tracker.affinity:.1f}")
     except ImportError:
@@ -539,10 +568,9 @@ def cmd_data_purge(assume_yes: bool = False, dry_run: bool = False) -> None:
         return
 
     if not assume_yes:
-        ans = input(
+        if not _confirm(
             f"\n本当に {len(existing)} 件すべてを完全に削除しますか？この操作は取り消せません。 [y/N]: "
-        ).strip().lower()
-        if ans != "y":
+        ):
             print("キャンセルしました。")
             return
 

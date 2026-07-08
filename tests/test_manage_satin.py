@@ -339,6 +339,15 @@ class BackupRestoreTests(unittest.TestCase):
             os.path.exists(os.path.join(self._dest, "config", "persona.json"))
         )
 
+    def test_closed_stdin_does_not_crash_or_extract(self):
+        """Regression: EOFError from input() (closed stdin) must be treated
+        as cancel, not propagate as an unhandled traceback."""
+        with mock.patch("builtins.input", side_effect=EOFError):
+            manage_satin.cmd_backup_restore(self._zip, self._dest)  # must not raise
+        self.assertFalse(
+            os.path.exists(os.path.join(self._dest, "config", "persona.json"))
+        )
+
     def test_missing_zip_exits(self):
         with self.assertRaises(SystemExit):
             manage_satin.cmd_backup_restore(os.path.join(self._tmp, "nope.zip"), self._dest)
@@ -533,6 +542,58 @@ class MoodImportTests(unittest.TestCase):
         finally:
             _mood.reset_mood_tracker()
 
+    def test_export_then_import_round_trip_preserves_all_fields(self):
+        """Regression: cmd_mood_import only restored affinity/interactions/
+        last_interaction_time, but the subsequent tracker.save() persists
+        to_dict()'s full 11 fields — silently overwriting first_interaction_time,
+        last_anniversary_days, confession_done, last_login_date, login_streak,
+        gift_history, daily_gain_date, and daily_gain_total with whatever the
+        live singleton happened to hold. A plain export->import round trip must
+        preserve every field, not just the first three."""
+        import mood as _mood
+        _mood.reset_mood_tracker()
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                mood_path = os.path.join(tmp, "mood.json")
+                from unittest import mock
+                with mock.patch.object(_mood, "_default_mood_path", lambda: mood_path):
+                    tracker = _mood.get_mood_tracker()
+                    tracker.affinity = 55.0
+                    tracker.interactions = 7
+                    tracker._first_interaction_time = 111.0
+                    tracker._last_anniversary_days = 30
+                    tracker._confession_done = True
+                    tracker._last_login_date = "2026-01-01"
+                    tracker._login_streak = 5
+                    tracker._gift_history = {"flower": "2026-01-01"}
+                    tracker._daily_gain_date = "2026-01-02"
+                    tracker._daily_gain_total = 12.5
+
+                    export_path = os.path.join(tmp, "export.json")
+                    manage_satin.cmd_mood_export(export_path)
+
+                    # Simulate a fresh process: a tracker with different
+                    # in-memory state before the import runs.
+                    _mood.reset_mood_tracker()
+                    with mock.patch.object(_mood, "_default_mood_path", lambda: mood_path):
+                        fresh = _mood.get_mood_tracker()
+                        fresh._gift_history = {"different": "value"}
+                        manage_satin.cmd_mood_import(export_path)
+
+                    restored = _mood.get_mood_tracker()
+                    self.assertAlmostEqual(restored.affinity, 55.0, places=1)
+                    self.assertEqual(restored.interactions, 7)
+                    self.assertAlmostEqual(restored._first_interaction_time, 111.0, places=1)
+                    self.assertEqual(restored._last_anniversary_days, 30)
+                    self.assertTrue(restored._confession_done)
+                    self.assertEqual(restored._last_login_date, "2026-01-01")
+                    self.assertEqual(restored._login_streak, 5)
+                    self.assertEqual(restored._gift_history, {"flower": "2026-01-01"})
+                    self.assertEqual(restored._daily_gain_date, "2026-01-02")
+                    self.assertAlmostEqual(restored._daily_gain_total, 12.5, places=1)
+        finally:
+            _mood.reset_mood_tracker()
+
 
 class LogCsvTests(unittest.TestCase):
     def test_csv_export_creates_file(self):
@@ -594,6 +655,36 @@ class PersonaRespondTests(unittest.TestCase):
         self.assertTrue(len(buf.getvalue().strip()) > 0)
 
 
+class ConfirmHelperTests(unittest.TestCase):
+    """Regression: cmd_log_clear/cmd_backup_restore/cmd_data_purge called bare
+    input() directly for their y/N confirmation. If stdin is closed
+    (cron/systemd/CI/`< /dev/null`), input() raises EOFError, which the
+    surrounding `except ImportError` blocks never caught — an unhandled
+    traceback instead of the tool's usual graceful cancel/error messaging.
+    Ctrl+D/Ctrl+C (EOFError/KeyboardInterrupt) must both be treated as "no."
+    """
+
+    def test_eof_is_treated_as_no(self):
+        with mock.patch("builtins.input", side_effect=EOFError):
+            self.assertFalse(manage_satin._confirm("proceed? [y/N]: "))
+
+    def test_keyboard_interrupt_is_treated_as_no(self):
+        with mock.patch("builtins.input", side_effect=KeyboardInterrupt):
+            self.assertFalse(manage_satin._confirm("proceed? [y/N]: "))
+
+    def test_y_returns_true(self):
+        with mock.patch("builtins.input", return_value="y"):
+            self.assertTrue(manage_satin._confirm("proceed? [y/N]: "))
+
+    def test_n_returns_false(self):
+        with mock.patch("builtins.input", return_value="n"):
+            self.assertFalse(manage_satin._confirm("proceed? [y/N]: "))
+
+    def test_uppercase_y_returns_true(self):
+        with mock.patch("builtins.input", return_value="Y"):
+            self.assertTrue(manage_satin._confirm("proceed? [y/N]: "))
+
+
 class LogClearTests(unittest.TestCase):
     """cmd_log_clear must truncate the live log AND delete rotated .gz archives.
     Previously it used log._path (AttributeError) and ignored archives, leaving
@@ -644,6 +735,16 @@ class LogClearTests(unittest.TestCase):
              mock.patch("conversation_log.get_conversation_log",
                         return_value=self._log_obj):
             manage_satin.cmd_log_clear(log_path=self._logfile)
+        self.assertGreater(os.path.getsize(self._logfile), 0)
+        self.assertTrue(os.path.exists(self._gz))
+
+    def test_closed_stdin_does_not_crash_or_clear(self):
+        """Regression: EOFError from input() (closed stdin) must be treated
+        as cancel, not propagate as an unhandled traceback."""
+        with mock.patch("builtins.input", side_effect=EOFError), \
+             mock.patch("conversation_log.get_conversation_log",
+                        return_value=self._log_obj):
+            manage_satin.cmd_log_clear(log_path=self._logfile)  # must not raise
         self.assertGreater(os.path.getsize(self._logfile), 0)
         self.assertTrue(os.path.exists(self._gz))
 
@@ -778,6 +879,18 @@ class DataPurgeTests(unittest.TestCase):
 
     def test_cancel_keeps_files(self):
         self._run(inp="n")
+        for p in self._files:
+            self.assertTrue(os.path.exists(p))
+
+    def test_closed_stdin_does_not_crash_or_delete(self):
+        """Regression: EOFError from input() (closed stdin) must be treated
+        as cancel, not propagate as an unhandled traceback — especially
+        important for this specific command, whose whole point is
+        irreversible deletion."""
+        ctx = mock.patch.object(manage_satin, "_personal_data_paths",
+                                return_value=self._items)
+        with ctx, mock.patch("builtins.input", side_effect=EOFError):
+            manage_satin.cmd_data_purge()  # must not raise
         for p in self._files:
             self.assertTrue(os.path.exists(p))
 

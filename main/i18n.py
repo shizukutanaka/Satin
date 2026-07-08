@@ -14,9 +14,37 @@ FONT_MAP = {
 }
 LOCALES_DIR = os.path.join(os.path.dirname(__file__), 'i18n', 'locales')
 
+
+def _discover_supported_langs():
+    try:
+        return frozenset(
+            f[:-5] for f in os.listdir(LOCALES_DIR) if f.endswith('.json')
+        ) or frozenset({'en'})
+    except OSError:
+        return frozenset({'en'})
+
+
+# dashboard.py's get_lang() passes request.args.get('lang') — a fully
+# attacker-controlled, unvalidated string — straight into I18N(lang), which
+# used it directly as a key into the process-wide, unbounded
+# _translation_cache class dict. An unauthenticated caller sending a unique
+# ?lang= value on every request grows that cache without bound (memory
+# exhaustion) and lets an arbitrary string get stored in the session/
+# reflected into rendered URLs. Constraining to the actual locale files
+# present bounds the cache to a fixed, small size regardless of input.
+_SUPPORTED_LANGS = _discover_supported_langs()
+
+
 class I18N:
     _translation_cache = {}
     def __init__(self, lang=None):
+        # self.lang keeps the raw detected/requested value (e.g. "fr" from
+        # SATIN_LANG) — it's used for FONT_MAP.get(self.lang, 'Arial')
+        # font-matching for languages that have a font mapping but no
+        # translation file. Only the *cache key* inside load_translation is
+        # clamped to the small, fixed set of languages that actually have a
+        # locale file, so an arbitrary caller-supplied lang can't grow
+        # _translation_cache without bound.
         self.lang = lang or self.detect_language()
         self.translations = self.load_translation(self.lang)
         self.font = FONT_MAP.get(self.lang, 'Arial')
@@ -32,16 +60,24 @@ class I18N:
             return loc.lower().split('_')[0]
         return 'en'
     def load_translation(self, lang):
-        if lang in self._translation_cache:
-            return self._translation_cache[lang]
-        path = os.path.join(LOCALES_DIR, f'{lang}.json')
-        if not os.path.exists(path):
-            path = os.path.join(LOCALES_DIR, 'en.json')
+        # lang can be an arbitrary caller-supplied string (dashboard.py's
+        # get_lang() used to pass request.args.get('lang') through
+        # unvalidated). Clamping to the known-safe set BEFORE building any
+        # path/cache key closes two issues at once: (1) unbounded growth of
+        # the process-wide _translation_cache class dict from unique inputs
+        # (memory-exhaustion DoS), and (2) path traversal — the old code
+        # built os.path.join(LOCALES_DIR, f'{lang}.json') from the raw value
+        # before ever checking it, so lang="../../config/mood_config" would
+        # attempt to open and JSON-parse a file outside LOCALES_DIR entirely.
+        cache_key = lang if lang in _SUPPORTED_LANGS else 'en'
+        if cache_key in self._translation_cache:
+            return self._translation_cache[cache_key]
+        path = os.path.join(LOCALES_DIR, f'{cache_key}.json')
         try:
             with open(path, encoding='utf-8') as f:
                 data = json.load(f)
                 data = data if isinstance(data, dict) else {}
-                self._translation_cache[lang] = data
+                self._translation_cache[cache_key] = data
                 return data
         except Exception:
             return {}

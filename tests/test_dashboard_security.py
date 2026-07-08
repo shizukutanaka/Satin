@@ -318,5 +318,76 @@ class SessionCookieHardeningTests(unittest.TestCase):
         self.assertLessEqual(lifetime, _dt.timedelta(hours=24))
 
 
+@unittest.skipUnless(getattr(dashboard, "_FLASK_AVAILABLE", False), "Flask not installed")
+class LangParamXSSAndDoSTests(unittest.TestCase):
+    """Regression: get_lang() returned request.args.get('lang') completely
+    unvalidated. Several routes (/backups, /sync) embed that value into an
+    href via raw Python f-string BEFORE the result is rendered with
+    {{ content|safe }} — Jinja2 autoescaping is explicitly bypassed for
+    `content`, so an unescaped lang value is a live reflected-XSS vector:
+    ?lang="><script>alert(1)</script> breaks out of the href attribute.
+    The same unvalidated value is also used as a key into i18n.py's
+    process-wide, unbounded I18N._translation_cache class dict — a caller
+    sending a unique ?lang= on every request grows that cache without
+    bound (memory-exhaustion DoS), and (via load_translation's
+    os.path.join(LOCALES_DIR, f'{lang}.json')) could path-traverse to open
+    arbitrary '.json' files outside the locales directory.
+
+    Fixed by validating in get_lang() against the fixed {'en','ja'} set that
+    LANG_SWITCHER_HTML actually offers, before it's ever stored in the
+    session or embedded in HTML, with a matching clamp in
+    i18n.load_translation()'s cache-key/path construction as defense in
+    depth for any other caller of I18N directly.
+    """
+
+    def setUp(self):
+        # dashboard.I18N is the exact class dashboard.py itself resolved and
+        # binds at import time (main/i18n.py's I18N, reached via a fallback
+        # dynamic file-path load — a plain `import i18n` from a test instead
+        # resolves to the unrelated i18n/ package, which shadows i18n.py and
+        # has no I18N attribute at all).
+        self._I18N = dashboard.I18N
+        self._I18N._translation_cache.clear()
+
+    def tearDown(self):
+        self._I18N._translation_cache.clear()
+
+    def test_xss_payload_in_lang_query_param_is_rejected(self):
+        payload = '"><script>alert(1)</script>'
+        with dashboard.app.test_request_context(f"/?lang={payload}"):
+            lang = dashboard.get_lang()
+        self.assertIn(lang, {"en", "ja"})
+        self.assertNotEqual(lang, payload)
+
+    def test_xss_payload_is_not_persisted_to_session(self):
+        payload = '"><script>alert(1)</script>'
+        with dashboard.app.test_request_context(f"/?lang={payload}"):
+            dashboard.get_lang()
+            from flask import session
+            self.assertIn(session.get("lang"), (None, "en", "ja"))
+            self.assertNotEqual(session.get("lang"), payload)
+
+    def test_path_traversal_payload_in_lang_is_rejected(self):
+        payload = "../../../../etc/passwd"
+        with dashboard.app.test_request_context(f"/?lang={payload}"):
+            lang = dashboard.get_lang()
+        self.assertIn(lang, {"en", "ja"})
+
+    def test_valid_lang_still_works(self):
+        with dashboard.app.test_request_context("/?lang=ja"):
+            self.assertEqual(dashboard.get_lang(), "ja")
+        with dashboard.app.test_request_context("/?lang=en"):
+            self.assertEqual(dashboard.get_lang(), "en")
+
+    def test_unbounded_lang_values_do_not_grow_translation_cache(self):
+        for i in range(200):
+            with dashboard.app.test_request_context(f"/?lang=attacker-value-{i}"):
+                dashboard.get_lang()
+                dashboard.I18N(dashboard.get_lang())
+        # Cache must stay bounded to the small set of real locale files,
+        # never one entry per distinct attacker-supplied string.
+        self.assertLessEqual(len(self._I18N._translation_cache), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

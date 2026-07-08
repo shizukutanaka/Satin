@@ -166,5 +166,46 @@ class NullLocaleFileTests(unittest.TestCase):
             self._module.LOCALES_DIR = original
 
 
+class UnvalidatedLangCacheAndTraversalTests(unittest.TestCase):
+    """Regression: I18N(lang) used the caller-supplied `lang` directly as a
+    key into the process-wide I18N._translation_cache class dict AND
+    directly in os.path.join(LOCALES_DIR, f'{lang}.json') before checking
+    it was a real, known language. dashboard.py's get_lang() used to pass
+    request.args.get('lang') straight through unvalidated, so this was
+    reachable with fully attacker-controlled input: unique values grew the
+    cache without bound (memory-exhaustion DoS), and traversal payloads
+    like "../../config/mood_config" could open/parse arbitrary '.json'
+    files outside LOCALES_DIR. Fixed by clamping the cache key (not
+    self.lang, which legitimately needs the raw value for FONT_MAP
+    lookups) to the actual locale files present before any path is built.
+    """
+
+    def setUp(self):
+        self._module = _load_i18n_module()
+        self._module.I18N._translation_cache.clear()
+
+    def tearDown(self):
+        self._module.I18N._translation_cache.clear()
+
+    def test_arbitrary_lang_values_do_not_grow_cache_unboundedly(self):
+        for i in range(500):
+            self._module.I18N(lang=f"attacker-{i}")
+        self.assertLessEqual(len(self._module.I18N._translation_cache), 2)
+
+    def test_path_traversal_lang_does_not_read_outside_locales_dir(self):
+        # Must not raise, must not leak content from outside LOCALES_DIR —
+        # falls back to the 'en' cache key/content like any other unknown lang.
+        i = self._module.I18N(lang="../../../../etc/passwd")
+        self.assertIsInstance(i.translations, dict)
+        self.assertIn("en", self._module.I18N._translation_cache.keys() | {"en"})
+
+    def test_self_lang_still_reflects_raw_requested_value(self):
+        # self.lang must stay the raw value (used for FONT_MAP font-matching),
+        # even though the translation cache key underneath is clamped.
+        i = self._module.I18N(lang="fr")
+        self.assertEqual(i.lang, "fr")
+        self.assertEqual(i.font, self._module.FONT_MAP.get("fr", "Arial"))
+
+
 if __name__ == "__main__":
     unittest.main()

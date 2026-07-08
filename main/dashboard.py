@@ -186,12 +186,35 @@ def _safe_backup_path(fname):
         return None
     return target
 
+# LANG_SWITCHER_HTML (below) only ever offers these two as selectable
+# options — nothing downstream should accept anything else.
+_SUPPORTED_DASHBOARD_LANGS = {'en', 'ja'}
+
 def get_lang():
+    """クエリ/セッションから表示言語を取得する。
+
+    以前は request.args.get('lang') の値を検証せず session に格納し、
+    その後 f'...?lang={lang}' のように content 変数へ生の文字列として
+    埋め込んでいた（/backups, /sync ルート）。content は
+    render_template_string 側で {{ content|safe }} と Jinja2 の
+    自動エスケープを明示的に無効化して描画されるため、
+    ?lang="><script>...</script> のような値がそのまま反射型 XSS として
+    実行されてしまう。加えて未検証の値は i18n.py の
+    プロセス全体で共有される _translation_cache のキーにもなり、
+    無制限にエントリを増やせるメモリ枯渇 DoS にもなっていた。
+    ここで既知の言語のみに制限することで両方を根本から塞ぐ。
+    """
     lang = request.args.get('lang') or session.get('lang')
-    if lang:
+    if lang in _SUPPORTED_DASHBOARD_LANGS:
         session['lang'] = lang
         return lang
-    return I18N().detect_language()
+    # detect_language() reads SATIN_LANG/the OS locale, not the HTTP request,
+    # so it isn't attacker-controlled per-request — but it also isn't
+    # guaranteed to be 'en'/'ja' (e.g. a French system locale), and this
+    # value flows into the same unescaped f'...?lang={lang}' HTML embedding
+    # as the query-param path above. Clamp it too for the same reason.
+    detected = I18N().detect_language()
+    return detected if detected in _SUPPORTED_DASHBOARD_LANGS else 'en'
 
 def with_lang(f):
     @wraps(f)
