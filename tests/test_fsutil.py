@@ -15,7 +15,7 @@ sys.path.insert(0, _MAIN)
 
 import json  # noqa: E402
 
-from fsutil import restrict_to_owner, iter_jsonl_dicts, load_jsonl_dicts  # noqa: E402
+from fsutil import restrict_to_owner, iter_jsonl_dicts, load_jsonl_dicts, atomic_write_text  # noqa: E402
 
 
 class RestrictToOwnerTests(unittest.TestCase):
@@ -101,6 +101,90 @@ class LoadJsonlDictsTests(unittest.TestCase):
     def test_tail_slice_pattern(self):
         path = self._write([json.dumps({"i": i}) + "\n" for i in range(10)])
         self.assertEqual(load_jsonl_dicts(path)[-3:], [{"i": 7}, {"i": 8}, {"i": 9}])
+
+
+class AtomicWriteTextTests(unittest.TestCase):
+    """Regression: user_profile.py/mood.py/config_manager_enhanced.py each
+    hand-rolled write-to-temp-then-os.replace using a FIXED temp filename
+    (f"{path}.tmp") shared by every writer to that path. Two concurrent
+    save() calls to the same path raced on that one temp file: one writer's
+    open(tmp, "w") truncated the other's in-flight temp file, and the loser's
+    os.replace(tmp, path) then raised FileNotFoundError — silently dropping
+    the update (caught by a broad except Exception, logged as a warning).
+    atomic_write_text uses tempfile.mkstemp for a name unique per call,
+    eliminating the collision.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_writes_content_and_replaces_atomically(self):
+        path = os.path.join(self._tmp, "data.json")
+        atomic_write_text(path, '{"a": 1}')
+        with open(path) as f:
+            self.assertEqual(f.read(), '{"a": 1}')
+
+    def test_creates_parent_directories(self):
+        path = os.path.join(self._tmp, "nested", "dir", "data.json")
+        atomic_write_text(path, "hello")
+        with open(path) as f:
+            self.assertEqual(f.read(), "hello")
+
+    def test_restrict_true_makes_file_owner_only(self):
+        path = os.path.join(self._tmp, "secret.json")
+        atomic_write_text(path, "private", restrict=True)
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        self.assertEqual(mode & 0o077, 0)
+
+    def test_no_stray_temp_file_left_on_success(self):
+        path = os.path.join(self._tmp, "data.json")
+        atomic_write_text(path, "content")
+        leftovers = [f for f in os.listdir(self._tmp) if f != "data.json"]
+        self.assertEqual(leftovers, [])
+
+    def test_temp_file_cleaned_up_on_failure(self):
+        # Passing a non-str, non-encodable-cheaply content to force a write
+        # failure inside the `with` block (bytes object has no .write(str)
+        # compatible path via a text-mode file handle in a way that errors).
+        path = os.path.join(self._tmp, "data.json")
+        with self.assertRaises(TypeError):
+            atomic_write_text(path, b"not a str")  # type: ignore[arg-type]
+        leftovers = [f for f in os.listdir(self._tmp) if f != "data.json"]
+        self.assertEqual(leftovers, [], f"temp file must be cleaned up on failure: {leftovers}")
+        self.assertFalse(os.path.exists(path))
+
+    def test_concurrent_writers_to_same_path_do_not_collide(self):
+        """The core regression: N threads writing to the SAME path
+        concurrently, each via its own unique temp file, must never raise
+        FileNotFoundError from a temp-file collision, and the file must end
+        up containing exactly one of the writers' complete content (never a
+        truncated/mixed mash of two writers)."""
+        import threading
+        path = os.path.join(self._tmp, "shared.json")
+        errors = []
+
+        def writer(i):
+            try:
+                for _ in range(30):
+                    atomic_write_text(path, f'{{"writer": {i}}}')
+            except Exception as e:  # pragma: no cover - failure path
+                errors.append(e)
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+
+        self.assertEqual(errors, [], f"concurrent writes raised: {errors}")
+        with open(path) as f:
+            content = f.read()
+        # Must be exactly one complete writer's JSON, never truncated/mixed.
+        self.assertRegex(content, r'^\{"writer": \d\}$')
 
 
 if __name__ == "__main__":

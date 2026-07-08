@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 from typing import Dict, Iterator, List
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,53 @@ def load_jsonl_dicts(path: str, *, encoding: str = "utf-8") -> List[Dict]:
     末尾 n 件だけ欲しい場合は ``load_jsonl_dicts(path)[-n:]`` とする。
     """
     return list(iter_jsonl_dicts(path, encoding=encoding))
+
+
+def atomic_write_text(
+    path: str,
+    content: str,
+    *,
+    encoding: str = "utf-8",
+    fsync: bool = True,
+    restrict: bool = False,
+) -> None:
+    """content を path へアトミックに書き込む。
+
+    write-to-temp-then-os.replace は複数の呼び出し元（user_profile.py /
+    mood.py / config_manager_enhanced.py）でそれぞれ独自に
+    ``tmp = f"{path}.tmp"`` という固定名を使って実装されていた。この
+    固定名は書き込み者ごとに一意ではないため、同じ path へ同時に
+    save() する 2 者（例: GUI スレッドと autonomous_behavior のバック
+    グラウンドスレッド）が同じ一時ファイルを取り合い、片方の
+    open(tmp, "w") がもう片方の書き込み中の一時ファイルを切り詰め、
+    負けた側の os.replace(tmp, path) は FileNotFoundError で失敗する
+    （呼び出し元の広い except Exception に飲み込まれ、更新が黙って
+    失われる）。tempfile.mkstemp で書き込み者ごとに一意な一時ファイル
+    名を割り当てることでこの競合を無くす。
+
+    失敗時は一時ファイルを削除したうえで例外を re-raise する
+    （呼び出し元の既存の try/except パターンに判断を委ねる）。
+    """
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(
+        dir=parent, prefix=f".{os.path.basename(path)}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(content)
+            f.flush()
+            if fsync:
+                os.fsync(f.fileno())
+        if restrict:
+            restrict_to_owner(tmp)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def restrict_to_owner(path: str) -> bool:

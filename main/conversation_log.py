@@ -39,6 +39,22 @@ EVENT_AVATAR_REPLY = "avatar_reply"
 USER_EVENT_TYPES = frozenset({EVENT_USER_COMMENT, "user"})
 AVATAR_EVENT_TYPES = frozenset({EVENT_AVATAR_REPLY, "avatar"})
 
+# CSV/formula injection (OWASP): Excel/Sheets/LibreOffice treat a cell whose
+# content starts with one of these characters as a formula to evaluate on
+# open. to_csv() previously wrote user-controlled conversation text
+# (and the speaker label) verbatim — a logged message like
+# "=cmd|'/C calc'!A1" or "=HYPERLINK(...)" would execute/exfiltrate the
+# moment the exported CSV is opened in a spreadsheet app.
+_CSV_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_formula_safe(value: str) -> str:
+    """先頭が数式トリガ文字の場合、シングルクォートを前置して無害化する。"""
+    text = str(value)
+    if text.startswith(_CSV_FORMULA_TRIGGERS):
+        return "'" + text
+    return text
+
 
 def _archive_sort_key(path: str) -> tuple:
     """アーカイブのソートキーを返す。
@@ -284,7 +300,7 @@ class ConversationLog:
             et = ev.get("event_type", "")
             speaker = user_label if et in USER_EVENT_TYPES else avatar_label
             text = (ev.get("details") or {}).get("text", "")
-            writer.writerow([ts, dt_str, speaker, text])
+            writer.writerow([ts, dt_str, _csv_formula_safe(speaker), _csv_formula_safe(text)])
         return buf.getvalue()
 
 

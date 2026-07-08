@@ -17,6 +17,28 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from config_manager import ConfigManager
 
+try:
+    from fsutil import atomic_write_text as _atomic_write_text
+except Exception:  # pragma: no cover - defensive fallback
+    def _atomic_write_text(path, content, *, encoding="utf-8", fsync=True, restrict=False):  # type: ignore
+        parent = os.path.dirname(path) or "."
+        os.makedirs(parent, exist_ok=True)
+        import tempfile
+        fd, tmp = tempfile.mkstemp(dir=parent, prefix=f".{os.path.basename(path)}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding=encoding) as f:
+                f.write(content)
+                f.flush()
+                if fsync:
+                    os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+
 _UNDO_LIMIT = 20
 
 
@@ -83,18 +105,12 @@ class EnhancedConfigManager(ConfigManager):
 
     def _write(self, data: dict) -> bool:
         """config_path へ原子書き込みする。"""
-        tmp = self.config_path + ".tmp"
         try:
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, ensure_ascii=False, indent=2)
-            os.replace(tmp, self.config_path)
+            content = json.dumps(data, ensure_ascii=False, indent=2)
+            _atomic_write_text(self.config_path, content)
             self.current_config = copy.deepcopy(data)
             return True
         except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
             return False
 
     # ------------------------------------------------------------------
@@ -235,10 +251,8 @@ class EnhancedConfigManager(ConfigManager):
         if self.current_config is None:
             self.load()
         try:
-            tmp = path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(self.current_config, fh, ensure_ascii=False, indent=indent)
-            os.replace(tmp, path)
+            content = json.dumps(self.current_config, ensure_ascii=False, indent=indent)
+            _atomic_write_text(path, content)
             return True
         except Exception:
             return False

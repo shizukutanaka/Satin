@@ -20,7 +20,7 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 try:
-    from fsutil import restrict_to_owner as _restrict_to_owner
+    from fsutil import restrict_to_owner as _restrict_to_owner, atomic_write_text as _atomic_write_text
 except Exception:  # pragma: no cover - defensive fallback
     def _restrict_to_owner(path):  # type: ignore
         try:
@@ -28,6 +28,27 @@ except Exception:  # pragma: no cover - defensive fallback
             return True
         except OSError:
             return False
+
+    def _atomic_write_text(path, content, *, encoding="utf-8", fsync=True, restrict=False):  # type: ignore
+        parent = os.path.dirname(path) or "."
+        os.makedirs(parent, exist_ok=True)
+        import tempfile
+        fd, tmp = tempfile.mkstemp(dir=parent, prefix=f".{os.path.basename(path)}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding=encoding) as f:
+                f.write(content)
+                f.flush()
+                if fsync:
+                    os.fsync(f.fileno())
+            if restrict:
+                _restrict_to_owner(tmp)
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
 # 名前が長すぎる/制御文字を含む入力を弾くための上限
 _MAX_NAME_LEN = 40
@@ -243,16 +264,8 @@ class UserProfile:
     def save(self, path: str) -> bool:
         """プロファイルを JSON へ保存する。失敗しても例外は送出しない。"""
         try:
-            parent = os.path.dirname(path)
-            if parent:
-                os.makedirs(parent, exist_ok=True)
-            tmp = f"{path}.tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.to_dict(), f, ensure_ascii=False)
-                f.flush()
-                os.fsync(f.fileno())
-            _restrict_to_owner(tmp)  # 私的データ: 公開前に所有者のみへ制限
-            os.replace(tmp, path)
+            content = json.dumps(self.to_dict(), ensure_ascii=False)
+            _atomic_write_text(path, content, restrict=True)
             return True
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("ユーザープロファイルの保存に失敗しました: %s", e)

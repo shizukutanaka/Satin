@@ -135,6 +135,34 @@ class PersistenceTests(unittest.TestCase):
             mode = os.stat(self._path).st_mode & 0o777
             self.assertEqual(mode, 0o600)
 
+    def test_concurrent_saves_to_same_path_never_crash_or_corrupt(self):
+        """Regression: save() used a fixed temp filename (f"{path}.tmp")
+        shared by every writer to that path. Two concurrent save() calls to
+        the same path raced on that one temp file — one writer's
+        open(tmp, "w") truncated the other's in-flight temp file, and the
+        loser's os.replace(tmp, path) raised FileNotFoundError (silently
+        swallowed, logged as a warning, save() returns False and the update
+        is lost). Reproducible with real GUI-thread + background-thread
+        writers in this codebase, both calling get_user_profile().save()."""
+        import threading
+        results = []
+
+        def writer(i):
+            ok = UserProfile(name=f"user{i}").save(self._path)
+            results.append(ok)
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+
+        self.assertTrue(all(results), f"every concurrent save() must succeed: {results}")
+        # The file must contain exactly one complete, valid profile — never
+        # empty/truncated/mixed content from two colliding writers.
+        loaded = UserProfile.load(self._path)
+        self.assertTrue(loaded.name.startswith("user"), f"got corrupted name: {loaded.name!r}")
+
 
 class PersonalizeTests(unittest.TestCase):
     def test_replaces_placeholder_with_name(self):

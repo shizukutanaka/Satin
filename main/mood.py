@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 try:
     from fsutil import restrict_to_owner as _restrict_to_owner
     from fsutil import load_jsonl_dicts
+    from fsutil import atomic_write_text as _atomic_write_text
 except Exception:  # pragma: no cover - defensive fallback
     def _restrict_to_owner(path):  # type: ignore
         try:
@@ -45,6 +46,27 @@ except Exception:  # pragma: no cover - defensive fallback
             return True
         except OSError:
             return False
+
+    def _atomic_write_text(path, content, *, encoding="utf-8", fsync=True, restrict=False):  # type: ignore
+        parent = os.path.dirname(path) or "."
+        os.makedirs(parent, exist_ok=True)
+        import tempfile
+        fd, tmp = tempfile.mkstemp(dir=parent, prefix=f".{os.path.basename(path)}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding=encoding) as f:
+                f.write(content)
+                f.flush()
+                if fsync:
+                    os.fsync(f.fileno())
+            if restrict:
+                _restrict_to_owner(tmp)
+            os.replace(tmp, path)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def load_jsonl_dicts(path, *, encoding="utf-8"):  # type: ignore
         if not os.path.exists(path):
@@ -372,16 +394,8 @@ class MoodTracker:
     def save(self, path: str) -> bool:
         """好感度を JSON へ保存する。失敗しても例外は送出しない。"""
         try:
-            parent = os.path.dirname(path)
-            if parent:
-                os.makedirs(parent, exist_ok=True)
-            tmp = f"{path}.tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.to_dict(), f, ensure_ascii=False)
-                f.flush()
-                os.fsync(f.fileno())
-            _restrict_to_owner(tmp)  # 私的データ: 公開前に所有者のみへ制限
-            os.replace(tmp, path)
+            content = json.dumps(self.to_dict(), ensure_ascii=False)
+            _atomic_write_text(path, content, restrict=True)
             return True
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("好感度の保存に失敗しました: %s", e)
@@ -450,13 +464,15 @@ class MoodTracker:
             else:
                 lines.append(new_line)
 
-            tmp = f"{history_path}.tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines) + "\n")
-                f.flush()
-                os.fsync(f.fileno())
-            _restrict_to_owner(tmp)  # 私的データ: 公開前に所有者のみへ制限
-            os.replace(tmp, history_path)
+            # NOTE: this read-modify-write (lines read above, then rewritten
+            # here) still has a lost-update race if two threads call
+            # snapshot_to_history() concurrently — the last writer's version
+            # of `lines` wins and the other's update is silently dropped.
+            # _atomic_write_text only guarantees the write itself can't
+            # crash/corrupt on a colliding temp filename; it doesn't add
+            # locking around the read+modify above. Left as-is: this method
+            # is called at most once per process tick in practice.
+            _atomic_write_text(history_path, "\n".join(lines) + "\n", restrict=True)
             return True
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("好感度履歴の保存に失敗しました: %s", e)
