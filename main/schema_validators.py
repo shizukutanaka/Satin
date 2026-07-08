@@ -212,8 +212,8 @@ class WebScrapingRequest(BaseModel):
         description="Whether to respect robots.txt"
     )
     user_agent: str = Field(
-        default="Satin/1.0 (+http://example.com/bot)",
-        min_length=10,
+        default="Satin/1.0",
+        min_length=5,
         max_length=500,
         description="User agent string"
     )
