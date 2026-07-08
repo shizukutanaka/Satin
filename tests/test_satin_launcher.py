@@ -176,5 +176,80 @@ class LaunchManageTests(unittest.TestCase):
             self.assertEqual(cm.exception.code, 0)
 
 
+class HeadlessModesDoNotNeedTkinterTests(unittest.TestCase):
+    """Regression: tkinter used to be unconditionally required
+    (dependency_manifest.REQUIRED_PACKAGES), so satin_launcher._check_deps()
+    called sys.exit(1) before dispatching to ANY mode on a machine without
+    tkinter — including --chat, which --help itself describes as
+    "ヘッドレスでアバターと会話する CLI" (a headless CLI). Only
+    avatar_loader.py (the default GUI mode) ever imports tkinter, and
+    _launch_avatar_loader() already has its own try/except around that
+    import with a clear error message. These tests exercise the REAL
+    _check_deps() (unlike LaunchDispatchTests above, which mocks it away)
+    with tkinter simulated absent, to confirm none of the headless modes
+    are blocked by it.
+    """
+
+    def _without_tkinter(self):
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "tkinter" or name.startswith("tkinter."):
+                raise ImportError("simulated: no tkinter in this environment")
+            return real_import(name, *args, **kwargs)
+
+        return mock.patch.object(builtins, "__import__", side_effect=fake_import)
+
+    def test_check_deps_does_not_exit_without_tkinter(self):
+        with self._without_tkinter():
+            result = satin_launcher._check_deps(verbose=False)
+        self.assertIsInstance(result, list)
+
+    def test_chat_mode_reaches_launch_chat_without_tkinter(self):
+        with self._without_tkinter(), \
+             mock.patch.object(satin_launcher, "_launch_chat", side_effect=SystemExit(0)) as m, \
+             mock.patch.object(satin_launcher, "_check_config"):
+            with mock.patch("sys.argv", ["satin_launcher", "--chat"]):
+                try:
+                    satin_launcher.main()
+                except SystemExit:
+                    pass
+            m.assert_called_once()
+
+    def test_validate_mode_reaches_launch_validate_without_tkinter(self):
+        with self._without_tkinter(), \
+             mock.patch.object(satin_launcher, "_launch_validate") as m, \
+             mock.patch.object(satin_launcher, "_check_config"):
+            with mock.patch("sys.argv", ["satin_launcher", "--validate"]):
+                try:
+                    satin_launcher.main()
+                except SystemExit:
+                    pass
+            m.assert_called_once()
+
+    def test_dashboard_mode_reaches_launch_dashboard_without_tkinter(self):
+        with self._without_tkinter(), \
+             mock.patch.object(satin_launcher, "_launch_dashboard") as m, \
+             mock.patch.object(satin_launcher, "_check_config"):
+            with mock.patch("sys.argv", ["satin_launcher", "--dashboard"]):
+                try:
+                    satin_launcher.main()
+                except SystemExit:
+                    pass
+            m.assert_called_once()
+
+    def test_manage_mode_reaches_launch_manage_without_tkinter(self):
+        with self._without_tkinter(), \
+             mock.patch.object(satin_launcher, "_launch_manage", side_effect=SystemExit(0)) as m, \
+             mock.patch.object(satin_launcher, "_check_config"):
+            with mock.patch("sys.argv", ["satin_launcher", "--manage"]):
+                try:
+                    satin_launcher.main()
+                except SystemExit:
+                    pass
+            m.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

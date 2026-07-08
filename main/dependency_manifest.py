@@ -41,9 +41,17 @@ OPTIONAL_PACKAGES: List[Tuple[str, str, str]] = [
 ]
 
 # (import_name, message) — これらが無いと起動できない。
-REQUIRED_PACKAGES: List[Tuple[str, str]] = [
-    ("tkinter", "Python 標準 tkinter が見つかりません。Python を再インストールしてください。"),
-]
+#
+# tkinter は以前ここに含まれていたが、実際に tkinter を使うのは
+# avatar_loader.py（GUI アバターローダー）だけで、satin_launcher.py の
+# _launch_avatar_loader() は自前で import tkinter を try/except しており
+# 既に明確なエラーメッセージを出す。REQUIRED_PACKAGES はランチャの
+# *全モード* に対して起動前チェックされるため、tkinter がここにあると
+# --chat（「ヘッドレスで会話する CLI」と明記）・--dashboard・--manage・
+# --validate まで、それらが一切使わない tkinter の不在で起動不能になって
+# いた。GUI アバターローダー固有の依存はそのモードの try/except に任せ、
+# ここは真に全モード共通の必須依存だけを列挙する（現状は無し）。
+REQUIRED_PACKAGES: List[Tuple[str, str]] = []
 
 
 def optional_check_list() -> List[Tuple[str, str]]:

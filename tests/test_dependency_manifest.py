@@ -29,9 +29,33 @@ class ManifestShapeTests(unittest.TestCase):
             self.assertTrue(purpose and isinstance(purpose, str))
 
     def test_required_entries_are_2_tuples(self):
-        self.assertTrue(M.REQUIRED_PACKAGES)
+        """REQUIRED_PACKAGES may legitimately be empty (see
+        test_required_packages_is_launcher_mode_agnostic below) — but any
+        entry it does have must be a well-formed 2-tuple."""
         for entry in M.REQUIRED_PACKAGES:
             self.assertEqual(len(entry), 2)
+            name, message = entry
+            self.assertTrue(name and isinstance(name, str))
+            self.assertTrue(message and isinstance(message, str))
+
+    def test_required_packages_is_launcher_mode_agnostic(self):
+        """Regression: tkinter used to sit in REQUIRED_PACKAGES, which
+        satin_launcher._check_deps() enforces unconditionally before
+        dispatching to ANY mode. tkinter is only ever imported by
+        avatar_loader.py (the default GUI mode), which already guards its
+        own import in a try/except with a clear error message — so the
+        blanket check made --chat ("headless CLI" per its own --help text),
+        --dashboard, --manage, and --validate all refuse to start on a
+        machine without tkinter, even though none of those modes touch it.
+        REQUIRED_PACKAGES must only ever hold packages every single launch
+        mode genuinely needs (currently none)."""
+        mode_specific_only = {"tkinter"}
+        required_names = {name for name, _msg in M.REQUIRED_PACKAGES}
+        self.assertEqual(
+            required_names & mode_specific_only, set(),
+            "these packages are only needed by specific launch modes and "
+            "must not block every mode via REQUIRED_PACKAGES",
+        )
 
     def test_no_duplicate_import_names(self):
         names = [n for n, _h, _p in M.OPTIONAL_PACKAGES]

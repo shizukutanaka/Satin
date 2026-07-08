@@ -42,10 +42,11 @@ try:
     _OPTIONAL_DEPS: list[tuple[str, str]] = optional_check_list()
     _REQUIRED_DEPS: list[tuple[str, str]] = required_check_list()
 except Exception:  # pragma: no cover - defensive fallback
+    # tkinter は全モード共通の必須依存ではない（_launch_avatar_loader() が
+    # 自前で try/except している）。dependency_manifest.py の
+    # REQUIRED_PACKAGES と同じ理由でここも空にする。
     _OPTIONAL_DEPS = []
-    _REQUIRED_DEPS = [
-        ("tkinter", "Python 標準 tkinter が見つかりません。Python を再インストールしてください。"),
-    ]
+    _REQUIRED_DEPS = []
 
 
 def _check_deps(verbose: bool = False) -> list[str]:
