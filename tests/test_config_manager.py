@@ -36,14 +36,23 @@ class ConfigManagerPluginTests(unittest.TestCase):
             json.dump(_SAMPLE_CONFIG, f)
 
         self.cm = ConfigManager(config_path=self.config_path)
-        # Patch utils_config.get_config to return our sample config
+        # Patch utils_config.get_config (effective, env-overlaid config) to
+        # return our sample config. update_plugin_config() also reads
+        # _ensure_loaded() (the base, non-overlaid config) directly for its
+        # save path — patch it too, consistent with get_config(): with no
+        # env overrides active, get_config() == _ensure_loaded() in the real
+        # (unmocked) implementation.
         self._patcher = patch("config_manager.get_config",
                               return_value=_SAMPLE_CONFIG)
         self._patcher.start()
+        self._base_patcher = patch("config_manager._ensure_loaded",
+                                   return_value=_SAMPLE_CONFIG)
+        self._base_patcher.start()
         self.cm.load()
 
     def tearDown(self):
         self._patcher.stop()
+        self._base_patcher.stop()
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
@@ -192,6 +201,139 @@ class SingletonThreadSafetyTests(unittest.TestCase):
     def test_lock_object_exists(self):
         import threading as _t
         self.assertIsInstance(self._cm_mod._config_manager_lock, type(_t.Lock()))
+
+
+class UpdatePluginConfigEnvPersistenceTests(unittest.TestCase):
+    """Regression: update_plugin_config() saved self.current_config (the
+    get_config() effective view, env-overlay included) directly.
+    utils_config.update_config()'s merge_configs(base, new_config) lets the
+    override side win, so passing the full effective config as new_config
+    baked every env-overridden leaf value into the base config written to
+    disk — including fields having nothing to do with the plugin being
+    updated (e.g. settings.log_level). utils_config.py itself deliberately
+    avoids this by using _ensure_loaded() (base-only) rather than
+    get_config() for its own update_config() calls; ConfigManager bypassed
+    that protection entirely. Isolates utils_config._config_instance
+    directly (matching test_config_env_overrides.py's pattern) so no real
+    config file is ever touched.
+    """
+
+    def setUp(self):
+        import config_manager as cm_mod
+        import utils_config as uc
+        self._cm_mod = cm_mod
+        self._uc = uc
+        self._orig_instance = uc._config_instance
+        uc._config_instance = {
+            "version": "1.0.0",
+            "settings": {"log_level": "INFO", "backup": {"max_backups": 5}},
+            "plugins": [{"name": "demo", "settings": {"foo": "original"}}],
+        }
+        self._saved_env = {k: v for k, v in os.environ.items() if k.startswith("SATIN_")}
+        for k in self._saved_env:
+            del os.environ[k]
+
+    def tearDown(self):
+        self._uc._config_instance = self._orig_instance
+        for k in [k for k in os.environ if k.startswith("SATIN_")]:
+            del os.environ[k]
+        os.environ.update(self._saved_env)
+
+    def test_env_overridden_field_is_not_persisted_via_update_plugin_config(self):
+        os.environ["SATIN_SETTINGS__LOG_LEVEL"] = "DEBUG"
+        cm = self._cm_mod.ConfigManager(config_path="/tmp/unused-not-written.json")
+        cm.load()  # current_config now has log_level == "DEBUG" (env overlay)
+        self.assertEqual(cm.current_config["settings"]["log_level"], "DEBUG")
+
+        with patch("config_manager.update_config", return_value=True) as mock_update:
+            ok = cm.update_plugin_config("demo", {"foo": "changed"})
+
+        self.assertTrue(ok)
+        self.assertEqual(mock_update.call_count, 1)
+        saved_config = mock_update.call_args[0][0]
+        # The env-overridden value must NOT appear in what gets persisted —
+        # only the base file value ("INFO") should flow through to save().
+        self.assertEqual(saved_config["settings"]["log_level"], "INFO",
+                         "env var value leaked into the persisted config")
+        # The actual intended change must still be present.
+        for plugin in saved_config["plugins"]:
+            if plugin["name"] == "demo":
+                self.assertEqual(plugin["settings"], {"foo": "changed"})
+                break
+        else:
+            self.fail("plugin 'demo' missing from saved config")
+
+    def test_current_config_cache_reflects_the_update_immediately(self):
+        cm = self._cm_mod.ConfigManager(config_path="/tmp/unused-not-written.json")
+        cm.load()
+        with patch("config_manager.update_config", return_value=True):
+            cm.update_plugin_config("demo", {"foo": "changed"})
+        # get_plugin_config() must see the fresh value without a reload.
+        self.assertEqual(cm.get_plugin_config("demo"), {"foo": "changed"})
+
+    def test_unrelated_base_field_untouched_when_no_env_override_active(self):
+        """Sanity check: with no env vars set, the persisted config must
+        still equal the base — this isn't a regression in the common case."""
+        cm = self._cm_mod.ConfigManager(config_path="/tmp/unused-not-written.json")
+        cm.load()
+        with patch("config_manager.update_config", return_value=True) as mock_update:
+            cm.update_plugin_config("demo", {"foo": "changed"})
+        saved_config = mock_update.call_args[0][0]
+        self.assertEqual(saved_config["settings"]["log_level"], "INFO")
+        self.assertEqual(saved_config["settings"]["backup"]["max_backups"], 5)
+
+
+class UpdatePluginConfigConcurrencyTests(unittest.TestCase):
+    """Regression: update_plugin_config()'s read-merge-write had no lock,
+    so two near-simultaneous calls could both read the same base config,
+    merge independently, and the second writer's result would silently
+    discard the first writer's change (lost update)."""
+
+    def setUp(self):
+        import config_manager as cm_mod
+        import utils_config as uc
+        self._cm_mod = cm_mod
+        self._uc = uc
+        self._orig_instance = uc._config_instance
+        uc._config_instance = {
+            "version": "1.0.0",
+            "settings": {},
+            "plugins": [
+                {"name": "a", "settings": {}},
+                {"name": "b", "settings": {}},
+            ],
+        }
+
+    def tearDown(self):
+        self._uc._config_instance = self._orig_instance
+
+    def test_write_lock_exists(self):
+        cm = self._cm_mod.ConfigManager(config_path="/tmp/unused-not-written.json")
+        import threading as _t
+        self.assertIsInstance(cm._write_lock, type(_t.Lock()))
+
+    def test_concurrent_updates_to_different_plugins_both_succeed(self):
+        import threading
+        cm = self._cm_mod.ConfigManager(config_path="/tmp/unused-not-written.json")
+        cm.load()
+        results = []
+
+        def update_a():
+            with patch("config_manager.update_config", return_value=True):
+                results.append(cm.update_plugin_config("a", {"x": 1}))
+
+        def update_b():
+            with patch("config_manager.update_config", return_value=True):
+                results.append(cm.update_plugin_config("b", {"y": 2}))
+
+        threads = [threading.Thread(target=update_a) for _ in range(4)] + \
+                  [threading.Thread(target=update_b) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        self.assertTrue(all(results), f"every concurrent update must report success: {results}")
 
 
 if __name__ == "__main__":

@@ -1,13 +1,14 @@
 """
 設定管理クラスモジュール
 """
+import copy
 import logging
 import shutil
 import threading
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-from utils_config import get_config, update_config, validate_config, DEFAULT_CONFIG_FILE
+from utils_config import get_config, update_config, validate_config, DEFAULT_CONFIG_FILE, _ensure_loaded
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,14 @@ class ConfigManager:
         self.config_path = config_path or str(DEFAULT_CONFIG_FILE)
         self.backup_dir = Path(self.config_path).parent / "backups"
         self.current_config = None
+        # update_plugin_config()/save() の read-merge-write 区間を保護する。
+        # utils_config.update_config() 自体はロック無しで
+        # _ensure_loaded()（読み取り）→ merge_configs()（マージ）→
+        # _config_instance 差し替え・save_config()（書き込み）を行うため、
+        # 2つのプラグインがほぼ同時に初期化されると、両方が同じベース設定を
+        # 読み、互いを知らずにマージして書き込み、後勝ちで片方の変更が
+        # 静かに失われるロスト・アップデートが起こりうる。
+        self._write_lock = threading.Lock()
         
     def load(self) -> Dict[str, Any]:
         """設定を読み込む"""
@@ -147,29 +156,52 @@ class ConfigManager:
     def update_plugin_config(self, plugin_name: str, settings: Dict[str, Any]) -> bool:
         """
         プラグインの設定を更新
-        
+
         Args:
             plugin_name: プラグイン名
             settings: 新しい設定
-            
+
         Returns:
             bool: 更新に成功したかどうか
         """
         if self.current_config is None:
             self.load()
-        
-        found = False
-        for plugin in self.current_config.get("plugins", []):
-            if plugin.get("name") == plugin_name:
-                plugin["settings"] = settings
-                found = True
-                break
-        
-        if not found:
-            logger.error(f"プラグインの設定が見つかりません: {plugin_name}")
-            return False
-        
-        return self.save(self.current_config)
+
+        # 保存は環境変数オーバーレイ抜きのベース設定に対して行う。
+        # 以前は self.current_config（load() で取得した get_config() 由来の
+        # 実効設定、SATIN_* 環境変数オーバーレイ込み）をそのまま save() へ
+        # 渡していた。utils_config.update_config() 内部の
+        # merge_configs(base, new_config) は override 側の値を優先するため、
+        # new_config 全体が実効設定だと、対象プラグイン以外のフィールド
+        # （log_level 等）まで含めて実行時の環境変数値がまるごとファイルへ
+        # 焼き付いてしまう。utils_config.py 自身は update_config() の
+        # 直接呼び出しに対してこれを意図的に防いでいる
+        # （_ensure_loaded() でベース設定を使う設計、コメント参照）が、
+        # ConfigManager 経由の呼び出しはこの保護を素通りしていた。
+        # _ensure_loaded() が返す共有シングルトンを直接書き換えないよう
+        # deepcopy してから操作する。
+        with self._write_lock:
+            base = copy.deepcopy(_ensure_loaded())
+
+            found = False
+            for plugin in base.get("plugins", []):
+                if plugin.get("name") == plugin_name:
+                    plugin["settings"] = settings
+                    found = True
+                    break
+
+            if not found:
+                logger.error(f"プラグインの設定が見つかりません: {plugin_name}")
+                return False
+
+            # current_config（実効設定のキャッシュ）も同期し、直後の
+            # get_plugin_config() が古い値を返さないようにする。
+            for plugin in self.current_config.get("plugins", []):
+                if plugin.get("name") == plugin_name:
+                    plugin["settings"] = settings
+                    break
+
+            return self.save(base)
 
 # シングルトンインスタンス
 _config_manager = None
