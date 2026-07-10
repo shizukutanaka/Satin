@@ -47,11 +47,11 @@ def _get_persona_name(fallback: str = "Avatar") -> str:
     return fallback
 
 try:
-    from flask import Flask, render_template_string, request, redirect, url_for, send_file, session
+    from flask import Flask, render_template_string, request, redirect, url_for, send_file, session, abort
     _FLASK_AVAILABLE = True
 except ImportError:
     _FLASK_AVAILABLE = False
-    Flask = render_template_string = request = redirect = url_for = send_file = session = None  # type: ignore
+    Flask = render_template_string = request = redirect = url_for = send_file = session = abort = None  # type: ignore
 
 try:
     from i18n import I18N
@@ -224,6 +224,46 @@ def with_lang(f):
         return f(i18n, *args, **kwargs)
     return wrapper
 
+def _get_csrf_token() -> str:
+    """セッションに紐づく CSRF トークンを取得（無ければ新規発行）する。
+
+    /mood/reset・/sync は状態変更を伴う POST だが、これまでトークンも
+    Origin/Referer 検証も一切無かった。SESSION_COOKIE_SAMESITE='Lax' が
+    コメントで CSRF 対策として言及されていたが、これらのルート自体が
+    session の中身を一切見ずに無条件でアクションを実行していたため、
+    Cookie がクロスオリジン POST に付かないこと自体は防御として機能して
+    いなかった（見られていないので意味がない）。悪意あるページが別タブで
+    開かれているだけで、隠しフォームの自動送信により無確認で好感度が
+    リセットされたり、バックアップ zip が量産されうる（ディスク圧迫 DoS）。
+    セッションに紐づくランダムトークンをフォームに埋め込み、サーバー側で
+    検証することで、同一オリジンでページを読み込んでいない限り
+    トークンを知り得ない状態にする。
+    """
+    token = session.get('csrf_token')
+    if not token:
+        import secrets
+        token = secrets.token_urlsafe(32)
+        session['csrf_token'] = token
+    return token
+
+def _csrf_field() -> str:
+    return f'<input type="hidden" name="csrf_token" value="{_html.escape(_get_csrf_token())}">'
+
+def _verify_csrf() -> bool:
+    import hmac
+    submitted = request.form.get('csrf_token', '')
+    expected = session.get('csrf_token', '')
+    return bool(expected) and hmac.compare_digest(submitted, expected)
+
+def require_csrf(f):
+    """POST ルートに CSRF トークン検証を強制するデコレータ。"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if request.method == 'POST' and not _verify_csrf():
+            abort(403)
+        return f(*args, **kwargs)
+    return wrapper
+
 LANG_SWITCHER_HTML = '''<form method="get" style="display:inline">
 <select name="lang" onchange="this.form.submit()">
   <option value="en" {en}>English</option>
@@ -350,6 +390,7 @@ def download(i18n, fname):
     return i18n.t('no_file'), 404
 
 @app.route('/sync', methods=['GET', 'POST'])
+@require_csrf
 @with_lang
 def sync(i18n):
     lang = get_lang()
@@ -396,7 +437,7 @@ def sync(i18n):
 
     content = f'''<h3>{_html.escape(i18n.t("cloud_sync"))}</h3>
 <p>{_html.escape(i18n.t("sync_description", "Create a local backup of config files and conversation log."))}</p>
-<form method="post"><button type="submit">{_html.escape(i18n.t("manual_cloud_sync"))}</button></form>
+<form method="post">{_csrf_field()}<button type="submit">{_html.escape(i18n.t("manual_cloud_sync"))}</button></form>
 {backup_info}
 <p style="color:{msg_color}">{_html.escape(msg)}</p>
 {existing_html}'''
@@ -595,6 +636,7 @@ def mood(i18n):
 <p>{history_link}</p>
 <br>
 <form method="post" action="/mood/reset?lang={_html.escape(lang)}">
+  {_csrf_field()}
   <button type="submit" onclick="return confirm('{reset_label}?')">
     {reset_label}
   </button>
@@ -605,6 +647,7 @@ def mood(i18n):
 
 
 @app.route('/mood/reset', methods=['POST'])
+@require_csrf
 @with_lang
 def mood_reset(i18n):
     """好感度を neutral（50/100）にリセットして /mood にリダイレクトする。"""

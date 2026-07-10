@@ -12,7 +12,9 @@ Run: python -m unittest tests.test_dashboard_security -v
 """
 import os
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
@@ -387,6 +389,85 @@ class LangParamXSSAndDoSTests(unittest.TestCase):
         # Cache must stay bounded to the small set of real locale files,
         # never one entry per distinct attacker-supplied string.
         self.assertLessEqual(len(self._I18N._translation_cache), 2)
+
+
+@unittest.skipUnless(getattr(dashboard, "_FLASK_AVAILABLE", False), "Flask not installed")
+class CsrfProtectionTests(unittest.TestCase):
+    """Regression: /mood/reset and /sync are state-changing POST routes with
+    no CSRF protection at all — no token, no Origin/Referer check. Neither
+    route looked at the session before acting, so SESSION_COOKIE_SAMESITE=
+    'Lax' (which only stops a cookie from attaching to a cross-site POST)
+    provided no real protection: the routes didn't check the cookie/session
+    in the first place. A malicious page open in another tab could
+    auto-submit a hidden form to silently reset the user's affinity
+    (/mood/reset) or repeatedly trigger backup creation
+    (/sync — a disk-fill DoS vector). Fixed with a per-session CSRF token
+    (require_csrf decorator + _csrf_field() in both forms).
+    """
+
+    def setUp(self):
+        dashboard.app.config["TESTING"] = True
+        self.client = dashboard.app.test_client()
+        # /sync writes a real backup zip on any successful POST — isolate it
+        # to a temp dir so tests don't leave files in the repo's real
+        # event_report/ directory.
+        self._tmp = tempfile.mkdtemp()
+        self._backup_dir_patcher = mock.patch.object(dashboard, "backup_dir", self._tmp)
+        self._backup_dir_patcher.start()
+
+    def tearDown(self):
+        self._backup_dir_patcher.stop()
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_mood_reset_post_without_token_is_rejected(self):
+        resp = self.client.post("/mood/reset")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_sync_post_without_token_is_rejected(self):
+        resp = self.client.post("/sync")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_mood_reset_post_with_wrong_token_is_rejected(self):
+        with self.client.session_transaction() as sess:
+            sess["csrf_token"] = "the-real-token"
+        resp = self.client.post("/mood/reset", data={"csrf_token": "a-guessed-token"})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_mood_reset_post_with_valid_token_is_accepted(self):
+        with self.client.session_transaction() as sess:
+            sess["csrf_token"] = "the-real-token"
+        resp = self.client.post("/mood/reset", data={"csrf_token": "the-real-token"})
+        self.assertNotEqual(resp.status_code, 403)
+
+    def test_sync_post_with_valid_token_is_accepted(self):
+        with self.client.session_transaction() as sess:
+            sess["csrf_token"] = "the-real-token"
+        resp = self.client.post("/sync", data={"csrf_token": "the-real-token"})
+        self.assertNotEqual(resp.status_code, 403)
+
+    def test_sync_get_does_not_require_a_token(self):
+        # GET just renders the form (which contains a fresh token) — only
+        # the state-changing POST must be gated.
+        resp = self.client.get("/sync")
+        self.assertNotEqual(resp.status_code, 403)
+
+    def test_mood_reset_get_is_not_routable(self):
+        # The route is POST-only; GET must 405, not silently execute.
+        resp = self.client.get("/mood/reset")
+        self.assertEqual(resp.status_code, 405)
+
+    def test_rendered_sync_form_contains_a_csrf_field(self):
+        resp = self.client.get("/sync")
+        self.assertIn(b'name="csrf_token"', resp.data)
+
+    def test_get_csrf_token_is_stable_within_a_session(self):
+        with dashboard.app.test_request_context("/"):
+            from flask import session as _session
+            t1 = dashboard._get_csrf_token()
+            t2 = dashboard._get_csrf_token()
+            self.assertEqual(t1, t2)
+            self.assertEqual(_session.get("csrf_token"), t1)
 
 
 if __name__ == "__main__":
