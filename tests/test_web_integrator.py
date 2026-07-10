@@ -438,5 +438,66 @@ class SitemapXmlFallbackTests(unittest.TestCase):
         self.assertEqual(len(entries), 1)
 
 
+class SsrfGuardTests(unittest.TestCase):
+    """Regression: _fetch_html() passed any URL straight to
+    self.session.get()/self.driver.get() with no validation. Both a
+    user-supplied URL (get_content_by_url) and links discovered while
+    crawling a third-party page (crawl_site follows page.links, which are
+    inherently untrusted input) could point at internal services or cloud
+    metadata endpoints (e.g. http://169.254.169.254/latest/meta-data/) —
+    classic SSRF. _is_safe_url() must reject non-http(s) schemes and any
+    hostname resolving to a private/loopback/link-local/reserved address.
+    """
+
+    def setUp(self):
+        self.wi = WebIntegrator()
+
+    def tearDown(self):
+        try:
+            self.wi.cache_manager.shutdown(wait=False)
+        except Exception:
+            pass
+
+    def test_loopback_ip_is_rejected(self):
+        self.assertFalse(self.wi._is_safe_url("http://127.0.0.1/"))
+
+    def test_ipv6_loopback_is_rejected(self):
+        self.assertFalse(self.wi._is_safe_url("http://[::1]/"))
+
+    def test_link_local_metadata_endpoint_is_rejected(self):
+        self.assertFalse(self.wi._is_safe_url("http://169.254.169.254/latest/meta-data/"))
+
+    def test_private_10_range_is_rejected(self):
+        self.assertFalse(self.wi._is_safe_url("http://10.0.0.5/"))
+
+    def test_private_192_168_range_is_rejected(self):
+        self.assertFalse(self.wi._is_safe_url("http://192.168.1.1/"))
+
+    def test_non_http_scheme_is_rejected(self):
+        self.assertFalse(self.wi._is_safe_url("file:///etc/passwd"))
+        self.assertFalse(self.wi._is_safe_url("ftp://8.8.8.8/"))
+
+    def test_public_ip_is_allowed(self):
+        # IP-literal hostname: getaddrinfo resolves it without needing
+        # real network DNS, so this is reliable in offline test environments.
+        self.assertTrue(self.wi._is_safe_url("http://8.8.8.8/"))
+
+    def test_unresolvable_hostname_is_rejected(self):
+        self.assertFalse(self.wi._is_safe_url("http://this-host-does-not-exist.invalid/"))
+
+    def test_fetch_html_returns_none_for_unsafe_url_without_making_request(self):
+        called = []
+
+        class _FakeSession:
+            def get(self, *a, **kw):
+                called.append(True)
+                raise AssertionError("must not reach the network for an unsafe URL")
+
+        self.wi.session = _FakeSession()
+        result = self.wi._fetch_html("http://127.0.0.1:6379/")
+        self.assertIsNone(result)
+        self.assertEqual(called, [])
+
+
 if __name__ == "__main__":
     unittest.main()

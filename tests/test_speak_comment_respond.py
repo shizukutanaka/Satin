@@ -1134,7 +1134,8 @@ class GUIResetMoodTests(unittest.TestCase):
         self.assertEqual(v.mode, "comment")
 
     def test_reset_mood_resets_confession_done(self):
-        """After /reset-mood, _confession_done must be False so the event can re-fire."""
+        """After /reset-mood confirmed twice, _confession_done must be False
+        so the event can re-fire."""
         class _FakeTracker:
             affinity = 90.0
             interactions = 50
@@ -1152,10 +1153,97 @@ class GUIResetMoodTests(unittest.TestCase):
         v = _make_viewer()
         with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
              mock.patch.object(_mod, "_default_mood_path", None):
-            v.speak_comment("/reset-mood")
+            v.speak_comment("/reset-mood")  # first call: asks for confirmation
+            v.speak_comment("/reset-mood")  # second call: actually resets
 
         self.assertFalse(tracker._confession_done,
                          "_confession_done must be reset so confession can re-fire")
+
+
+class GUIResetMoodConfirmationTests(unittest.TestCase):
+    """Regression: /reset-mood used to reset all affinity/relationship state
+    on the very first call with no confirmation — a single stray message,
+    typo, or accidental paste in the text input box silently and
+    irreversibly destroyed all accumulated relationship progress. The CLI
+    sibling (persona_cli.py) already required confirming /reset-mood twice
+    for this exact reason; the GUI's confirmation guard had been dropped.
+    """
+
+    def setUp(self):
+        self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
+        self._log_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        _persona_mod.reset_persona()
+        _mood_mod.reset_mood_tracker()
+
+    def _fake_tracker(self):
+        class _FakeTracker:
+            affinity = 90.0
+            interactions = 50
+            _last_interaction_time = 0.0
+            _first_interaction_time = 0.0
+            _last_anniversary_days = 5
+            _last_login_date = "2024-01-01"
+            _login_streak = 7
+            _confession_done = True
+            saved = False
+
+            def save(self, p):
+                self.saved = True
+
+        return _FakeTracker()
+
+    def test_first_call_only_asks_for_confirmation_and_does_not_reset(self):
+        tracker = self._fake_tracker()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None):
+            v.speak_comment("/reset-mood")
+
+        self.assertEqual(tracker.affinity, 90.0, "affinity must be untouched after only one call")
+        self.assertFalse(tracker.saved, "must not persist anything on the first (asking) call")
+        self.assertTrue(v._reset_mood_pending)
+
+    def test_second_call_actually_resets(self):
+        tracker = self._fake_tracker()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", lambda: "/tmp/mood.json"):
+            v.speak_comment("/reset-mood")
+            v.speak_comment("/reset-mood")
+
+        from mood import AFFINITY_START
+        self.assertEqual(tracker.affinity, AFFINITY_START)
+        self.assertTrue(tracker.saved)
+        self.assertFalse(v._reset_mood_pending)
+
+    def test_other_slash_command_cancels_pending_confirmation(self):
+        tracker = self._fake_tracker()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None), \
+             mock.patch.object(_mod, "get_conversation_log", None):
+            v.speak_comment("/reset-mood")
+            self.assertTrue(v._reset_mood_pending)
+            v.speak_comment("/help")
+            self.assertFalse(v._reset_mood_pending,
+                             "A different slash command must cancel the pending confirmation.")
+            v.speak_comment("/reset-mood")  # this is now a fresh ask, not a confirm
+
+        self.assertEqual(tracker.affinity, 90.0,
+                         "affinity must survive: the second /reset-mood was a fresh ask.")
+
+    def test_plain_text_cancels_pending_confirmation(self):
+        tracker = self._fake_tracker()
+        v = _make_viewer()
+        with mock.patch.object(_mod, "get_mood_tracker", lambda: tracker), \
+             mock.patch.object(_mod, "_default_mood_path", None):
+            v.speak_comment("/reset-mood")
+            self.assertTrue(v._reset_mood_pending)
+            v.speak_comment("just chatting")
+            self.assertFalse(v._reset_mood_pending)
 
 
 class GUIWhoamiTests(unittest.TestCase):

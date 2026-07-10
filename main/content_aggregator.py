@@ -363,21 +363,37 @@ class ContentAggregator:
                             metadata[f'{source}_count'] = 0
                             continue
 
-                        # ソースに応じた変換
+                        # ソースに応じた変換。
+                        # 以前は変換ループ内で1件でも例外（不正な
+                        # content_data 等）が起きると外側の except に
+                        # 飛び、それまでに all_contents へ追加済みの
+                        # 項目はそのまま残るのに metadata[..._count] は
+                        # 0 と誤って報告していた（total_results には
+                        # 漏れた項目が数えられるのに、メタデータ上は
+                        # 0件・エラー扱いという矛盾した集計結果になる）。
+                        # 1件ごとに try/except し、悪い項目だけスキップして
+                        # 残りは処理を続け、実際に追加できた件数を
+                        # 正確に報告する。
                         count = 0
                         if source == 'youtube':
                             for video in items:
-                                unified = self._convert_youtube_to_unified(video)
-                                unified.relevance_score = self.calculate_relevance_score(unified, query)
-                                all_contents.append(unified)
-                                count += 1
+                                try:
+                                    unified = self._convert_youtube_to_unified(video)
+                                    unified.relevance_score = self.calculate_relevance_score(unified, query)
+                                    all_contents.append(unified)
+                                    count += 1
+                                except Exception as item_exc:
+                                    self.logger.warning(f"Skipping malformed youtube item: {item_exc}")
 
                         elif source in ['arxiv', 'scholar']:
                             for paper in items:
-                                unified = self._convert_paper_to_unified(paper)
-                                unified.relevance_score = self.calculate_relevance_score(unified, query)
-                                all_contents.append(unified)
-                                count += 1
+                                try:
+                                    unified = self._convert_paper_to_unified(paper)
+                                    unified.relevance_score = self.calculate_relevance_score(unified, query)
+                                    all_contents.append(unified)
+                                    count += 1
+                                except Exception as item_exc:
+                                    self.logger.warning(f"Skipping malformed {source} item: {item_exc}")
 
                         metadata[f'{source}_count'] = count
                         self.logger.info(f"{source}: found {count} results")

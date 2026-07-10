@@ -273,8 +273,56 @@ class WebIntegrator:
         self.logger.info(f"Successfully fetched page: {url}")
         return page
 
+    def _is_safe_url(self, url: str) -> bool:
+        """SSRF 対策: http(s) 以外のスキームや、ループバック/プライベート/
+        リンクローカル/予約済み IP アドレスへの URL を拒否する。
+
+        _fetch_html はユーザ入力の URL（get_content_by_url 経由）や、
+        クロール中に取得したページ自身が含むリンク（crawl_site が
+        page.links を辿ってキューに積む）をそのまま fetch_page() に渡す。
+        検証が一切無いと、http://127.0.0.1:6379/ のような内部サービスや
+        http://169.254.169.254/latest/meta-data/ のようなクラウド
+        メタデータエンドポイントへも区別なくリクエストしてしまう
+        （crawl_site の場合、取得したサードパーティ製ページのリンクは
+        本質的に信頼できない入力である）。
+
+        DNS 解決結果に基づく判定のため DNS rebinding の完全な防御には
+        ならないが、専用のエグレスプロキシ/ファイアウォールを持たない
+        アプリケーションにおける標準的な緩和策として、何も検証しない
+        状態からの大幅な改善となる。
+        """
+        import ipaddress
+        import socket
+
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                return False
+            hostname = parsed.hostname
+            if not hostname:
+                return False
+            try:
+                addrs = socket.getaddrinfo(hostname, None)
+            except socket.gaierror:
+                return False
+            for _family, _type, _proto, _canonname, sockaddr in addrs:
+                try:
+                    ip = ipaddress.ip_address(sockaddr[0])
+                except ValueError:
+                    continue
+                if (ip.is_private or ip.is_loopback or ip.is_link_local
+                        or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                    return False
+            return True
+        except Exception:
+            return False
+
     def _fetch_html(self, url: str) -> Optional[str]:
         """HTMLを取得"""
+        if not self._is_safe_url(url):
+            self.logger.warning(f"Blocked potentially unsafe URL (SSRF guard): {url}")
+            return None
+
         # Method 1: Requests
         if REQUESTS_AVAILABLE:
             try:

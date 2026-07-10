@@ -165,6 +165,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self.tts_queue = None
         self.pending_fact_key = None  # 一問一答: 回答待ちの質問キー
         self._clear_log_pending = False  # /clear-log の二段階確認フラグ
+        self._reset_mood_pending = False  # /reset-mood の二段階確認フラグ
 
     def set_tts_queue(self, tts_queue):
         self.tts_queue = tts_queue
@@ -192,6 +193,15 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if getattr(self, "_clear_log_pending", False) \
                 and comment.strip().lower() not in ("/clear-log", "/clearlog"):
             self._clear_log_pending = False
+
+        # /reset-mood も同様の二段階確認。以前は確認無しで即座に好感度を
+        # 全リセットしており、テキスト入力欄への誤操作（誤爆・貼り付け・
+        # Enter の押し間違い）1回で関係進捗が丸ごと消えた
+        # （persona_cli.py は同じコマンドに対して既にこの確認を持っていた
+        # ——GUI 側だけこのガードが抜け落ちていた）。
+        if getattr(self, "_reset_mood_pending", False) \
+                and comment.strip().lower() not in ("/reset-mood", "/resetmood"):
+            self._reset_mood_pending = False
 
         # ---------- スラッシュコマンド (/gift, /callme) ----------
         if isinstance(comment, str) and comment.lstrip().startswith("/"):
@@ -760,10 +770,27 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self._speak_reply(reply)
 
     def _cmd_reset_mood_gui(self, lang: str) -> None:
-        """GUI の /reset-mood コマンドを処理する（好感度をニュートラルにリセット）。"""
+        """GUI の /reset-mood コマンドを処理する（好感度をニュートラルにリセット・二段階確認）。
+
+        破壊的操作（関係進捗の全消去）のため、/clear-log と同様に明示的な
+        二段階確認を行う。以前は確認無しで即座にリセットしており、
+        テキスト入力欄への誤操作 1 回で関係進捗が丸ごと消える危険があった
+        （persona_cli.py の同コマンドは元々この確認を持っていた）。
+        """
         if get_mood_tracker is None:
             self._speak_reply("(好感度は無効です)" if lang != "en" else "(Affinity unavailable)")
             return
+
+        if not getattr(self, "_reset_mood_pending", False):
+            reply = ("This will reset our relationship to neutral. "
+                     "Type /reset-mood again to confirm." if lang == "en"
+                     else "好感度をニュートラルにリセットします。"
+                          "本当によければ、もう一度 /reset-mood と言ってください。")
+            self._reset_mood_pending = True
+            self._speak_reply(reply)
+            return
+        self._reset_mood_pending = False
+
         try:
             from mood import AFFINITY_START
             tracker = get_mood_tracker()

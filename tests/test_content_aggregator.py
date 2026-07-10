@@ -58,6 +58,66 @@ def _make_aggregator():
     return agg
 
 
+class SearchAllSourcesPartialFailureTests(unittest.TestCase):
+    """Regression: search_all_sources()'s per-source conversion loop had no
+    per-item error handling. If converting one item in a batch raised (e.g.
+    a malformed video/paper object), the outer except caught it and set
+    metadata[f'{source}_count'] = 0 with an error — but any items already
+    converted and appended to all_contents *before* the failing one stayed
+    in the result. total_results (len(all_contents)) then included those
+    leaked items while metadata claimed 0 results and an error for that
+    source: a genuinely inconsistent aggregate, not just a crash. Fixed by
+    wrapping each item's conversion individually, skipping only the bad
+    item and reporting the true count of what was actually added.
+    """
+
+    def setUp(self):
+        self._agg = _make_aggregator()
+        self._agg.logger = mock.MagicMock()
+
+    def _fake_video(self, video_id):
+        v = mock.MagicMock()
+        v.video_id = video_id
+        v.title = f"title-{video_id}"
+        v.description = "desc"
+        v.channel_title = "channel"
+        v.published_at = None
+        v.tags = []
+        v.to_dict.return_value = {"video_id": video_id}
+        return v
+
+    def test_one_bad_item_does_not_drop_good_items_or_miscount(self):
+        good1 = self._fake_video("a")
+        good2 = self._fake_video("b")
+        bad = self._fake_video("c")
+        bad.to_dict.side_effect = RuntimeError("malformed content_data")
+
+        self._agg.youtube.search_videos.return_value = [good1, bad, good2]
+
+        result = self._agg.search_all_sources(
+            "query", sources=["youtube"], parallel=True
+        )
+
+        self.assertEqual(result.metadata["youtube_count"], 2,
+                         "must report the true count of successfully converted items")
+        self.assertEqual(result.total_results, 2,
+                         "must not include the failed item, and must match the reported count")
+        self.assertNotIn("youtube_error", result.metadata,
+                         "a single bad item must not be reported as a whole-source error")
+
+    def test_all_good_items_still_all_counted(self):
+        good1 = self._fake_video("a")
+        good2 = self._fake_video("b")
+        self._agg.youtube.search_videos.return_value = [good1, good2]
+
+        result = self._agg.search_all_sources(
+            "query", sources=["youtube"], parallel=True
+        )
+
+        self.assertEqual(result.metadata["youtube_count"], 2)
+        self.assertEqual(result.total_results, 2)
+
+
 class RelevanceScoreTests(unittest.TestCase):
     def setUp(self):
         self._agg = _make_aggregator()
