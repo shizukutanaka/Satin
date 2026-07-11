@@ -102,6 +102,11 @@ except Exception:  # pragma: no cover - defensive
     _wb_default_logfile = None
     _get_conversation_log_wb = None
 
+try:
+    from usage_guardrails import usage_reflection as _usage_reflection
+except Exception:  # pragma: no cover - defensive
+    _usage_reflection = None
+
 
 class AutonomousBehaviorMixin:
     REST_TEXTS = ['ふう…ちょっと休憩。', 'すこし止まります。']
@@ -250,6 +255,26 @@ class AutonomousBehaviorMixin:
                         greeting = (greeting + " " + wb).strip() if greeting else wb
                 except Exception as e:
                     logger.debug("ウェルビーイングチェックインの生成に失敗しました: %s", e)
+            # 感情依存への配慮: 深夜利用の常態化・極端な単日集中を検知したら、
+            # そっと休息や現実のつながりを促す（過度に依存させない安全ガードレール）。
+            # 1 日 1 回までに抑え、しつこく諭さない（_last_usage_nudge_day で cooldown）。
+            if _usage_reflection is not None:
+                try:
+                    import time as _time
+                    today_key = _time.strftime("%Y-%m-%d", _time.localtime())
+                    if getattr(self, "_last_usage_nudge_day", None) != today_key:
+                        _ug_path = _wb_default_logfile
+                        if _get_conversation_log_wb is not None:
+                            try:
+                                _ug_path = _get_conversation_log_wb().logfile
+                            except Exception:
+                                pass
+                        nudge = _usage_reflection(event_log_path=_ug_path, lang=lang)
+                        if nudge:
+                            greeting = (greeting + " " + nudge).strip() if greeting else nudge
+                            self._last_usage_nudge_day = today_key
+                except Exception as e:
+                    logger.debug("利用強度ガードレールの生成に失敗しました: %s", e)
             if greeting:
                 self.talk_text = greeting
                 self._on_talk_start(greeting)

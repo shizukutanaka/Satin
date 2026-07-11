@@ -244,8 +244,14 @@ class PersonaIntegrationTests(unittest.TestCase):
             autonomous_behavior, "_wellbeing_reflection", lambda *a, **kw: ""
         )
         self._wb_patcher.start()
+        # Suppress usage guardrail (same reason: it appends to the greeting).
+        self._ug_patcher = mock.patch.object(
+            autonomous_behavior, "_usage_reflection", lambda *a, **kw: ""
+        )
+        self._ug_patcher.start()
 
     def tearDown(self):
+        self._ug_patcher.stop()
         self._patcher.stop()
         self._mood_patcher.stop()
         self._summary_patcher.stop()
@@ -363,8 +369,11 @@ class MoodGreetingIntegrationTests(unittest.TestCase):
                                 with mock.patch.object(autonomous_behavior,
                                                        "_wellbeing_reflection",
                                                        lambda *a, **kw: ""):
-                                    d = _StartStopDummy()
-                                    d.start_autonomous()
+                                    with mock.patch.object(autonomous_behavior,
+                                                           "_usage_reflection",
+                                                           lambda *a, **kw: ""):
+                                        d = _StartStopDummy()
+                                        d.start_autonomous()
 
         self.assertEqual(captured_levels, ["close"])
         self.assertEqual(d.talk_text, "GREETING_close")
@@ -992,6 +1001,10 @@ class WellbeingGreetingTests(unittest.TestCase):
             mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **kw: ""),
             mock.patch.object(autonomous_behavior, "_get_daily_mood", None),
             mock.patch.object(autonomous_behavior, "_mood_description", lambda *a, **kw: ""),
+            # Suppress the usage guardrail by default so these tests isolate
+            # the wellbeing-reflection append; a test that wants it can
+            # re-patch _usage_reflection.
+            mock.patch.object(autonomous_behavior, "_usage_reflection", lambda *a, **kw: ""),
         ]
 
     def test_low_trend_appended_to_greeting(self):
@@ -1070,6 +1083,104 @@ class WellbeingGreetingTests(unittest.TestCase):
             d.start_autonomous()
 
         self.assertTrue(d.is_autonomous)
+
+
+class UsageGuardrailGreetingTests(unittest.TestCase):
+    """The emotional-dependence usage guardrail (usage_guardrails) appends a
+    gentle nudge to the greeting when a concern is detected, but at most once
+    per day (cooldown), and never crashes the greeting path."""
+
+    def _fake_persona(self):
+        return _FakePersona()
+
+    def _greeting_dummy(self, captured):
+        class _GDummy(_StartStopDummy):
+            def _on_talk_start(self, text):
+                captured.append(text)
+        return _GDummy()
+
+    def _base_patches(self):
+        # Suppress every OTHER appended source so we isolate the usage nudge,
+        # and force wellbeing to "" so only the guardrail can append.
+        return [
+            mock.patch.object(autonomous_behavior, "get_persona",
+                              lambda *a, **k: self._fake_persona()),
+            mock.patch.object(autonomous_behavior, "_get_mood_tracker", None),
+            mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""),
+            mock.patch.object(autonomous_behavior, "_summary_greeting", lambda **kw: ""),
+            mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""),
+            mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **kw: ""),
+            mock.patch.object(autonomous_behavior, "_get_daily_mood", None),
+            mock.patch.object(autonomous_behavior, "_mood_description", lambda *a, **kw: ""),
+            mock.patch.object(autonomous_behavior, "_wellbeing_reflection", lambda *a, **kw: ""),
+        ]
+
+    def test_nudge_appended_when_concern_detected(self):
+        captured = []
+        patches = self._base_patches() + [
+            mock.patch.object(autonomous_behavior, "_usage_reflection",
+                              lambda *a, **kw: "そろそろ休んでね。"),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+
+        self.assertEqual(len(captured), 1)
+        self.assertIn("そろそろ休んでね。", captured[0])
+
+    def test_nudge_not_appended_when_silent(self):
+        captured = []
+        patches = self._base_patches() + [
+            mock.patch.object(autonomous_behavior, "_usage_reflection", lambda *a, **kw: ""),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()
+
+        self.assertEqual(captured, ["GREETING"])
+
+    def test_nudge_fires_at_most_once_per_day(self):
+        """Second greeting on the same day must NOT repeat the nudge (cooldown)."""
+        call_count = {"n": 0}
+
+        def _always_nudge(*a, **kw):
+            call_count["n"] += 1
+            return "そろそろ休んでね。"
+
+        captured = []
+        patches = self._base_patches() + [
+            mock.patch.object(autonomous_behavior, "_usage_reflection", _always_nudge),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = self._greeting_dummy(captured)
+            d.start_autonomous()   # first greeting: nudge fires
+            d.start_autonomous()   # same day: cooldown suppresses it
+
+        nudged = [c for c in captured if "そろそろ休んでね。" in c]
+        self.assertEqual(len(nudged), 1,
+                         "usage nudge must appear at most once per calendar day")
+
+    def test_guardrail_exception_does_not_crash(self):
+        def _boom(*a, **kw):
+            raise RuntimeError("guardrail boom")
+
+        patches = self._base_patches() + [
+            mock.patch.object(autonomous_behavior, "_usage_reflection", _boom),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            d = _StartStopDummy()
+            d.start_autonomous()
+
+        self.assertTrue(d.is_autonomous)
+        self.assertIn("GREETING", d.talk_text)
 
 
 if __name__ == "__main__":
