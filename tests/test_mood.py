@@ -1614,5 +1614,67 @@ class DailyConversationGainCapTests(unittest.TestCase):
         self.assertLessEqual(delta, _MAX_DELTA_PER_MESSAGE + 0.001)
 
 
+class NegationAndEmojiSentimentTests(unittest.TestCase):
+    """Hybrid sentiment (research A2): classify_sentiment / register must
+    account for negation and emoji, not just naive keyword presence.
+    Previously '好きじゃない' / 'I don't like you' scored POSITIVE because the
+    positive keyword was a substring of the negated phrase."""
+
+    def _cs(self, text):
+        from mood import classify_sentiment
+        return classify_sentiment(text)
+
+    # --- negated positive -> negative ---
+    def test_ja_suki_janai_is_negative(self):
+        self.assertEqual(self._cs("好きじゃない"), -1)
+
+    def test_ja_daisuki_dewanai_is_negative(self):
+        self.assertEqual(self._cs("大好きではない"), -1)
+
+    def test_en_dont_like_is_negative(self):
+        self.assertEqual(self._cs("I don't like you"), -1)
+
+    def test_en_not_love_is_negative(self):
+        self.assertEqual(self._cs("I do not love this"), -1)
+
+    # --- negated negative -> cancelled (neutral) ---
+    def test_ja_kirai_janai_is_neutral(self):
+        self.assertEqual(self._cs("嫌いじゃない"), 0)
+
+    def test_en_not_annoying_is_neutral(self):
+        self.assertEqual(self._cs("that is not annoying"), 0)
+
+    # --- un-negated cases unchanged ---
+    def test_plain_positive_unchanged(self):
+        self.assertEqual(self._cs("大好き"), 1)
+
+    def test_plain_negative_unchanged(self):
+        self.assertEqual(self._cs("最悪、むかつく"), -1)
+
+    # --- emoji / kaomoji carry sentiment ---
+    def test_positive_emoji_is_positive(self):
+        self.assertEqual(self._cs("今日はいい天気😊"), 1)
+
+    def test_negative_emoji_is_negative(self):
+        self.assertEqual(self._cs("そうなんだ😢"), -1)
+
+    def test_positive_kaomoji_is_positive(self):
+        self.assertEqual(self._cs("やったね (^^)"), 1)
+
+    # --- register() agrees with classify_sentiment on negation ---
+    def test_register_negated_positive_decreases_affinity(self):
+        m = MoodTracker()
+        before = m.affinity
+        m.register("好きじゃない")
+        self.assertLess(m.affinity, before)
+
+    def test_register_negated_negative_does_not_decrease(self):
+        m = MoodTracker()
+        before = m.affinity
+        m.register("嫌いじゃない")
+        # "not dislike" is cancelled — affinity must not drop.
+        self.assertGreaterEqual(m.affinity, before)
+
+
 if __name__ == "__main__":
     unittest.main()

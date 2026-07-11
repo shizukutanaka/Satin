@@ -148,6 +148,110 @@ def _kw_match(kw: str, text_norm: str) -> bool:
     return kw_n in text_norm
 
 
+# ------------------------------------------------------------------
+# 否定・強調・絵文字を考慮したハイブリッド感情判定（研究 A2）。
+# 従来は肯定/否定語の単純一致で、「好きじゃない」「I don't like you」を肯定と
+# 誤判定していた。語の出現位置を見て否定スコープに入っていれば極性を反転
+# （否定された肯定=否定）または打ち消し（否定された否定=中立）する。
+# LLM 非依存・辞書/ルールのみ・決定論的で、既存の「1 語につき最大 1 カウント」
+# のセマンティクスは保つ（否定時のみ極性が変わる）。
+# ------------------------------------------------------------------
+# 日本語の否定接尾（キーワード直後の窓を前方一致で判定）。な形容詞/名詞的な
+# 肯定語（好き・大好き 等）に付く「〜じゃない / 〜ではない」系に限定して
+# 誤検出を抑える。
+_NEG_SUFFIX_JA = (
+    "じゃない", "ではない", "じゃなかった", "ではなかった",
+    "じゃありません", "ではありません", "じゃ無い", "では無い",
+)
+_NEG_WINDOW_JA = 8  # キーワード末尾から何文字先までを否定判定の窓とするか
+# 英語の否定語（キーワードの直前の窓に現れるか）。
+_NEG_RE_EN = _re.compile(
+    r"\b(?:not|never|no|without|hardly|cannot|can't|don't|doesn't|didn't|"
+    r"isn't|aren't|wasn't|weren't|won't|couldn't|wouldn't|shouldn't)\b"
+)
+_NEG_WINDOW_EN = 30  # キーワード開始位置から何文字手前までを否定判定の窓とするか
+
+# 絵文字・顔文字の感情（NFC 正規化・小文字化後のテキストに対して部分一致）。
+_EMOJI_POSITIVE = (
+    "😊", "😄", "😃", "😍", "🥰", "❤", "♥", "💕", "💖", "👍", "🙂", "😆",
+    "✨", "🎉", "☺", "(^^)", "(^_^)", "^_^", "(*^^*)", "(^o^)", "(^▽^)",
+)
+_EMOJI_NEGATIVE = (
+    "😠", "😡", "😢", "😭", "😞", "💢", "👎", "😔", "😩", "😖", "😣",
+    "(´；ω；｀)", "(;_;)", "(；＿；)", "orz", "(・_・)", "(´・ω・｀)",
+)
+
+
+def _iter_occurrences(kw_n: str, text_norm: str):
+    """kw_n（NFC 小文字化済み）の text_norm 内の出現を (start, end, is_ascii) で列挙。
+
+    ASCII は語境界一致、CJK/その他は部分一致（_kw_match と同じ規則）。
+    """
+    if not kw_n:
+        return
+    if kw_n.isascii():
+        for m in _re.finditer(r"\b" + _re.escape(kw_n) + r"\b", text_norm):
+            yield m.start(), m.end(), True
+    else:
+        i = text_norm.find(kw_n)
+        while i != -1:
+            yield i, i + len(kw_n), False
+            i = text_norm.find(kw_n, i + 1)
+
+
+def _is_negated(text_norm: str, start: int, end: int, is_ascii: bool) -> bool:
+    """位置 [start, end) のキーワード出現が否定スコープ内かを判定する。"""
+    if is_ascii:
+        window = text_norm[max(0, start - _NEG_WINDOW_EN):start]
+        return bool(_NEG_RE_EN.search(window)) or "n't" in window
+    window = text_norm[end:end + _NEG_WINDOW_JA]
+    return any(window.startswith(suf) for suf in _NEG_SUFFIX_JA)
+
+
+def _keyword_contribution(kw: str, text_norm: str, base_positive: bool):
+    """キーワード kw の text_norm への感情寄与を 'pos' / 'neg' / None で返す。
+
+    出現が無ければ None。否定されていない出現が 1 つでもあれば本来の極性。
+    肯定語が「否定のみ」で現れれば 'neg'（好きじゃない=否定）に反転。
+    否定語が「否定のみ」で現れれば None（嫌いじゃない=打ち消し・中立）。
+    """
+    kw_n = _ud.normalize("NFC", str(kw).lower())
+    occ = list(_iter_occurrences(kw_n, text_norm))
+    if not occ:
+        return None
+    any_unnegated = any(not _is_negated(text_norm, s, e, a) for s, e, a in occ)
+    if base_positive:
+        return "pos" if any_unnegated else "neg"
+    return "neg" if any_unnegated else None
+
+
+def _emoji_counts(text_norm: str) -> Tuple[int, int]:
+    """text_norm 中の肯定/否定絵文字・顔文字の有無を (pos, neg) の 0/1 で返す。"""
+    pos = 1 if any(e in text_norm for e in _EMOJI_POSITIVE) else 0
+    neg = 1 if any(e in text_norm for e in _EMOJI_NEGATIVE) else 0
+    return pos, neg
+
+
+def _polarity_counts(text_norm, positive_words, negative_words) -> Tuple[int, int]:
+    """否定・絵文字を考慮した肯定/否定カウントを返す（1 語につき最大 1）。"""
+    pos = 0
+    neg = 0
+    for w in positive_words:
+        c = _keyword_contribution(w, text_norm, base_positive=True)
+        if c == "pos":
+            pos += 1
+        elif c == "neg":
+            neg += 1
+    for w in negative_words:
+        c = _keyword_contribution(w, text_norm, base_positive=False)
+        if c == "neg":
+            neg += 1
+    pe, ne = _emoji_counts(text_norm)
+    pos += pe
+    neg += ne
+    return pos, neg
+
+
 def _clamp(value: float) -> float:
     return max(AFFINITY_MIN, min(AFFINITY_MAX, value))
 
@@ -163,10 +267,9 @@ def classify_sentiment(text: str) -> int:
     if not isinstance(text, str) or not text.strip():
         return 0
     norm = _ud.normalize("NFC", text.lower())
-    pos = sum(1 for words in _DEFAULT_POSITIVE.values() for w in words
-              if _kw_match(w, norm))
-    neg = sum(1 for words in _DEFAULT_NEGATIVE.values() for w in words
-              if _kw_match(w, norm))
+    positive = [w for words in _DEFAULT_POSITIVE.values() for w in words]
+    negative = [w for words in _DEFAULT_NEGATIVE.values() for w in words]
+    pos, neg = _polarity_counts(norm, positive, negative)
     if pos > neg:
         return 1
     if neg > pos:
@@ -267,10 +370,10 @@ class MoodTracker:
             return 0.0
         norm = _ud.normalize("NFC", str(text).lower())
 
-        pos_hits = sum(1 for w in self._all_words(self._positive)
-                       if _kw_match(w, norm))
-        neg_hits = sum(1 for w in self._all_words(self._negative)
-                       if _kw_match(w, norm))
+        # 否定・絵文字を考慮したハイブリッド判定（classify_sentiment と共通ロジック）。
+        pos_hits, neg_hits = _polarity_counts(
+            norm, self._all_words(self._positive), self._all_words(self._negative)
+        )
 
         delta = pos_hits * self.positive_delta - neg_hits * self.negative_delta
         delta = max(-_MAX_DELTA_PER_MESSAGE, min(_MAX_DELTA_PER_MESSAGE, delta))
