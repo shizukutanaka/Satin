@@ -1115,5 +1115,98 @@ class MalformedNestedShapeTests(unittest.TestCase):
         self.assertIsInstance(result, str)
 
 
+class LateNightCircadianTests(unittest.TestCase):
+    """Circadian tone (research A6): a new 'late_night' (0:00-4:59) bucket is
+    split from 'night' (22:00-23:59) so deep-night interactions get a
+    sleep-aware tone, while personas without late-night dialogue keep their
+    previous 'night' behavior via a fallback."""
+
+    def test_time_of_day_late_night_split(self):
+        from persona import _time_of_day
+        for h in (0, 2, 4):
+            self.assertEqual(_time_of_day(h), "late_night", f"hour {h}")
+        for h in (22, 23):
+            self.assertEqual(_time_of_day(h), "night", f"hour {h}")
+        # Unchanged buckets.
+        self.assertEqual(_time_of_day(7), "morning")
+        self.assertEqual(_time_of_day(13), "afternoon")
+        self.assertEqual(_time_of_day(19), "evening")
+
+    def test_talk_uses_late_night_bucket_when_present(self):
+        from unittest import mock
+        data = {
+            "name": "T", "default_lang": "en",
+            "dialogue": {"en": {
+                "talk": ["GENERIC"],
+                "talk_by_time": {"night": ["NIGHT"], "late_night": ["DEEP_NIGHT"]},
+            }},
+        }
+        p = Persona.from_dict(data, lang="en")
+        with mock.patch("random.random", return_value=0.1):
+            self.assertEqual(p.talk(time_bucket="late_night"), "DEEP_NIGHT")
+            self.assertEqual(p.talk(time_bucket="night"), "NIGHT")
+
+    def test_greeting_prefers_late_night_when_defined(self):
+        data = {"dialogue": {"en": {"greeting": {
+            "night": ["GN"], "late_night": ["DEEP_GN"],
+        }}}}
+        p = Persona.from_dict(data, lang="en")
+        self.assertEqual(p.greeting(now=datetime(2024, 1, 1, 3, 0)), "DEEP_GN")
+        self.assertEqual(p.greeting(now=datetime(2024, 1, 1, 23, 0)), "GN")
+
+    def test_greeting_late_night_falls_back_to_night_when_absent(self):
+        # Backward compat: a persona with only a 'night' greeting still greets
+        # at 3am (must not fall through to an unrelated slot or to talk).
+        data = {"dialogue": {"en": {"greeting": {
+            "morning": ["GM"], "afternoon": ["GA"], "evening": ["GE"], "night": ["GN"],
+        }}}}
+        p = Persona.from_dict(data, lang="en")
+        self.assertEqual(p.greeting(now=datetime(2024, 1, 1, 3, 0)), "GN")
+
+    def test_bundled_persona_has_late_night_talk(self):
+        import os
+        from unittest import mock
+        cfg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "config", "persona.json")
+        for lang in ("ja", "en"):
+            p = Persona.load(config_path=cfg, lang=lang)
+            with mock.patch("random.random", return_value=0.1):
+                self.assertTrue(p.talk(time_bucket="late_night"),
+                                f"{lang}: expected non-empty late_night talk")
+
+    def test_autonomous_behavior_passes_late_night_at_3am(self):
+        import os
+        sys.path.insert(0, os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main"))
+        import autonomous_behavior as _ab
+        from unittest import mock
+
+        received = []
+
+        class _FakePersona:
+            lang = "en"
+            def talk(self, lang=None, level=None, mood_key=None, time_bucket=None):
+                received.append(time_bucket)
+                return "FAKE"
+
+        class _Mixin(_ab.AutonomousBehaviorMixin):
+            talks = ["fallback"]
+            @property
+            def persona(self):
+                return _FakePersona()
+
+        obj = object.__new__(_Mixin)
+        fake_now = mock.MagicMock()
+        fake_now.hour = 3
+        with mock.patch("autonomous_behavior._get_mood_tracker", None), \
+             mock.patch("autonomous_behavior._get_daily_mood", None), \
+             mock.patch("autonomous_behavior._get_user_profile", None), \
+             mock.patch("autonomous_behavior._recall_fact", None), \
+             mock.patch("datetime.datetime") as fake_dt_cls:
+            fake_dt_cls.now.return_value = fake_now
+            obj._pick_talk_text()
+        self.assertEqual(received, ["late_night"])
+
+
 if __name__ == "__main__":
     unittest.main()

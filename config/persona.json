@@ -46,6 +46,9 @@
           "夜更かしさん、そろそろ休んだら？",
           "深夜まで起きてたの？一緒にいるよ。",
           "おやすみ前に顔見せてくれてうれしいな。"
+        ],
+        "late_night": [
+          "こんな時間まで…眠れないのかな。無理せず、そっと休んでね。"
         ]
       },
       "greeting_by_affinity": {
@@ -176,6 +179,11 @@
           "夜はしんと静かでいいね。",
           "夜更かしのお供、してあげるね。",
           "夜の空、星がきれいだよ。"
+        ],
+        "late_night": [
+          "こんな真夜中に…眠れないのかな。無理せず、そっと目を閉じてみて。",
+          "もうこんな時間。わたしはここにいるから、そろそろ休もう？",
+          "夜明け前が一番冷えるよ。あたたかくして、ゆっくりね。"
         ]
       },
       "talk_by_daily_mood": {
@@ -255,6 +263,9 @@
           "Night owl, maybe time to rest soon?",
           "Staying up late? I'll keep you company.",
           "Sweet of you to stop by before bedtime."
+        ],
+        "late_night": [
+          "This late... can't sleep? Don't force it — rest easy, okay?"
         ]
       },
       "greeting_by_affinity": {
@@ -385,6 +396,11 @@
           "Nights are so quiet... I kind of like it.",
           "I'll keep you company through the night.",
           "The stars are out. Pretty, right?"
+        ],
+        "late_night": [
+          "The middle of the night... can't sleep? Don't force it — just gently close your eyes.",
+          "It's so late already. I'm right here, so let's get some rest, okay?",
+          "It's coldest just before dawn. Bundle up and take it slow."
         ]
       },
       "talk_by_daily_mood": {

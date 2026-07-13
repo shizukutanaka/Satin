@@ -97,6 +97,11 @@ _DEFAULT_DIALOGUE: Dict[str, Dict] = {
                 "もう夜遅いね。今日もよくがんばったね。",
                 "夜はしんと静かでいいね。",
             ],
+            "late_night": [
+                "こんな真夜中に…眠れないのかな。無理せず、そっと目を閉じてみて。",
+                "もうこんな時間。わたしはここにいるから、そろそろ休もう？",
+                "夜明け前が一番冷えるよ。あたたかくして、ゆっくりね。",
+            ],
         },
     },
     "en": {
@@ -134,6 +139,11 @@ _DEFAULT_DIALOGUE: Dict[str, Dict] = {
                 "Up this late? Don't push yourself too hard.",
                 "It's really late. You did great today.",
                 "Nights are so quiet... I kind of like it.",
+            ],
+            "late_night": [
+                "The middle of the night... can't sleep? Don't force it — just gently close your eyes.",
+                "It's so late already. I'm right here, so let's get some rest, okay?",
+                "It's coldest just before dawn. Bundle up and take it slow.",
             ],
         },
     },
@@ -294,14 +304,23 @@ _DEFAULT_INTEREST_MENTIONS: Dict[str, List[str]] = {
 
 
 def _time_of_day(hour: int) -> str:
-    """時刻(0-23)を morning / afternoon / evening / night に区分する。"""
+    """時刻(0-23)を morning / afternoon / evening / night / late_night に区分する。
+
+    深夜帯 0:00–4:59 は "late_night" として夜(22–24 時台)から分離する（研究 A6:
+    概日リズム連動。3 時の対話は 22 時半とは異なる、より睡眠を気づかうトーンが
+    ふさわしい。usage_guardrails の深夜判定窓 0–5 時とも境界を揃える）。
+    late_night 専用の台詞を持たない persona では、呼び出し側が night へ
+    フォールバックするため後方互換。
+    """
     if 5 <= hour < 11:
         return "morning"
     if 11 <= hour < 17:
         return "afternoon"
     if 17 <= hour < 22:
         return "evening"
-    return "night"
+    if 22 <= hour < 24:
+        return "night"
+    return "late_night"  # 0:00–4:59
 
 
 class Persona:
@@ -472,6 +491,11 @@ class Persona:
         greetings = self._as_dict(block.get("greeting"))
         slot = _time_of_day((now or datetime.now()).hour)
         options = list(greetings.get(slot, []))
+        # late_night 専用あいさつが無ければ night へ縮退（深夜も夜の挨拶で自然に
+        # 振る舞う。late_night を _time_of_day に追加しても既存 persona の
+        # 「3 時 → 夜のあいさつ」挙動を保つための後方互換フォールバック）。
+        if not options and slot == "late_night":
+            options = list(greetings.get("night", []))
         if not options:
             # 時間帯が無ければ任意のあいさつ、それも無ければ雑談
             for vals in greetings.values():

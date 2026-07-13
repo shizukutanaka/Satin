@@ -23,8 +23,8 @@
 | A2 | ✅ 実装済 | **否定・絵文字対応のハイブリッド感情判定** — 「好きじゃない」「I don't like you」を否定と正しく判定、絵文字/顔文字を反映 | `mood.classify_sentiment` / `MoodTracker.register` | [WRIME NAACL 2021](https://aclanthology.org/2021.naacl-main.169/), [arXiv:2208.14244](https://arxiv.org/pdf/2208.14244) |
 | A3 | 未着手 | **感情強度連動辞書** — 全て±1でなく弱/中/強の重み | `mood.py`, `config/persona.json` | [WRIME Ver.2/HF](https://huggingface.co/datasets/shunk031/wrime) |
 | A4 | 未着手 | **記憶想起の品質向上** — substring 検索を BM25/TF-IDF（scikit-learn は既存依存、埋め込み不要）へ | `conversation_log.py` | [Re:Member arXiv:2510.19030](https://arxiv.org/pdf/2510.19030) |
-| A5 | 未着手 | **変化点検知** — 「最近元気ないみたい」を根拠付きで発火（numpy） | `user_wellbeing.py` | [BOCPD arXiv:0710.3742](https://arxiv.org/abs/0710.3742) |
-| A6 | 未着手 | **概日トーン拡充** — 時刻帯×気分の応答辞書 | `persona.py` (`talk_by_time`) | `CATEGORY_RESEARCH.md` カテゴリ7 |
+| A5 | ✅ 実装済 | **変化点検知** — ユーザー自身の基準からの気分変化を根拠付きで発火 | `user_wellbeing.py` (`wellbeing_shift`) | [BOCPD arXiv:0710.3742](https://arxiv.org/abs/0710.3742) |
+| A6 | ✅ 実装済 | **概日トーン拡充** — 深夜帯 `late_night`(0–5時) を `night` から分離し睡眠配慮トーンを追加、時刻区分を単一化 | `persona.py` (`_time_of_day`/`talk_by_time`), `config/persona.json` | `CATEGORY_RESEARCH.md` カテゴリ7 |
 
 ## Tier B（ローカル ML オプション・要オプトイン）
 
@@ -44,5 +44,6 @@
 
 ## 推奨実行順
 
-A1（安全）→ **A2（感情精度）** → A5（変化点）→ A4/A6 → B/C は方針確定後。
-（A1・A2 は実装済み。以降は 1機能=1コミット、実装→回帰テスト→push で継続。）
+A1（安全）→ A2（感情精度）→ A5（変化点）→ A6（概日）→ **A4（BM25 記憶）** → A3 → B/C は方針確定後。
+（A1・A2・A5・A6 は実装済み。残るは A4（記憶想起の BM25/TF-IDF 化）と A3（感情強度辞書）。
+以降も 1機能=1コミット、実装→回帰テスト→push で継続。）

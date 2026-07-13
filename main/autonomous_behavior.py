@@ -28,8 +28,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from persona import get_persona
+    from persona import _time_of_day as _persona_time_of_day
 except Exception:  # pragma: no cover - persona は常に import 可能なはずだが防御的に
     get_persona = None
+    _persona_time_of_day = None
 
 try:
     from mood import (
@@ -373,19 +375,17 @@ class AutonomousBehaviorMixin:
             except Exception as e:
                 logger.debug("趣味・事実ベース雑談の生成に失敗しました: %s", e)
 
-        # 時刻帯（朝/午後/夕/夜）を取得して時刻に合った一言を選べるようにする
+        # 時刻帯（朝/午後/夕/夜/深夜）を取得して時刻に合った一言を選べるようにする。
+        # 区分は persona._time_of_day を単一の真実の源として再利用する
+        # （以前はここに同じ境界をインラインで複製しており、drift の温床だった）。
         time_bucket = None
         try:
             import datetime as _dt
             _hour = _dt.datetime.now().hour
-            if 5 <= _hour < 11:
-                time_bucket = "morning"
-            elif 11 <= _hour < 17:
-                time_bucket = "afternoon"
-            elif 17 <= _hour < 22:
-                time_bucket = "evening"
-            else:
-                time_bucket = "night"
+            if _persona_time_of_day is not None:
+                time_bucket = _persona_time_of_day(_hour)
+            else:  # pragma: no cover - persona import 失敗時のみ
+                time_bucket = "night" if (_hour >= 22 or _hour < 5) else "afternoon"
         except Exception:
             pass
 
