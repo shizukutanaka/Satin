@@ -84,6 +84,16 @@ class _FakeConvLog:
     def search(self, query, include_archives=True):
         return [ev for ev in self._events if query.lower() in ev["details"]["text"].lower()]
 
+    def search_relevant(self, query, n=5, include_archives=True):
+        # 部分一致より緩い「関連度」検索の代用: クエリのいずれかの語を含む
+        # イベントを返す（実際の BM25 ランキングは本体側でテスト済み）。
+        if not query or not query.strip():
+            return []
+        terms = query.lower().split()
+        hits = [ev for ev in self._events
+                if any(t in ev["details"]["text"].lower() for t in terms)]
+        return hits[:n] if n and n > 0 else hits
+
 
 class ForgetFactGuiTests(unittest.TestCase):
     def test_removes_matching_fact_by_partial_value(self):
@@ -328,6 +338,33 @@ class SearchGuiTests(unittest.TestCase):
         conv_log.log_exchange("hello", "hi")
         with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
             v._cmd_search_gui("xyzzy", "ja")
+        self.assertIn("見つかりませんでした", v.comment_text)
+
+    def test_substring_miss_falls_back_to_relevant(self):
+        """完全一致が無くても、関連度検索で近い会話を提示する（研究 A4）。"""
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        conv_log.log_exchange("旅行が楽しかった", "よかったね")
+        # 「楽しかった旅行」は部分一致しないが、語 "旅行"/"楽しかった" で関連あり
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_search_gui("楽しかった 旅行", "ja")
+        self.assertIn("近い会話", v.comment_text)
+        self.assertIn("旅行が楽しかった", v.comment_text)
+
+    def test_relevant_fallback_english(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        conv_log.log_exchange("machine learning is fun", "indeed")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_search_gui("learning machine", "en")
+        self.assertIn("related", v.comment_text.lower())
+
+    def test_no_match_and_no_related_shows_not_found(self):
+        v = _fake_viewer()
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        conv_log.log_exchange("hello", "hi")
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._cmd_search_gui("quantum", "ja")
         self.assertIn("見つかりませんでした", v.comment_text)
 
     def test_empty_query_shows_usage(self):

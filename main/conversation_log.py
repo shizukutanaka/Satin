@@ -56,6 +56,72 @@ def _csv_formula_safe(value: str) -> str:
     return text
 
 
+# ------------------------------------------------------------------
+# 関連度順検索（研究 A4）: 単純な部分一致 search() では「旅行が楽しかった」を
+# 「楽しかった旅行」で引けず、関連度で並べ替えることもできない。BM25 で
+# 関連度スコアを付けて「最も関連する過去の発話」を想起する。
+# LLM・埋め込み・外部依存なし（純 Python）で決定論的。
+# 日本語は形態素解析器を使わず文字バイグラム、英数字は単語トークンで索引する
+# （CJK でよく使われる依存性ゼロの手法）。
+# ------------------------------------------------------------------
+import re as _re
+import math as _math
+import unicodedata as _ud
+from collections import Counter as _Counter
+
+_ASCII_WORD_RE = _re.compile(r"[a-z0-9]+")
+# ひらがな・カタカナ・CJK 統合漢字・半角カナの連続
+_CJK_RUN_RE = _re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]+")
+
+
+def _tokenize_for_retrieval(text: str) -> List[str]:
+    """検索用トークン列を返す（英数字は単語、CJK は文字バイグラム）。"""
+    norm = _ud.normalize("NFC", str(text).lower())
+    tokens: List[str] = _ASCII_WORD_RE.findall(norm)
+    for run in _CJK_RUN_RE.findall(norm):
+        if len(run) == 1:
+            tokens.append(run)
+        else:
+            tokens.extend(run[i:i + 2] for i in range(len(run) - 1))
+    return tokens
+
+
+def _bm25_scores(query_tokens: List[str], docs_tokens: List[List[str]],
+                 k1: float = 1.5, b: float = 0.75) -> List[float]:
+    """Okapi BM25 で各文書の関連度スコアを返す（クエリ語が無ければ全て 0）。"""
+    n_docs = len(docs_tokens)
+    if n_docs == 0 or not query_tokens:
+        return [0.0] * n_docs
+    doc_counters = [_Counter(toks) for toks in docs_tokens]
+    doc_lens = [len(toks) for toks in docs_tokens]
+    avgdl = sum(doc_lens) / n_docs if n_docs else 0.0
+
+    dfs: Dict[str, int] = {}
+    for c in doc_counters:
+        for term in c:
+            dfs[term] = dfs.get(term, 0) + 1
+
+    q_terms = set(query_tokens)
+    idf: Dict[str, float] = {}
+    for term in q_terms:
+        df = dfs.get(term, 0)
+        # 標準的な BM25 idf。極端に頻出な語で負値にならないよう 0 で下限クリップ。
+        idf[term] = max(0.0, _math.log((n_docs - df + 0.5) / (df + 0.5) + 1.0))
+
+    scores: List[float] = []
+    for i, c in enumerate(doc_counters):
+        dl = doc_lens[i]
+        s = 0.0
+        for term in q_terms:
+            f = c.get(term, 0)
+            if not f:
+                continue
+            denom = f + k1 * (1 - b + b * (dl / avgdl if avgdl else 0.0))
+            s += idf[term] * (f * (k1 + 1)) / denom
+        scores.append(s)
+    return scores
+
+
 def _archive_sort_key(path: str) -> tuple:
     """アーカイブのソートキーを返す。
 
@@ -269,6 +335,68 @@ class ConversationLog:
                 logger.warning("会話ログの検索に失敗しました: %s", e)
 
         return entries[-n:] if n > 0 else entries
+
+    def search_relevant(self, query: str, n: int = 5,
+                        include_archives: bool = True) -> List[Dict]:
+        """クエリに**関連度が高い順**で会話イベントを返す（BM25、研究 A4）。
+
+        部分一致の search() と異なり、語順・活用・言い回しの違いを越えて
+        「最も関連する過去の発話」を想起できる（例: 「楽しかった旅行」で
+        「旅行が楽しかった」を引ける）。関連度 0 の文書は返さない。
+
+        Args:
+            query: 検索クエリ。空・空白のみなら空リストを返す。
+            n: 返す最大件数（<=0 は全件、関連度降順）。
+            include_archives: True（既定）でローテート済み gzip も対象。
+
+        Returns:
+            関連度降順の会話イベントのリスト。同点は元の時系列（古い順）を保つ。
+        """
+        q_tokens = _tokenize_for_retrieval(query) if query else []
+        if not q_tokens:
+            return []
+
+        conv_types = USER_EVENT_TYPES | AVATAR_EVENT_TYPES
+        events: List[Dict] = []
+
+        def _collect_line(line: str) -> None:
+            if not line.strip():
+                return
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                return
+            if not isinstance(ev, dict) or ev.get("event_type") not in conv_types:
+                return
+            events.append(ev)
+
+        if include_archives:
+            for gz_path in _find_archives(self.logfile):
+                for line in _iter_gz_lines(gz_path):
+                    _collect_line(line)
+        if os.path.exists(self.logfile):
+            try:
+                with open(self.logfile, encoding="utf-8") as f:
+                    for line in f:
+                        _collect_line(line)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning("会話ログの関連度検索に失敗しました: %s", e)
+
+        if not events:
+            return []
+
+        docs_tokens = [
+            _tokenize_for_retrieval((ev.get("details") or {}).get("text") or "")
+            for ev in events
+        ]
+        scores = _bm25_scores(q_tokens, docs_tokens)
+        # enumerate インデックスで安定ソート（同点は元順＝古い順を維持）。
+        ranked = sorted(
+            ((sc, idx) for idx, sc in enumerate(scores) if sc > 0.0),
+            key=lambda pair: (-pair[0], pair[1]),
+        )
+        result = [events[idx] for _sc, idx in ranked]
+        return result[:n] if n and n > 0 else result
 
     def to_csv(self, n: int = 0, user_label: str = "You", avatar_label: str = "Avatar",
                include_archives: bool = True) -> str:

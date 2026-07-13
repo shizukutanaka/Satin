@@ -933,6 +933,28 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             self._speak_reply("(検索に失敗しました)" if lang != "en" else "(Search failed)")
             return
         if not results:
+            # 完全一致が無ければ BM25 の関連度検索で「近い会話」を提示する
+            # （語順・言い回し違いを越えて想起。研究 A4）。
+            related = []
+            try:
+                related = get_conversation_log().search_relevant(query, n=5, include_archives=True)
+            except Exception as e:
+                logger.debug("/search 関連度検索に失敗（GUI）: %s", e)
+            if related:
+                header = (f"「{query}」に一致は無いけど、近い会話だよ:" if lang != "en"
+                          else f"No exact match for '{query}', but here's what's related:")
+                rel_lines = [header]
+                for ev in related:
+                    ts = ev.get("timestamp", 0)
+                    try:
+                        dt_str = _dt.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+                    except (OSError, OverflowError, ValueError, TypeError):
+                        dt_str = "?"
+                    prefix = "You" if ev.get("event_type") in USER_EVENT_TYPES else "Avatar"
+                    text = (ev.get("details") or {}).get("text", "")
+                    rel_lines.append(f"[{dt_str}] {prefix}: {text}")
+                self._speak_reply("\n".join(rel_lines))
+                return
             self._speak_reply(f"(「{query}」に一致する会話は見つかりませんでした)" if lang != "en"
                               else f"(No conversations matching '{query}' found)")
             return
