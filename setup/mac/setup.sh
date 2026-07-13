@@ -1,8 +1,13 @@
 #!/bin/bash
 # ====================================
 # Satin セットアップスクリプト (macOS版)
-# 最終更新: 2025-05-24
+# 最終更新: 2026-07-13
 # ====================================
+
+# このスクリプト自身の場所からリポジトリルートを解決する
+# (setup/mac/setup.sh からの相対パスに依存しない)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # 管理者権限の確認
 if [ "$(id -u)" -ne 0 ]; then
@@ -29,21 +34,21 @@ fi
 
 # 必要なパッケージのインストール
 echo "必要なパッケージをインストールしています..."
-pip3 install -r requirements.txt
+pip3 install -r "$ROOT_DIR/setup/requirements.txt"
 if [ $? -ne 0 ]; then
     echo "エラー: 依存関係のインストールに失敗しました。"
     exit 1
 fi
 
 # 実行権限の付与
-chmod +x run_satin.sh
+chmod +x "$ROOT_DIR/launch/mac/run_satin.sh"
 
 # 完了メッセージ
 echo
 echo "===================================="
 echo "Satinのセットアップが完了しました！"
 echo "以下のコマンドで起動できます："
-echo "./run_satin.sh"
+echo "$ROOT_DIR/launch/mac/run_satin.sh"
 echo "===================================="
 echo ""
 
@@ -51,5 +56,5 @@ echo ""
 read -p "Satinを今すぐ起動しますか？ (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    ./run_satin.sh
+    "$ROOT_DIR/launch/mac/run_satin.sh"
 fi

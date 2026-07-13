@@ -22,6 +22,7 @@ from typing import List, Tuple
 # (import_name, pip_hint, purpose)
 OPTIONAL_PACKAGES: List[Tuple[str, str, str]] = [
     ("PyQt5",       "pip install PyQt5",            "3D アバター GUI"),
+    ("OpenGL",      "pip install PyOpenGL",         "3D アバター描画 (OpenGL)"),
     ("PIL",         "pip install pillow",           "画像処理（テクスチャ等）"),
     ("numpy",       "pip install numpy",            "数値計算（ポーズ・幾何）"),
     ("cv2",         "pip install opencv-python",    "Web カメラ入力"),

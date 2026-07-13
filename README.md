@@ -592,74 +592,25 @@ config is loaded.
 
 ### Installation
 
-#### Windows
 1. Clone the repository:
 ```bash
 git clone https://github.com/shizukutanaka/Satin.git
+cd Satin
 ```
 
-2. Install dependencies:
-```bash
-pip install -r setup/win/requirements.txt
-```
-
-3. Run the Windows setup:
-```bash
-setup\win\setup.bat
-```
-
-#### Mac
-1. Clone the repository:
-```bash
-git clone https://github.com/shizukutanaka/Satin.git
-```
-
-2. Install dependencies:
-```bash
-pip install -r setup/mac/requirements.txt
-```
-
-3. Run the Mac setup:
-```bash
-setup/mac/setup.sh
-```
-
-### Usage
-
-#### Windows
-```bash
-# Launch Satin
-launch\win\run_satin.bat
-
-# Backup configuration
-launch\win\backup_satin.bat
-
-# View configuration
-main\win\config_manager_enhanced.py
-```
-
-#### Mac
-```bash
-# Launch Satin
-launch/mac/run_satin.sh
-
-# Backup configuration
-launch/mac/backup_satin.sh
-
-# View configuration
-main/mac/config_manager_enhanced.py
-```
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/shizukutanaka/Satin.git
-```
-
-2. Install dependencies:
+2. Install dependencies (same file on every platform):
 ```bash
 pip install -r setup/requirements.txt
+```
+
+3. (Optional) Run the platform setup script — checks Python, upgrades pip,
+   and installs the dependencies above for you:
+```bash
+# Windows
+setup\win\setup.bat
+
+# Mac
+setup/mac/setup.sh
 ```
 
 ### Configuration
@@ -668,46 +619,41 @@ The main configuration file is located at `config/config.json`. You can override
 
 ### Usage
 
-Run the application:
 ```bash
-python launch/run_satin.py
+# Windows — launch the GUI avatar
+launch\win\run_satin.bat
+
+# Mac — launch the GUI avatar
+launch/mac/run_satin.sh
+
+# Any platform — same entry point directly, with more modes:
+python satin_launcher.py            # GUI avatar (default)
+python satin_launcher.py --chat     # headless CLI chat (no GUI/TTS deps needed)
+python satin_launcher.py --dashboard  # Flask web dashboard
+python satin_launcher.py --validate   # validate config and exit
 ```
+
+To back up your configuration, run `launch/win/backup_satin.bat` (Windows) or
+`launch/mac/backup_satin.sh` (Mac).
 
 ## Directory Structure
 
 ```
-satin/
-├── config/           # Configuration files
-│   ├── config.json   # Main configuration
-│   └── plugins/      # Plugin configurations
-├── launch/          # Launch scripts
-│   ├── win/         # Windows launch scripts
-│   │   ├── backup_satin.bat
-│   │   └── run_satin.bat
-│   └── mac/         # Mac launch scripts
-│       ├── backup_satin.sh
-│       └── run_satin.sh
-├── main/             # Main application code
-│   ├── win/         # Windows main files
-│   │   └── config_manager_enhanced.py
-│   ├── mac/         # Mac main files
-│   │   └── config_manager_enhanced.py
-│   ├── config/       # Configuration management
-│   ├── i18n/        # Internationalization
-│   ├── optimize/     # Performance optimization
-│   └── task_scheduler/ # Task scheduling
-├── plugins/          # Custom plugins
-├── setup/           # Setup scripts
-│   ├── win/        # Windows setup
-│   │   └── setup.bat
-│   └── mac/        # Mac setup
-│       └── setup.sh
-├── backup/         # Backup scripts
-│   ├── win/       # Windows backup
-│   │   └── backup_satin.bat
-│   └── mac/       # Mac backup
-│       └── backup_satin.sh
-└── locales/         # Language files
+Satin/
+├── satin_launcher.py  # Entry point: --chat / --dashboard / --manage / --validate
+├── config/            # Runtime configuration, mood/profile state, plugin configs
+├── main/              # Application code (dialogue, mood, TTS, GUI, dashboard, i18n, ...)
+│   ├── config/        # Layered config-management subsystem
+│   ├── i18n/          # Internationalization helpers
+│   └── plugin_system/ # Plugin loading/registration
+├── locales/           # ja.json / en.json UI strings
+├── plugins/           # Sample/user plugins
+├── examples/          # Standalone usage examples for subsystems
+├── launch/            # Per-OS launch scripts (call satin_launcher.py)
+│   ├── win/run_satin.bat, backup_satin.bat
+│   └── mac/run_satin.sh, backup_satin.sh
+├── setup/             # Install: requirements.txt + per-OS setup.bat / setup.sh
+└── tests/             # unittest suite (one file per module, run with pytest)
 ```
 
 ## Contributing

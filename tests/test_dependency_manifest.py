@@ -91,5 +91,59 @@ class LauncherSourcesManifestTests(unittest.TestCase):
         self.assertEqual(L._REQUIRED_DEPS, M.required_check_list())
 
 
+class RequirementsTxtSyncTests(unittest.TestCase):
+    """setup/requirements.txt must actually install every package the manifest
+    declares (research: commercial-quality packaging audit). Regression for a
+    real gap found in the audit — PyQt5/PyOpenGL power the flagship 3D avatar
+    GUI (dependency_manifest.OPTIONAL_PACKAGES + 10+ main/ modules import
+    OpenGL) but were missing from setup/requirements.txt, so following
+    `pip install -r setup/requirements.txt` from the README left the GUI
+    unusable. This asserts every manifest package name (derived from its pip
+    hint) appears in requirements.txt, so the two can't silently drift again."""
+
+    @classmethod
+    def setUpClass(cls):
+        req_path = os.path.join(_ROOT, "setup", "requirements.txt")
+        with open(req_path, encoding="utf-8") as f:
+            cls._requirements_text = f.read().lower()
+
+    def _pip_names_from_manifest(self):
+        names = []
+        for _import_name, hint, _purpose in M.OPTIONAL_PACKAGES:
+            prefix = "pip install "
+            self.assertTrue(hint.startswith(prefix), f"unexpected pip hint format: {hint}")
+            names.append(hint[len(prefix):].strip())
+        return names
+
+    def test_every_optional_package_listed_in_requirements_txt(self):
+        missing = [
+            name for name in self._pip_names_from_manifest()
+            if name.lower() not in self._requirements_text
+        ]
+        self.assertEqual(missing, [], f"manifest packages missing from setup/requirements.txt: {missing}")
+
+    def test_pyqt5_and_pyopengl_present(self):
+        # The flagship 3D avatar GUI's two core deps, named explicitly so a
+        # future refactor of the generic check above still catches this case.
+        self.assertIn("pyqt5", self._requirements_text)
+        self.assertIn("pyopengl", self._requirements_text)
+
+
+class StalePlatformRequirementsRemovedTests(unittest.TestCase):
+    """setup/win/requirements.txt and setup/mac/requirements.txt used to list
+    `tkinter`, which is not a PyPI package — `pip install -r` on either file
+    always failed. They duplicated (and drifted from) setup/requirements.txt,
+    so they were removed in favor of the single root file. Regression: they
+    must not silently reappear."""
+
+    def test_stale_per_os_requirements_files_absent(self):
+        for rel in ("setup/win/requirements.txt", "setup/mac/requirements.txt"):
+            self.assertFalse(
+                os.path.exists(os.path.join(_ROOT, rel)),
+                f"{rel} should not exist — it duplicated setup/requirements.txt "
+                f"and listed non-pip-installable 'tkinter'",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
