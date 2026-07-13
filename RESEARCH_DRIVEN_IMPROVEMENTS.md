@@ -1,5 +1,10 @@
 # Satin — リサーチ駆動 改善点リスト (同種ソフト × arxiv.org)
 
+> **⚠️ 対象注意**: 本ドキュメントは TypeScript ライブラリ `satin-companion-core` を対象にした
+> 構想メモで、**このリポジトリには存在しない**。実際に出荷されている Python 実装（`main/`）に
+> 接地した改善リストは [`RESEARCH_DRIVEN_IMPROVEMENTS_PY.md`](RESEARCH_DRIVEN_IMPROVEMENTS_PY.md)
+> を参照。
+
 > 目的: `satin-companion-core`(プライバシーファースト行動知能モジュール群)を、同種ソフトの機能と
 > 学術研究(主に arxiv.org)に照らして改善するための洗い出し。各項目に「対象モジュール / 現状 /
 > 研究知見+出典 / 具体的改善」を付す。優先度は ★(高)〜☆。

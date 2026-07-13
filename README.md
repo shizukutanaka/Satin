@@ -656,7 +656,31 @@ Satin/
 └── tests/             # unittest suite (one file per module, run with pytest)
 ```
 
+## Development
+
+### Running Tests
+
+```bash
+pip install -r setup/requirements.txt   # includes pytest / pytest-asyncio
+python -m pytest tests/ -q
+```
+
+### Linting
+
+```bash
+pip install ruff
+ruff check main/ tests/
+```
+
+Both are also what `setup/github-actions-ci.yml` runs (see [Contributing](#contributing)
+for how to activate CI on this repository).
+
 ## Contributing
+
+CI is defined in `setup/github-actions-ci.yml` (lint + multi-version test
+matrix) but not yet activated in this repository — a repository maintainer
+with push access needs to copy it to `.github/workflows/ci.yml` once (see
+the comment at the top of that file for the exact steps).
 
 ### Platform-Specific Guidelines
 
