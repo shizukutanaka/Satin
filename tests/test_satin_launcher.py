@@ -119,12 +119,49 @@ class LaunchDispatchTests(unittest.TestCase):
             self._run(["--dashboard", "--host", "0.0.0.0", "--port", "8080", "--no-dep-check"])
             m.assert_called_once_with(host="0.0.0.0", port=8080)
 
-    def test_no_args_tries_gui_loader(self):
-        with mock.patch.object(satin_launcher, "_launch_avatar_loader") as m, \
+    def test_no_args_launches_avatar_gui(self):
+        """Default mode must launch the real 3D avatar GUI (TTS/mood/log/
+        slash commands), not the file-picker-only avatar_loader. Regression
+        for a commercial-quality audit finding: the documented launch path
+        (this default, launch/win/run_satin.bat, launch/mac/run_satin.sh,
+        README) used to dead-end at avatar_loader.AvatarLoaderApp, which
+        only remembers a chosen file path and never displays the avatar."""
+        with mock.patch.object(satin_launcher, "_launch_avatar_gui") as m, \
              mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
              mock.patch.object(satin_launcher, "_check_config"):
             self._run(["--no-dep-check"])
             m.assert_called_once()
+
+    def test_no_args_does_not_launch_avatar_loader(self):
+        with mock.patch.object(satin_launcher, "_launch_avatar_loader") as loader_m, \
+             mock.patch.object(satin_launcher, "_launch_avatar_gui"), \
+             mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
+             mock.patch.object(satin_launcher, "_check_config"):
+            self._run(["--no-dep-check"])
+            loader_m.assert_not_called()
+
+    def test_avatar_loader_flag_dispatches(self):
+        with mock.patch.object(satin_launcher, "_launch_avatar_loader") as m, \
+             mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
+             mock.patch.object(satin_launcher, "_check_config"):
+            self._run(["--avatar-loader", "--no-dep-check"])
+            m.assert_called_once()
+
+
+class LaunchAvatarGuiTests(unittest.TestCase):
+    def test_import_failure_prints_error_and_exits(self):
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name in ("PyQt5.QtWidgets", "avatar_3d_autonomous_tts"):
+                raise ImportError("simulated: missing GUI dependency")
+            return real_import(name, *args, **kwargs)
+
+        with mock.patch.object(builtins, "__import__", side_effect=fake_import):
+            with self.assertRaises(SystemExit) as cm:
+                satin_launcher._launch_avatar_gui()
+            self.assertEqual(cm.exception.code, 1)
 
 
 class LaunchValidateTests(unittest.TestCase):

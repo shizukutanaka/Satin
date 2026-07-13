@@ -4,7 +4,8 @@ Satin ランチャー
 起動フロー:
 1. 依存パッケージの存在チェック（不足があれば案内）
 2. 設定ファイルの有無を確認
-3. GUI が利用可能なら Avatar Loader を起動、そうでなければ CLI 管理ツールを起動
+3. 既定では 3D アバター本体（TTS・好感度・会話ログ・スラッシュコマンドを持つ
+   avatar_3d_autonomous_tts.MainWindow）を起動する
 
 コマンドライン引数:
   --chat            ヘッドレスでアバターと会話する CLI を起動
@@ -14,6 +15,8 @@ Satin ランチャー
   --dashboard       Flask ダッシュボードを起動
   --manage [args…]  CLI 管理バッチツールを起動（サブコマンドを渡せる: mood show 等）
   --validate        設定バリデーションのみ実行して終了（エラー時は exit code 1）
+  --avatar-loader   外部アバターファイル(.vrm/.fbx/.glb/.gltf)選択ダイアログのみを起動
+                    （3D 描画・TTS・会話機能は無い簡易ツール。従来の既定モード）
   --help / -h       ヘルプを表示して終了
 """
 from __future__ import annotations
@@ -96,6 +99,28 @@ def _launch_avatar_loader() -> None:
         sys.exit(1)
 
 
+def _launch_avatar_gui() -> None:
+    """3D アバター本体（TTS・好感度・会話ログ・スラッシュコマンド）を起動する。
+
+    既定の起動モード。以前は avatar_loader.AvatarLoaderApp（外部アバター
+    ファイルを選ぶだけで何も起動しない簡易ダイアログ）が既定になっており、
+    launch/win/run_satin.bat・launch/mac/run_satin.sh・README が案内する
+    「Satin を起動する」手順の実体が、この本体 GUI に一切辿り着けない状態
+    だった（商用品質監査で発見）。ファイル選択ダイアログは --avatar-loader
+    で引き続き利用できる。
+    """
+    try:
+        from PyQt5.QtWidgets import QApplication
+        from avatar_3d_autonomous_tts import MainWindow
+        app = QApplication(sys.argv[:1])
+        win = MainWindow()
+        win.show()
+        sys.exit(app.exec_())
+    except ImportError as e:
+        print(f"[ERROR] 3D アバター GUI 起動失敗: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def _launch_dashboard(host: str = "127.0.0.1", port: int | None = None) -> None:
     try:
         from dashboard import app, DEFAULT_DASHBOARD_PORT, _resolve_port
@@ -152,6 +177,8 @@ def main() -> None:
     parser.add_argument("--dashboard", action="store_true", help="Flask ダッシュボードを起動")
     parser.add_argument("--manage",    action="store_true", help="CLI 管理バッチツールを起動")
     parser.add_argument("--validate",  action="store_true", help="設定バリデーションのみ実行して終了")
+    parser.add_argument("--avatar-loader", action="store_true",
+                        help="外部アバターファイル選択ダイアログのみを起動（従来の既定モード）")
     parser.add_argument("--host",      default="127.0.0.1", help="ダッシュボードのホスト (default: 127.0.0.1)")
     parser.add_argument("--port",      type=int, default=None, help="ダッシュボードのポート (default: 5003 / 環境変数 SATIN_DASHBOARD_PORT)")
     parser.add_argument("--lang",      default=None, help="会話言語 (例: ja, en) — --chat と併用")
@@ -175,9 +202,11 @@ def main() -> None:
         _launch_manage(args.manage_subargs or None)
     elif args.dashboard:
         _launch_dashboard(host=args.host, port=args.port)
-    else:
-        # デフォルト: GUI アバターローダーを起動
+    elif args.avatar_loader:
         _launch_avatar_loader()
+    else:
+        # デフォルト: 3D アバター本体（TTS・好感度・会話ログ）を起動
+        _launch_avatar_gui()
 
 
 if __name__ == "__main__":

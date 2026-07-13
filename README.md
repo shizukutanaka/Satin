@@ -627,10 +627,11 @@ launch\win\run_satin.bat
 launch/mac/run_satin.sh
 
 # Any platform — same entry point directly, with more modes:
-python satin_launcher.py            # GUI avatar (default)
-python satin_launcher.py --chat     # headless CLI chat (no GUI/TTS deps needed)
+python satin_launcher.py              # GUI avatar (default)
+python satin_launcher.py --chat       # headless CLI chat (no GUI/TTS deps needed)
 python satin_launcher.py --dashboard  # Flask web dashboard
 python satin_launcher.py --validate   # validate config and exit
+python satin_launcher.py --avatar-loader  # pick an external .vrm/.fbx/.glb/.gltf file
 ```
 
 To back up your configuration, run `launch/win/backup_satin.bat` (Windows) or

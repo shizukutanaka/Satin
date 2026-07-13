@@ -48,10 +48,11 @@ TTS で音声合成しながら 3D アバターを動かす。関係性（好感
 
 ```
 satin_launcher.py
-  ├─ 依存チェック (_check_deps)        必須=tkinter / 任意=上記一覧
+  ├─ 依存チェック (_check_deps)        必須=なし（モード別に個別チェック） / 任意=上記一覧
   ├─ 設定チェック (_check_config)      config/ の存在確認
   └─ モード分岐
-       ├─ (既定)        GUI: avatar_loader.AvatarLoaderApp (tkinter)
+       ├─ (既定)        GUI 本体: avatar_3d_autonomous_tts.MainWindow (PyQt5/OpenGL)
+       ├─ --avatar-loader GUI: avatar_loader.AvatarLoaderApp (tkinter、外部ファイル選択のみ)
        ├─ --chat         CLI 会話: persona_cli.main()
        ├─ --dashboard    Web: dashboard.app (Flask)
        ├─ --manage […]   管理 CLI: manage_satin.main()
@@ -223,9 +224,19 @@ satin_launcher.py
 | W4 | 低 | `dashboard.py` | ハードコードされたポート（定数化されていない）。再利用・テスト時に変更しづらい。 |
 | W5 | 低 | 任意依存の管理 | 依存一覧が `satin_launcher.py` 内にハードコードされ、`setup/requirements.txt` と二重管理。 |
 | W6 | 情報 | `null`/型不正データ耐性 | 直近セッションで JSONL/設定の `null` 値クラッシュを多数修正済み（§ CHANGELOG）。同種の防御は今後も新規 I/O ごとに必要。 |
+| W7 | 解消済 (I25) | `satin_launcher.py` 既定モード | 商用品質監査で発見: 既定起動（launch/win/run_satin.bat・launch/mac/run_satin.sh・README が案内する手順すべて）が `avatar_loader.AvatarLoaderApp`（外部ファイルを選ぶだけの tkinter ダイアログ、実際には何も表示しない）を開くだけで、TTS・好感度・会話ログ・スラッシュコマンドを持つ本体 GUI (`avatar_3d_autonomous_tts.MainWindow`) には一切繋がっていなかった。3D モデル読み込み自体は `avatar_3d_gltf_viewer.py` にのみ実装されており（頂点のみのワイヤーフレーム、テクスチャ・スキニング無し）、本体 GUI に統合されていない点は未解消（要設計判断）。 |
 
 ## 7. 改善点 (Improvements) — 本コミットで実装
 
+- **[実装] I25 (W7 解消 — 既定起動が本体 GUI に繋がっていなかった):**
+  `satin_launcher.py` の既定モードを `avatar_loader.AvatarLoaderApp`（ファイル
+  選択のみで何も起動しない tkinter ダイアログ）から、TTS・好感度・会話ログ・
+  スラッシュコマンドを持つ本体 GUI (`avatar_3d_autonomous_tts.MainWindow`) の
+  起動 (`_launch_avatar_gui`) に変更。旧ダイアログは `--avatar-loader` で引き
+  続き利用可能。3D モデル読み込み（glTF/VRM の実パース・描画）を本体 GUI に
+  統合する作業は別途の設計判断が必要なため対象外（`avatar_3d_gltf_viewer.py`
+  にのみ実装済み、ワイヤーフレームのみ）。テスト 4 件追加（既定モードの
+  dispatch・`--avatar-loader` の dispatch・import 失敗時のエラー処理）。
 - **[実装] I23 (新機能 — ユーザーの気分への寄り添い / wellbeing):** ソクラテス式
   問答（「コンパニオンが chatbot ではなく『生きている』と感じる要素は？」→ 記憶
   ＋自発性＋**あなた固有の共感**）から導出。`mood.py` がアバターの好感度を扱う
