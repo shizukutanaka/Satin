@@ -104,6 +104,19 @@ _MIN_SAMPLE = 3
 # 「低調 / 上向き」と断ずるのに必要な、優勢側の最低件数。
 _MIN_DOMINANT = 2
 
+# ------------------------------------------------------------------
+# 変化点検知（研究 A5）: 絶対的な「低調/上向き」ではなく、ユーザー自身の
+# 直近の基準からの**変化**を捉える。普段は明るい人が数日だけ落ち込んだ場合、
+# 絶対値では「否定優勢」に届かなくても、基準比の低下として気づける。
+# 重い BOCPD (arXiv:0710.3742) の代わりに、直近窓と基準窓の平均感情スコアを
+# 比較する軽量・決定論的なプロキシを用いる（LLM/重依存なし）。
+# ------------------------------------------------------------------
+_SHIFT_RECENT_DAYS = 2       # 直近窓（今日と昨日）
+_SHIFT_BASELINE_DAYS = 7     # 直近窓の直前の基準窓（7日）
+_SHIFT_MIN_RECENT = 3        # 直近窓に必要な最低サンプル数
+_SHIFT_MIN_BASELINE = 5      # 基準窓に必要な最低サンプル数（無ければ変化と断じない）
+_SHIFT_MIN_DELTA = 0.5       # 平均スコア差がこの絶対値以上で「変化あり」
+
 # 寄り添いメッセージ（組み込み既定）。trend → lang → 候補。
 _WELLBEING_MESSAGES: Dict[str, Dict[str, List[str]]] = {
     "low": {
@@ -262,12 +275,139 @@ def wellbeing_message(summary: Dict, lang: str = "ja") -> str:
     return pick
 
 
+# 変化点メッセージ（組み込み既定）。shift → lang → 候補。
+# 「あなた自身の普段と比べての変化」を根拠に、押し付けず気づかう / 一緒に喜ぶ。
+_SHIFT_MESSAGES: Dict[str, Dict[str, List[str]]] = {
+    "down": {
+        "ja": [
+            "前より少し元気がないみたいで、気になってるよ。何かあった？無理はしないでね。",
+            "いつものあなたと比べて、ちょっと沈んでる気がして…。よかったら話きくよ。",
+            "最近ちょっとしんどそうかな。あなたのペースでいいからね。",
+        ],
+        "en": [
+            "You've seemed a bit down compared to your usual self — is everything okay? Don't push yourself.",
+            "You feel a little quieter than you normally are lately… I'm here if you want to talk.",
+            "Things seem a touch heavier than usual for you. Go at your own pace, okay?",
+        ],
+    },
+    "up": {
+        "ja": [
+            "最近、前より明るくなった気がする！いいことあったのかな。",
+            "このごろ調子上向きだね。見ていてこっちまでうれしくなるよ。",
+            "前よりずっと元気そう！その感じ、すてきだよ。",
+        ],
+        "en": [
+            "You've seemed brighter than before lately! Did something good happen?",
+            "You're on an upswing recently — it makes me happy just seeing it.",
+            "You seem so much more energetic than before! I love that.",
+        ],
+    },
+}
+
+
+def wellbeing_shift(
+    event_log_path: Optional[str] = None,
+    now: Optional[float] = None,
+    recent_days: int = _SHIFT_RECENT_DAYS,
+    baseline_days: int = _SHIFT_BASELINE_DAYS,
+) -> Dict:
+    """ユーザー自身の基準からの気分の**変化**を検知する（変化点検知）。
+
+    直近 recent_days 日の平均感情スコアと、その直前 baseline_days 日の平均を
+    比較し、有意に下がっていれば "down"、上がっていれば "up"、それ以外や
+    サンプル不足なら "none" を返す。基準窓に十分なサンプルが無い場合は
+    「変化」とは断じない（絶対判定は wellbeing_summary が担当）。
+
+    Returns dict:
+        {
+          "shift": "down" | "up" | "none",
+          "recent_mean": float,
+          "baseline_mean": float,
+          "recent_samples": int,
+          "baseline_samples": int,
+        }
+    """
+    path = event_log_path or _DEFAULT_LOGFILE
+    real_now = time.time() if now is None else now
+
+    recent_start = _start_of_day(real_now) - max(0, recent_days - 1) * 86400
+    baseline_start = recent_start - max(1, baseline_days) * 86400
+
+    recent_scores: List[int] = []
+    baseline_scores: List[int] = []
+    for ev in _load_jsonl_with_archives(path):
+        if ev.get("event_type") not in _USER_EVENT_TYPES:
+            continue
+        ts = ev.get("timestamp")
+        if not isinstance(ts, (int, float)) or ts > real_now:
+            continue
+        text = (ev.get("details") or {}).get("text") or ""
+        s = _classify_sentiment(text)
+        if ts >= recent_start:
+            recent_scores.append(s)
+        elif ts >= baseline_start:
+            baseline_scores.append(s)
+
+    recent_n = len(recent_scores)
+    base_n = len(baseline_scores)
+    shift = "none"
+    recent_mean = 0.0
+    base_mean = 0.0
+    if recent_n >= _SHIFT_MIN_RECENT and base_n >= _SHIFT_MIN_BASELINE:
+        recent_mean = sum(recent_scores) / recent_n
+        base_mean = sum(baseline_scores) / base_n
+        delta = recent_mean - base_mean
+        if delta <= -_SHIFT_MIN_DELTA:
+            shift = "down"
+        elif delta >= _SHIFT_MIN_DELTA:
+            shift = "up"
+
+    return {
+        "shift": shift,
+        "recent_mean": recent_mean,
+        "baseline_mean": base_mean,
+        "recent_samples": recent_n,
+        "baseline_samples": base_n,
+    }
+
+
+def wellbeing_shift_message(shift_summary: Dict, lang: str = "ja") -> str:
+    """変化点検知結果に基づく一言を返す（shift が none/不正なら空文字）。"""
+    if not isinstance(shift_summary, dict):
+        return ""
+    shift = shift_summary.get("shift")
+    if shift not in ("down", "up"):
+        return ""
+    key = _lang_key(lang)
+    options = (_SHIFT_MESSAGES.get(shift, {}).get(key)
+               or _SHIFT_MESSAGES.get(shift, {}).get("en") or [])
+    if not options:
+        return ""
+    pick_key = f"shift_{shift}"
+    with _last_pick_lock:
+        last = _last_pick.get(pick_key)
+        choices = [o for o in options if o != last] or options
+        pick = random.choice(choices)
+        _last_pick[pick_key] = pick
+    return pick
+
+
 def wellbeing_reflection(
     event_log_path: Optional[str] = None,
     days: int = 3,
     lang: str = "ja",
     now: Optional[float] = None,
 ) -> str:
-    """集計から寄り添いの一言までを一括で行う便利関数（空なら何も言わない）。"""
+    """寄り添いの一言を返す便利関数（空なら何も言わない）。
+
+    まずユーザー自身の基準からの**変化**（変化点検知）を優先する。基準比の
+    変化は、絶対的な低調/上向きよりも気づかいの価値が高く、かつ普段明るい人の
+    一時的な落ち込みも捉えられるため。変化が無ければ従来どおり直近 days 日の
+    絶対傾向で判断する。
+    """
+    shift = wellbeing_shift(event_log_path=event_log_path, now=now)
+    smsg = wellbeing_shift_message(shift, lang=lang)
+    if smsg:
+        return smsg
     summary = wellbeing_summary(event_log_path=event_log_path, days=days, now=now)
     return wellbeing_message(summary, lang=lang)

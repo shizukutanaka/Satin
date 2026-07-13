@@ -263,5 +263,117 @@ class WellbeingReflectionTests(unittest.TestCase):
         self.assertEqual(msg, "")
 
 
+class WellbeingShiftTests(unittest.TestCase):
+    """Change-point detection (research A5): detect a shift relative to the
+    user's OWN recent baseline, catching a normally-cheerful person's dip
+    even when it isn't 'dominantly negative' in absolute terms."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._log = os.path.join(self._tmp, "ev.jsonl")
+        # Pin "now" to 18:00 local today so midday events never land in the
+        # future (getting filtered) or clamp oddly regardless of the hour the
+        # suite runs at.
+        _lt = time.localtime()
+        self._now = time.mktime((_lt.tm_year, _lt.tm_mon, _lt.tm_mday, 18, 0, 0, 0, 0, -1))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _sod(self, ts):
+        lt = time.localtime(ts)
+        return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
+
+    def _write(self, entries):
+        with open(self._log, "w", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+
+    def _ue(self, ts, text):
+        return {"event_type": "user_comment", "timestamp": ts, "details": {"text": text}}
+
+    def _baseline_and_recent(self, baseline_texts, recent_texts):
+        entries = []
+        # baseline: days 3-9 ago, midday
+        for d in range(3, 10):
+            day = self._sod(self._now) - d * 86400 + 12 * 3600
+            for t in baseline_texts:
+                entries.append(self._ue(day, t))
+        # recent: today & yesterday
+        for d in range(0, 2):
+            day = self._sod(self._now) - d * 86400 + 12 * 3600
+            if day > self._now:
+                day = self._now - 1
+            for t in recent_texts:
+                entries.append(self._ue(day, t))
+        self._write(entries)
+
+    def test_downshift_detected(self):
+        self._baseline_and_recent(["ありがとう", "大好き", "嬉しい"],
+                                  ["最悪", "つまらない", "むかつく"])
+        s = uw.wellbeing_shift(event_log_path=self._log, now=self._now)
+        self.assertEqual(s["shift"], "down")
+        self.assertLess(s["recent_mean"], s["baseline_mean"])
+
+    def test_upshift_detected(self):
+        self._baseline_and_recent(["最悪", "つまらない", "むかつく"],
+                                  ["ありがとう", "大好き", "嬉しい"])
+        s = uw.wellbeing_shift(event_log_path=self._log, now=self._now)
+        self.assertEqual(s["shift"], "up")
+        self.assertGreater(s["recent_mean"], s["baseline_mean"])
+
+    def test_stable_mood_is_no_shift(self):
+        self._baseline_and_recent(["ありがとう", "大好き", "嬉しい"],
+                                  ["ありがとう", "大好き", "嬉しい"])
+        s = uw.wellbeing_shift(event_log_path=self._log, now=self._now)
+        self.assertEqual(s["shift"], "none")
+
+    def test_no_baseline_is_no_shift(self):
+        # All-recent data, nothing in the baseline window -> can't judge a shift.
+        self._write([self._ue(self._now - 60, "最悪"),
+                     self._ue(self._now - 50, "むかつく"),
+                     self._ue(self._now - 40, "つまらない")])
+        s = uw.wellbeing_shift(event_log_path=self._log, now=self._now)
+        self.assertEqual(s["shift"], "none")
+        self.assertEqual(s["baseline_samples"], 0)
+
+    def test_insufficient_recent_is_no_shift(self):
+        # Rich baseline but only 1 recent message -> not enough to judge.
+        entries = []
+        for d in range(3, 10):
+            day = self._sod(self._now) - d * 86400 + 12 * 3600
+            for t in ["ありがとう", "大好き", "嬉しい"]:
+                entries.append(self._ue(day, t))
+        entries.append(self._ue(self._now - 60, "最悪"))
+        self._write(entries)
+        s = uw.wellbeing_shift(event_log_path=self._log, now=self._now)
+        self.assertEqual(s["shift"], "none")
+
+    def test_shift_message_down_is_gentle(self):
+        msg = uw.wellbeing_shift_message({"shift": "down"}, lang="ja")
+        self.assertIn(msg, uw._SHIFT_MESSAGES["down"]["ja"])
+
+    def test_shift_message_none_is_empty(self):
+        self.assertEqual(uw.wellbeing_shift_message({"shift": "none"}), "")
+        self.assertEqual(uw.wellbeing_shift_message({}), "")
+        self.assertEqual(uw.wellbeing_shift_message(None), "")
+
+    def test_reflection_prefers_shift_message_when_shift_present(self):
+        self._baseline_and_recent(["ありがとう", "大好き", "嬉しい"],
+                                  ["最悪", "つまらない", "むかつく"])
+        msg = uw.wellbeing_reflection(event_log_path=self._log, lang="ja", now=self._now)
+        # A downshift message, NOT the absolute-trend "low" message.
+        self.assertIn(msg, uw._SHIFT_MESSAGES["down"]["ja"])
+
+    def test_reflection_falls_back_to_absolute_when_no_baseline(self):
+        # No baseline -> shift 'none' -> the existing absolute low message.
+        self._write([self._ue(self._now - 60, "最悪"),
+                     self._ue(self._now - 50, "むかつく"),
+                     self._ue(self._now - 40, "つまらない")])
+        msg = uw.wellbeing_reflection(event_log_path=self._log, lang="ja", now=self._now)
+        self.assertIn(msg, uw._WELLBEING_MESSAGES["low"]["ja"])
+
+
 if __name__ == "__main__":
     unittest.main()

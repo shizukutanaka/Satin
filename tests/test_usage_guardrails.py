@@ -30,7 +30,13 @@ class _LogBase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
         self._log = os.path.join(self._tmp, "ev.jsonl")
-        self._now = time.time()
+        # Pin "now" to 18:00 local today so tests are deterministic regardless
+        # of the wall-clock hour the suite runs at. (If "now" fell in the
+        # late-night 0:00-4:59 window, midday events clamped to now-1 would
+        # themselves land in that window and trip the late_night concern
+        # instead of the one under test.)
+        _lt = time.localtime()
+        self._now = time.mktime((_lt.tm_year, _lt.tm_mon, _lt.tm_mday, 18, 0, 0, 0, 0, -1))
 
     def tearDown(self):
         import shutil
