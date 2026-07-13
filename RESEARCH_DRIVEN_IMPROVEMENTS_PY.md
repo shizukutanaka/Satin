@@ -21,7 +21,7 @@
 |---|------|--------|----------------|----------|
 | A1 | ✅ 実装済 | **感情依存/パラソーシャル安全ガードレール** — 深夜利用の常態化・極端な単日集中を検知し、そっと休息/現実のつながりへ促す（1日1回・非強制） | `usage_guardrails.py`（新規）, `autonomous_behavior.py` | [APA 2026](https://www.apa.org/monitor/2026/01-02/trends-digital-ai-relationships-emotional-connection), [Princeton CITP 2025](https://blog.citp.princeton.edu/2025/08/20/emotional-reliance-on-ai-design-dependency-and-the-future-of-human-connection/), [arXiv:2506.12605](https://arxiv.org/html/2506.12605v1), [Affective AI Safety](https://arxiv.org/pdf/2606.23380) |
 | A2 | ✅ 実装済 | **否定・絵文字対応のハイブリッド感情判定** — 「好きじゃない」「I don't like you」を否定と正しく判定、絵文字/顔文字を反映 | `mood.classify_sentiment` / `MoodTracker.register` | [WRIME NAACL 2021](https://aclanthology.org/2021.naacl-main.169/), [arXiv:2208.14244](https://arxiv.org/pdf/2208.14244) |
-| A3 | 未着手 | **感情強度連動辞書** — 全て±1でなく弱/中/強の重み | `mood.py`, `config/persona.json` | [WRIME Ver.2/HF](https://huggingface.co/datasets/shunk031/wrime) |
+| A3 | ✅ 実装済 | **感情強度連動辞書** — 全て±1でなく弱/中/強の重み（`_INTENSITY` 静的表 + `_polarity_weights`）。極性の符号は整数カウントのまま、増減幅のみ強度加重（「大好き」>「好き」、「最悪」>「つまらない」）。未指定/カスタム語は 1.0 で従来挙動を保持 | `mood.py` (`_intensity_of`/`_polarity_weights`) | [WRIME Ver.2/HF](https://huggingface.co/datasets/shunk031/wrime) |
 | A4 | ✅ 実装済 | **記憶想起の品質向上** — substring 検索に加え Okapi BM25 の関連度検索 `search_relevant()` を追加（純 Python・埋め込み/外部依存なし、CJK は文字バイグラム）。GUI `/search` は完全一致 0 件時に「近い会話」を関連度順で提示 | `conversation_log.py` (`search_relevant`), `avatar_3d_autonomous_tts.py` | [Re:Member arXiv:2510.19030](https://arxiv.org/pdf/2510.19030) |
 | A5 | ✅ 実装済 | **変化点検知** — ユーザー自身の基準からの気分変化を根拠付きで発火 | `user_wellbeing.py` (`wellbeing_shift`) | [BOCPD arXiv:0710.3742](https://arxiv.org/abs/0710.3742) |
 | A6 | ✅ 実装済 | **概日トーン拡充** — 深夜帯 `late_night`(0–5時) を `night` から分離し睡眠配慮トーンを追加、時刻区分を単一化 | `persona.py` (`_time_of_day`/`talk_by_time`), `config/persona.json` | `CATEGORY_RESEARCH.md` カテゴリ7 |
@@ -44,6 +44,7 @@
 
 ## 推奨実行順
 
-A1（安全）→ A2（感情精度）→ A5（変化点）→ A6（概日）→ A4（BM25 記憶）→ **A3** → B/C は方針確定後。
-（A1・A2・A4・A5・A6 は実装済み。残るは A3（感情強度連動辞書）。
-以降も 1機能=1コミット、実装→回帰テスト→push で継続。）
+A1（安全）→ A2（感情精度）→ A5（変化点）→ A6（概日）→ A4（BM25 記憶）→ A3（感情強度辞書）→ B/C は方針確定後。
+（**Tier A（A1–A6）はすべて実装済み**。以降は Tier B（ローカル ML）/ Tier C（ローカル LLM）で、
+no-LLM 設計境界に関わるためユーザーの方針判断が必要。
+各項目は 1機能=1コミット、実装→回帰テスト（fix を revert すると落ちる確認）→push で実施した。）

@@ -120,6 +120,33 @@ _DEFAULT_NEGATIVE: Dict[str, List[str]] = {
 _DEFAULT_POSITIVE_DELTA = 4.0
 _DEFAULT_NEGATIVE_DELTA = 6.0
 
+# 感情強度連動の重み（研究 A3）。従来は全ての感情語が一律 ±1 カウントだったが、
+# 「大好き」は「好き」より強く、「最悪」は「つまらない」より強い。語ごとに弱/中/強の
+# 強度重みを与え、好感度の増減幅（register）を強度加重にする。辞書は静的データで
+# 推論不要・決定論的。強度指定の無い語（config のカスタム語を含む）は 1.0 のまま
+# で、既存の「1 語 = 係数 delta」挙動を保つ。極性の判定（classify_sentiment）は
+# 従来どおり整数カウントで行い、強度は「どれだけ動くか」だけに影響する。
+# WRIME Ver.2（感情強度＋極性）の知見を軽量に反映（[HF wrime]）。
+_DEFAULT_INTENSITY = 1.0
+_INTENSITY: Dict[str, float] = {
+    # --- 強い肯定 ---
+    "大好き": 1.6, "love": 1.5, "adorable": 1.3, "wonderful": 1.3,
+    "感謝": 1.2, "嬉しい": 1.1, "うれしい": 1.1,
+    # --- やや控えめな肯定 ---
+    "like you": 0.8, "すごい": 0.8, "great": 0.9, "awesome": 0.9,
+    "kind": 0.9, "やさしい": 0.9, "優しい": 0.9,
+    # --- 強い否定 ---
+    "最悪": 1.6, "worst": 1.6, "hate": 1.5, "むかつく": 1.4,
+    "だまれ": 1.4, "黙れ": 1.4, "馬鹿": 1.3, "stupid": 1.3,
+    # --- やや弱い否定 ---
+    "つまらない": 0.7, "boring": 0.7, "うるさい": 0.8, "annoying": 0.8,
+    "dislike": 0.8, "go away": 0.9,
+}
+# NFC 小文字化した検索キーで引けるよう正規化した参照表。
+_INTENSITY_NORM: Dict[str, float] = {
+    _ud.normalize("NFC", str(k).lower()): float(v) for k, v in _INTENSITY.items()
+}
+
 # 好感度 → レベル境界（下限以上 上限未満）。ラベルは (ja, en)。
 _LEVELS: List[Tuple[float, str, Tuple[str, str]]] = [
     (0.0,  "distant",  ("よそよそしい", "distant")),
@@ -232,23 +259,64 @@ def _emoji_counts(text_norm: str) -> Tuple[int, int]:
     return pos, neg
 
 
-def _polarity_counts(text_norm, positive_words, negative_words) -> Tuple[int, int]:
-    """否定・絵文字を考慮した肯定/否定カウントを返す（1 語につき最大 1）。"""
-    pos = 0
-    neg = 0
+def _intensity_of(kw: str) -> float:
+    """感情語 kw の強度重みを返す（未指定は 1.0）。研究 A3。"""
+    return _INTENSITY_NORM.get(_ud.normalize("NFC", str(kw).lower()), _DEFAULT_INTENSITY)
+
+
+def _iter_polarity_contributions(text_norm, positive_words, negative_words):
+    """寄与する感情語ごとに (極性 'pos'/'neg', 強度重み) を列挙（1 語につき最大 1）。
+
+    否定・絵文字の扱いは _keyword_contribution / _emoji_counts に従う。強度重みは
+    語固有（_intensity_of）。否定で極性が反転した肯定語も、その語本来の強度を保つ。
+    _polarity_counts（極性判定）と _polarity_weights（増減幅）の共通の土台。
+    """
     for w in positive_words:
         c = _keyword_contribution(w, text_norm, base_positive=True)
         if c == "pos":
-            pos += 1
+            yield "pos", _intensity_of(w)
         elif c == "neg":
-            neg += 1
+            yield "neg", _intensity_of(w)
     for w in negative_words:
         c = _keyword_contribution(w, text_norm, base_positive=False)
         if c == "neg":
+            yield "neg", _intensity_of(w)
+
+
+def _polarity_counts(text_norm, positive_words, negative_words) -> Tuple[int, int]:
+    """否定・絵文字を考慮した肯定/否定カウントを返す（1 語につき最大 1）。
+
+    極性の符号（classify_sentiment）を決める整数カウント。強度は加味しない。
+    """
+    pos = 0
+    neg = 0
+    for pol, _w in _iter_polarity_contributions(text_norm, positive_words, negative_words):
+        if pol == "pos":
+            pos += 1
+        else:
             neg += 1
     pe, ne = _emoji_counts(text_norm)
     pos += pe
     neg += ne
+    return pos, neg
+
+
+def _polarity_weights(text_norm, positive_words, negative_words) -> Tuple[float, float]:
+    """否定・絵文字・強度を考慮した肯定/否定の強度加重和を返す（研究 A3）。
+
+    好感度の増減幅（register）に使う。強度指定の無い語は 1.0 なので、従来の
+    「1 語 = 係数 delta」挙動を保つ。絵文字は強度 1.0 として数える。
+    """
+    pos = 0.0
+    neg = 0.0
+    for pol, w in _iter_polarity_contributions(text_norm, positive_words, negative_words):
+        if pol == "pos":
+            pos += w
+        else:
+            neg += w
+    pe, ne = _emoji_counts(text_norm)
+    pos += float(pe)
+    neg += float(ne)
     return pos, neg
 
 
@@ -370,8 +438,9 @@ class MoodTracker:
             return 0.0
         norm = _ud.normalize("NFC", str(text).lower())
 
-        # 否定・絵文字を考慮したハイブリッド判定（classify_sentiment と共通ロジック）。
-        pos_hits, neg_hits = _polarity_counts(
+        # 否定・絵文字・強度を考慮したハイブリッド判定（研究 A2/A3）。増減幅は
+        # 語の強度重みで加重（「大好き」>「好き」、「最悪」>「つまらない」）。
+        pos_hits, neg_hits = _polarity_weights(
             norm, self._all_words(self._positive), self._all_words(self._negative)
         )
 
