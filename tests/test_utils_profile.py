@@ -4,6 +4,7 @@ Stdlib-only regression tests for main/utils_profile.py.
 Run: python -m unittest tests.test_utils_profile -v
 """
 import logging
+import logging.handlers
 import os
 import sys
 import unittest
@@ -19,6 +20,29 @@ class UtilsProfileTests(unittest.TestCase):
         # Importing a profiling helper must not hijack the root logger.
         self.assertEqual(up.logger.name, "utils_profile")
         self.assertFalse(up.logger.propagate)
+
+    def test_log_file_lives_under_config_logs_not_cwd(self):
+        """Regression: the handler used to be `FileHandler('satin_profile.log')`,
+        a bare relative path that resolved against the process's cwd — any
+        --manage invocation from the repo root littered it there, unbounded
+        (no rotation). The path must be repo-root/config/logs/, derived from
+        this module's own location, not wherever the process happens to run
+        from."""
+        handler = up.logger.handlers[0]
+        self.assertTrue(os.path.isabs(handler.baseFilename))
+        self.assertEqual(os.path.basename(handler.baseFilename), "satin_profile.log")
+        self.assertEqual(os.path.basename(os.path.dirname(handler.baseFilename)), "logs")
+        self.assertEqual(
+            os.path.basename(os.path.dirname(os.path.dirname(handler.baseFilename))),
+            "config",
+        )
+
+    def test_uses_rotating_file_handler_with_size_cap(self):
+        """Regression: a plain FileHandler never rotates and grows forever."""
+        handler = up.logger.handlers[0]
+        self.assertIsInstance(handler, logging.handlers.RotatingFileHandler)
+        self.assertGreater(handler.maxBytes, 0)
+        self.assertGreaterEqual(handler.backupCount, 1)
 
     def test_profile_time_returns_value(self):
         @up.profile_time
