@@ -1,15 +1,20 @@
 """
-Property-based testing framework for Satin using Hypothesis.
+Property-based tests for schema_validators.py using Hypothesis.
 
-Provides strategies for generating test data and property tests for
-YouTube, Web, and Paper integrators with edge case coverage.
+Provides strategies for generating test data and property tests for the
+YouTube/Web/Arxiv search request and cache/result validation models with
+edge case coverage.
 
 Implements:
 - Custom Hypothesis strategies for Satin data types
-- Property-based tests for integrator functions
+- Property-based tests for schema_validators' pydantic models
 - Edge case and invariant testing
-- Regression test creation from failures
 """
+import os
+import sys
+
+_MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
+sys.path.insert(0, _MAIN)
 
 try:
     from hypothesis import given, strategies as st, settings, HealthCheck, assume
@@ -28,9 +33,6 @@ except ImportError:
         def __getattr__(self, name):
             return lambda *a, **kw: None
     st = _StStrategies()  # type: ignore[assignment]
-    class settings:  # type: ignore[no-redef]
-        def __init__(self, *a, **kw): pass
-        def __call__(self, f): return f
     class _HCMeta(type):
         def __getattr__(cls, name): return name
     class HealthCheck(metaclass=_HCMeta): all = []  # type: ignore[no-redef]
@@ -116,11 +118,14 @@ def valid_api_keys(draw) -> str:
 def youtube_search_requests(draw) -> YouTubeSearchRequest:
     """Strategy for generating YouTubeSearchRequest objects."""
     return YouTubeSearchRequest(
+        # .filter() excludes whitespace-only draws: the alphabet includes a
+        # space, so an unfiltered draw can be all-spaces, which
+        # YouTubeSearchRequest's own validator correctly rejects.
         query=draw(st.text(
             alphabet='abcdefghijklmnopqrstuvwxyz ',
             min_size=1,
             max_size=100
-        )),
+        ).filter(lambda s: s.strip())),
         max_results=draw(st.integers(min_value=1, max_value=50)),
         api_key=draw(st.one_of(
             st.none(),
@@ -287,6 +292,11 @@ class TestYouTubeSearchRequest:
     @given(st.text(min_size=1, max_size=2000))
     def test_query_validation(self, query: str):
         """Test query field validation."""
+        # YouTubeSearchRequest's own validator correctly rejects
+        # whitespace-only queries ("Query cannot be empty or whitespace") —
+        # st.text() can generate those, so skip them rather than assert a
+        # weaker contract than the real validator enforces.
+        assume(query.strip())
         req = YouTubeSearchRequest(query=query)
         assert req.query is not None
 
@@ -420,11 +430,18 @@ class TestCacheEntry:
         assert not entry.is_expired
 
     @given(
-        st.datetimes(min_value=datetime(2025, 1, 1)),
-        st.timedeltas(min_value=timedelta(seconds=300))
+        # Bounded to 10 years: unbounded timedeltas can push `created + delta`
+        # past datetime.max and overflow — no real cache TTL needs centuries.
+        st.timedeltas(min_value=timedelta(seconds=300), max_value=timedelta(days=3650))
     )
-    def test_expiration_calculation(self, created: datetime, delta: timedelta):
+    def test_expiration_calculation(self, delta: timedelta):
         """Test expiration is calculated correctly."""
+        # `created` must be "now" at execution time, matching the
+        # cache_entries() strategy above — CacheEntry's own validator
+        # requires expires_at > datetime.now(), so a hardcoded historical
+        # anchor (e.g. a fixed year) goes stale and starts failing once
+        # real time catches up to it.
+        created = datetime.now()
         expires = created + delta
         entry = CacheEntry(
             key="test",
