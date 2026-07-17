@@ -5,6 +5,25 @@ All notable changes to Satin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Avatar model rendering in the main GUI**: the model chosen via
+  `--avatar-loader` is now actually displayed by the main 3D companion window
+  (wireframe of the mesh vertices). New `avatar_model_store.py` persists the
+  selection (cwd-independent, atomic) and the GUI resolves/loads it at startup;
+  new `/avatar` slash command shows or refreshes the current model.
+
+### Fixed
+- **glTF loader silently rendered nothing for real files**: with pygltflib
+  1.16 the GLB binary lives in `gltf.binary_blob()`, not `Buffer.get_data()`/
+  `.data`, so `load_first_mesh_vertices` returned nothing for real `.glb`
+  files. Now reads the correct binary source and honors bufferView/accessor
+  byte offsets. Added `normalize_vertices` (centroid-center, unit max radius).
+- **Loading a missing/corrupt avatar crashed the viewer**: `GLTFModel.load_gltf`
+  in both `avatar_3d_gltf_viewer.py` and `autonomous_gltf_avatar.py` now
+  degrades gracefully instead of propagating FileNotFoundError/ValueError.
+
 ## [1.1.0] - 2026-07-17
 
 Research-driven companion features, commercial-quality packaging fixes, and

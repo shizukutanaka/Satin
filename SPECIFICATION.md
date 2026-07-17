@@ -224,10 +224,22 @@ satin_launcher.py
 | W4 | 低 | `dashboard.py` | ハードコードされたポート（定数化されていない）。再利用・テスト時に変更しづらい。 |
 | W5 | 低 | 任意依存の管理 | 依存一覧が `satin_launcher.py` 内にハードコードされ、`setup/requirements.txt` と二重管理。 |
 | W6 | 情報 | `null`/型不正データ耐性 | 直近セッションで JSONL/設定の `null` 値クラッシュを多数修正済み（§ CHANGELOG）。同種の防御は今後も新規 I/O ごとに必要。 |
-| W7 | 解消済 (I25) | `satin_launcher.py` 既定モード | 商用品質監査で発見: 既定起動（launch/win/run_satin.bat・launch/mac/run_satin.sh・README が案内する手順すべて）が `avatar_loader.AvatarLoaderApp`（外部ファイルを選ぶだけの tkinter ダイアログ、実際には何も表示しない）を開くだけで、TTS・好感度・会話ログ・スラッシュコマンドを持つ本体 GUI (`avatar_3d_autonomous_tts.MainWindow`) には一切繋がっていなかった。3D モデル読み込み自体は `avatar_3d_gltf_viewer.py` にのみ実装されており（頂点のみのワイヤーフレーム、テクスチャ・スキニング無し）、本体 GUI に統合されていない点は未解消（要設計判断）。 |
+| W7 | 解消済 (I25/I26) | `satin_launcher.py` 既定モード + アバター描画 | 商用品質監査で発見: 既定起動が `avatar_loader.AvatarLoaderApp`（何も表示しないファイル選択ダイアログ）を開くだけで本体 GUI に繋がらず、かつ本体 GUI は常に仮の球体しか描画せず、選んだアバターモデルを表示する手段が無かった。I25 で既定起動を本体 GUI に接続、I26 で `--avatar-loader` の選択を共有ストア経由で本体 GUI が読み込み・描画するよう統合（頂点ワイヤーフレーム、テクスチャ・スキニングは対象外）。 |
 
 ## 7. 改善点 (Improvements) — 本コミットで実装
 
+- **[実装] I26 (W7 完了 — 選んだアバターを本体 GUI が描画):**
+  `--avatar-loader` で選んだモデルを本体 3D GUI が実際に描画するよう統合。
+  新規 `avatar_model_store.py`（cwd 非依存の canonical な選択履歴・アトミック
+  保存・拡張子/実在チェック付き解決）を受け渡し口として `avatar_loader.py` と
+  `avatar_3d_autonomous_tts.py` を接続。`gltf_utils.load_first_mesh_vertices` を
+  実 pygltflib 1.16（GLB の頂点は `Buffer.get_data()`/`.data` ではなく
+  `gltf.binary_blob()` にある）に対応させ、bufferView/accessor のオフセットも
+  尊重するよう修正（この不整合で従来は実 GLB を渡しても何も描画されなかった）。
+  `gltf_utils.normalize_vertices` で重心中心・最大半径 1 に正規化。`GLTFModel`
+  の読み込みを try/except で保護し、存在しない/壊れたファイルでもクラッシュせず
+  球体へフォールバック。GUI に `/avatar` コマンド追加。テスト 30 件超追加
+  （store・normalize・実 GLB 往復・ロード堅牢性・コマンド）。
 - **[実装] I25 (W7 解消 — 既定起動が本体 GUI に繋がっていなかった):**
   `satin_launcher.py` の既定モードを `avatar_loader.AvatarLoaderApp`（ファイル
   選択のみで何も起動しない tkinter ダイアログ）から、TTS・好感度・会話ログ・

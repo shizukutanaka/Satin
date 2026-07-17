@@ -149,5 +149,178 @@ class LoadFirstMeshVerticesNumpyTests(unittest.TestCase):
             gltf_utils.load_first_mesh_vertices(self._gltf_with_payload(b""), np))
 
 
+class NormalizeVerticesTests(unittest.TestCase):
+    """normalize_vertices centers on the centroid and scales max radius to 1,
+    so avatar models with arbitrary scale/offset render inside the viewport."""
+
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy not installed")
+
+    def test_centers_on_centroid(self):
+        import numpy as np
+        v = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0], [2, 2, 0]], dtype=np.float32)
+        out = gltf_utils.normalize_vertices(v, np)
+        self.assertTrue(np.allclose(out.mean(axis=0), 0, atol=1e-6))
+
+    def test_max_radius_becomes_one(self):
+        import numpy as np
+        v = np.array([[0, 0, 0], [10, 0, 0], [0, 10, 0]], dtype=np.float32)
+        out = gltf_utils.normalize_vertices(v, np)
+        radii = np.sqrt((out * out).sum(axis=1))
+        self.assertAlmostEqual(float(np.max(radii)), 1.0, places=5)
+
+    def test_translation_and_scale_invariant_shape(self):
+        # Same shape at different offset/scale normalizes to (near) identical.
+        import numpy as np
+        base = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)
+        shifted = base * 5.0 + np.array([100, -50, 7], dtype=np.float32)
+        a = gltf_utils.normalize_vertices(base, np)
+        b = gltf_utils.normalize_vertices(shifted, np)
+        self.assertTrue(np.allclose(a, b, atol=1e-5))
+
+    def test_none_returns_none(self):
+        import numpy as np
+        self.assertIsNone(gltf_utils.normalize_vertices(None, np))
+
+    def test_empty_returns_none(self):
+        import numpy as np
+        self.assertIsNone(
+            gltf_utils.normalize_vertices(np.zeros((0, 3), dtype=np.float32), np))
+
+    def test_wrong_shape_returns_none(self):
+        import numpy as np
+        self.assertIsNone(
+            gltf_utils.normalize_vertices(np.zeros((4, 2), dtype=np.float32), np))
+
+    def test_non_finite_returns_none(self):
+        import numpy as np
+        v = np.array([[0, 0, 0], [np.inf, 0, 0]], dtype=np.float32)
+        self.assertIsNone(gltf_utils.normalize_vertices(v, np))
+
+    def test_all_identical_points_centers_without_scaling(self):
+        # Zero max radius must not divide-by-zero; centering yields origin.
+        import numpy as np
+        v = np.array([[3, 3, 3], [3, 3, 3]], dtype=np.float32)
+        out = gltf_utils.normalize_vertices(v, np)
+        self.assertIsNotNone(out)
+        self.assertTrue(np.allclose(out, 0, atol=1e-6))
+
+
+class RealGlbRoundTripTests(unittest.TestCase):
+    """End-to-end against a real .glb built with pygltflib — the stub tests
+    can't catch API drift. Regression: pygltflib 1.16 GLB Buffers expose
+    neither get_data() nor .data (the binary lives in gltf.binary_blob()),
+    so the loader silently returned nothing for real files until
+    _resolve_buffer_bytes was added."""
+
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+            import pygltflib  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy/pygltflib not installed")
+
+    def _build_glb(self, verts, path):
+        import pygltflib
+        blob = verts.tobytes()
+        gltf = pygltflib.GLTF2(
+            scene=0,
+            scenes=[pygltflib.Scene(nodes=[0])],
+            nodes=[pygltflib.Node(mesh=0)],
+            meshes=[pygltflib.Mesh(primitives=[pygltflib.Primitive(
+                attributes=pygltflib.Attributes(POSITION=0))])],
+            accessors=[pygltflib.Accessor(
+                bufferView=0, componentType=pygltflib.FLOAT, count=len(verts),
+                type=pygltflib.VEC3, max=verts.max(axis=0).tolist(),
+                min=verts.min(axis=0).tolist())],
+            bufferViews=[pygltflib.BufferView(
+                buffer=0, byteOffset=0, byteLength=len(blob))],
+            buffers=[pygltflib.Buffer(byteLength=len(blob))],
+        )
+        gltf.set_binary_blob(blob)
+        gltf.save(path)
+
+    def test_loads_vertices_from_real_glb(self):
+        import numpy as np
+        import tempfile
+        import pygltflib
+        verts = np.array([[0, 0, 0], [2, 0, 0], [0, 3, 0], [0, 0, 4]],
+                         dtype=np.float32)
+        tmp = tempfile.mkdtemp()
+        try:
+            p = os.path.join(tmp, "tetra.glb")
+            self._build_glb(verts, p)
+            g = pygltflib.GLTF2().load(p)
+            out = gltf_utils.load_first_mesh_vertices(g, np)
+            self.assertIsNotNone(out)
+            self.assertEqual(out.shape, (4, 3))
+            self.assertTrue(np.allclose(np.sort(out, axis=0),
+                                        np.sort(verts, axis=0), atol=1e-5))
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_atts_load_model_vertices_end_to_end(self):
+        # The main GUI's _load_model_vertices: parse + normalize in one call.
+        import numpy as np
+        import tempfile
+        _atts_main = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
+        sys.path.insert(0, _atts_main)
+        import avatar_3d_autonomous_tts as atts
+        verts = np.array([[0, 0, 0], [10, 0, 0], [0, 10, 0]], dtype=np.float32)
+        tmp = tempfile.mkdtemp()
+        try:
+            p = os.path.join(tmp, "tri.glb")
+            self._build_glb(verts, p)
+            out = atts._load_model_vertices(p)
+            self.assertIsNotNone(out)
+            self.assertEqual(out.shape, (3, 3))
+            # normalized: centered, max radius 1
+            self.assertTrue(np.allclose(out.mean(axis=0), 0, atol=1e-5))
+            radii = np.sqrt((out * out).sum(axis=1))
+            self.assertAlmostEqual(float(np.max(radii)), 1.0, places=4)
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class GltfModelRobustnessTests(unittest.TestCase):
+    """avatar_3d_gltf_viewer.GLTFModel must degrade gracefully on a
+    nonexistent/corrupt file instead of crashing the viewer. Regression:
+    pygltflib.GLTF2().load() raises FileNotFoundError/ValueError, and the
+    unguarded call would propagate out of the QFileDialog handler. This only
+    surfaced once pygltflib was actually installed (a declared dependency)."""
+
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+            import pygltflib  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy/pygltflib not installed")
+
+    def test_nonexistent_file_does_not_raise(self):
+        import avatar_3d_gltf_viewer as viewer
+        model = viewer.GLTFModel("/no/such/avatar.glb")  # must not raise
+        self.assertEqual(len(model.vertices), 0)
+
+    def test_corrupt_file_does_not_raise(self):
+        import tempfile
+        import avatar_3d_gltf_viewer as viewer
+        tmp = tempfile.mkdtemp()
+        try:
+            p = os.path.join(tmp, "bad.gltf")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("{ not valid gltf json")
+            model = viewer.GLTFModel(p)  # must not raise
+            self.assertEqual(len(model.vertices), 0)
+        finally:
+            import shutil
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

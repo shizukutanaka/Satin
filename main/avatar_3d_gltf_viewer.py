@@ -1,6 +1,9 @@
 import sys
 import os
 import queue
+import logging
+
+logger = logging.getLogger(__name__)
 
 from optional_deps import (  # noqa: E402
     np, QApplication, QMainWindow, QOpenGLWidget,
@@ -30,9 +33,16 @@ class GLTFModel:
     def load_gltf(self):
         if pygltflib is None or np is None:
             return
-        # シンプルなGLTF/GLB読み込み（バイナリメッシュのみ対応）
-        gltf = pygltflib.GLTF2().load(self.filename)
-        vertices = load_first_mesh_vertices(gltf, np)
+        # シンプルなGLTF/GLB読み込み（バイナリメッシュのみ対応）。
+        # 存在しない/壊れたファイルでも落ちないよう保護する（pygltflib.load は
+        # ファイル欠如で FileNotFoundError、破損 JSON で ValueError を投げる）。
+        try:
+            gltf = pygltflib.GLTF2().load(self.filename)
+            vertices = load_first_mesh_vertices(gltf, np)
+        except Exception as e:
+            logger.info("GLTF モデルの読み込みに失敗しました (%s): %s",
+                        self.filename, e)
+            return
         if vertices is None:
             return
         self.vertices = vertices

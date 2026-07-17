@@ -1,5 +1,8 @@
 import sys
 import random
+import logging
+
+logger = logging.getLogger(__name__)
 
 from optional_deps import (  # noqa: E402
     np, QApplication, QMainWindow, QOpenGLWidget,
@@ -31,7 +34,20 @@ class GLTFModel:
     def load_gltf(self):
         if pygltflib is None or np is None:
             return
-        # 頂点・面・アニメーションの簡易ローダー
+        # 頂点・面・アニメーションの簡易ローダー。
+        # 存在しない/壊れた glTF を渡されても落ちないよう全体を保護する
+        # （pygltflib.load はファイル欠如で FileNotFoundError、破損 JSON で
+        # ValueError を投げる）。失敗時は空のまま＝描画されないだけにする。
+        try:
+            self._load_gltf_unsafe()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.info("glTF アバターの読み込みに失敗しました (%s): %s",
+                        self.filename, e)
+            self.vertices = []
+            self.faces = []
+            self.animations = []
+
+    def _load_gltf_unsafe(self):
         gltf = pygltflib.GLTF2().load(self.filename)
         vertices = load_first_mesh_vertices(gltf, np)
         if vertices is None:
