@@ -5,7 +5,59 @@ All notable changes to Satin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - Integration Module Optimization
+## [1.1.0] - 2026-07-17
+
+Research-driven companion features, commercial-quality packaging fixes, and
+test-infrastructure hardening (2,876 tests green).
+
+### Added - Research-Driven Companion Features (all offline / rule-based, no LLM)
+- **Emotional-dependence safety guardrails** (`usage_guardrails.py`): detects
+  habitual late-night use (0:00–4:59) and extreme single-day frequency, and
+  gently nudges toward rest and real-world connection — once per day,
+  non-coercive (APA 2026 / Princeton CITP 2025 / arXiv:2506.12605).
+- **Negation & emoji-aware hybrid sentiment** (`mood.classify_sentiment`):
+  「好きじゃない」/"I don't like you" now classify as negative; emoji/kaomoji
+  sentiment counted (WRIME, NAACL 2021).
+- **Emotion-intensity-weighted lexicon** (`mood.py`): 「大好き」moves affinity
+  more than 「好き」, 「最悪」more than 「つまらない」; unlisted words keep
+  weight 1.0.
+- **BM25 relevance memory recall** (`conversation_log.search_relevant`): recalls
+  the closest past conversation across word-order/phrasing differences (CJK
+  character bigrams, pure Python); GUI `/search` falls back to it on zero
+  exact matches.
+- **Change-point mood detection** (`user_wellbeing.wellbeing_shift`): notices
+  when recent mood shifts from the user's own baseline, with evidence.
+- **Circadian late-night tone** (`persona.py`): new `late_night` (0–5時) time
+  bucket with sleep-considerate dialogue, separated from `night`.
+
+### Fixed - Commercial-Quality Audit
+- **Default launch dead end**: every documented launch path opened a
+  file-picker dialog that did nothing; the default now starts the real 3D
+  avatar GUI (TTS / mood / conversation log / slash commands). The picker
+  remains via `--avatar-loader`.
+- **Broken install path**: LICENSE file added (README already claimed MIT);
+  PyQt5/PyOpenGL added to `setup/requirements.txt` and the dependency
+  manifest; broken per-OS requirements files (non-pip-installable `tkinter`)
+  removed; `setup.bat`/`setup.sh` now resolve paths from their own location;
+  README's duplicated/contradictory install instructions consolidated.
+- **Test suite polluted real user data**: running tests appended fixture text
+  to the real `avatar_event_log.jsonl`; new autouse conftest fixture isolates
+  the conversation-log singleton to a temp dir.
+- **Profiling logger** littered the repo root with an unbounded
+  `satin_profile.log`.
+- **Orphaned property-based test suite** (550 lines, never collected from
+  `main/`) moved to `tests/`, its two strategy bugs fixed, hypothesis/pydantic
+  declared.
+
+### Changed
+- Historical AI-session reports moved from the repo root to `docs/history/`;
+  research docs targeting the nonexistent TypeScript library now carry a
+  clarifying header pointing to `RESEARCH_DRIVEN_IMPROVEMENTS_PY.md`.
+- CI workflow definition installs from `setup/requirements.txt` instead of a
+  hand-typed drifted list (activation still requires copying it to
+  `.github/workflows/ci.yml`).
+
+## [Unreleased → merged into 1.1.0] - Integration Module Optimization
 
 ### Added - Performance & Reliability Enhancements
 
