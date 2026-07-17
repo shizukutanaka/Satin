@@ -16,6 +16,13 @@ SUPPORTED_EXTS = [".vrm", ".fbx", ".glb", ".gltf"]
 HISTORY_FILE = "avatar_history.json"
 THUMBNAIL_SIZE = (80, 80)
 
+# 選択したアバターを本体 3D GUI と共有するための永続ストア。未import時は
+# 従来の cwd 相対 avatar_history.json 挙動へフォールバックする。
+try:
+    import avatar_model_store as _store
+except ImportError:  # pragma: no cover - defensive
+    _store = None  # type: ignore
+
 class AvatarLoaderApp:
     def __init__(self, root):
         self.root = root
@@ -87,6 +94,14 @@ class AvatarLoaderApp:
             self.thumb_label.config(image='', text='[No Preview]')
 
     def load_history(self):
+        # 共有ストア経由で読み込み、本体 3D GUI と同じ履歴を参照する。
+        if _store is not None:
+            try:
+                self.history = _store.load_history()
+                self.update_history_list()
+                return
+            except Exception:
+                pass  # フォールバックへ
         self.history = []
         if os.path.exists(HISTORY_FILE):
             try:
@@ -100,6 +115,15 @@ class AvatarLoaderApp:
         self.update_history_list()
 
     def add_history(self, path):
+        # 共有ストアへ保存すると、次回の本体 3D GUI 起動でこのアバターが
+        # 描画されるようになる。
+        if _store is not None:
+            try:
+                self.history = _store.save_selection(path)
+                self.update_history_list()
+                return
+            except Exception:
+                pass  # フォールバックへ
         if path in self.history:
             self.history.remove(path)
         self.history.insert(0, path)

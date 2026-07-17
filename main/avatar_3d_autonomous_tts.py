@@ -8,10 +8,23 @@ logger = logging.getLogger(__name__)
 from optional_deps import (  # noqa: E402
     QApplication, QMainWindow, QOpenGLWidget,
     QPushButton, QLabel, QLineEdit, QTimer,
+    np, pygltflib,
 )
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 from tts_thread import TTSThread  # noqa: E402,F401
 from gl_widget_base import GLViewportMixin  # noqa: E402
+
+# 選んだアバターモデル (.glb/.gltf/.vrm) の頂点を読み込んで描画するための
+# 任意依存。未導入・失敗時は従来の球体プレースホルダにフォールバックする。
+try:
+    from gltf_utils import load_first_mesh_vertices, normalize_vertices  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    load_first_mesh_vertices = None
+    normalize_vertices = None
+try:
+    import avatar_model_store as _avatar_model_store  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    _avatar_model_store = None
 
 # paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
 # 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
@@ -114,6 +127,26 @@ except Exception:  # pragma: no cover - defensive
 _FOLLOW_UP_EVERY = 4
 
 
+def _load_model_vertices(path):
+    """アバターファイル path の正規化済み頂点配列 (N, 3) を返す。失敗時 None。
+
+    pygltflib / numpy / gltf_utils のいずれかが無い、読み込み・解析に失敗した、
+    頂点が取れない場合は None を返し、呼び出し側は球体プレースホルダへ安全に
+    フォールバックする（GUI を壊さない）。avatar_3d_gltf_viewer.GLTFModel と
+    同じ読み込み経路を共有する。
+    """
+    if (pygltflib is None or np is None or load_first_mesh_vertices is None
+            or normalize_vertices is None or not path):
+        return None
+    try:
+        gltf = pygltflib.GLTF2().load(path)
+        vertices = load_first_mesh_vertices(gltf, np)
+        return normalize_vertices(vertices, np)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.info("アバターモデルの読み込みに失敗しました (%s): %s", path, e)
+        return None
+
+
 def make_reminder_speak(viewer, tts_queue):
     """休憩リマインダー用の speak コールバックを生成する。
 
@@ -166,9 +199,39 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self.pending_fact_key = None  # 一問一答: 回答待ちの質問キー
         self._clear_log_pending = False  # /clear-log の二段階確認フラグ
         self._reset_mood_pending = False  # /reset-mood の二段階確認フラグ
+        # --avatar-loader で選んだアバターモデルの頂点（無ければ球体を描画）
+        self.avatar_model_vertices = None
+        self.avatar_model_path = None
 
     def set_tts_queue(self, tts_queue):
         self.tts_queue = tts_queue
+
+    def load_avatar_model(self, path=None):
+        """アバターモデルを読み込んで描画対象にする。成功なら True。
+
+        path 未指定なら共有ストア（avatar_model_store）が解決する「最後に選んだ
+        アバター」を使う。読み込めなければ状態を変えず False を返す（従来の球体
+        プレースホルダのまま）。GUI 起動時と /avatar コマンドから呼ばれる。
+        """
+        if path is None:
+            if _avatar_model_store is None:
+                return False
+            try:
+                path = _avatar_model_store.resolve_selected_avatar()
+            except Exception:
+                path = None
+        if not path:
+            return False
+        vertices = _load_model_vertices(path)
+        if vertices is None:
+            return False
+        self.avatar_model_vertices = vertices
+        self.avatar_model_path = path
+        try:
+            self.update()
+        except Exception:
+            pass  # ヘッドレス/未初期化ウィジェットでも状態更新は成立させる
+        return True
 
     def speak_comment(self, comment):
         # ペルソナが応答を返せばそれを表示・読み上げ、無ければ入力をそのまま
@@ -414,6 +477,9 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l in ("feeling", "checkin"):
             self._cmd_feeling_gui(lang)
             return True
+        if cmd_l == "avatar":
+            self._cmd_avatar_gui(lang)
+            return True
         if cmd_l == "help":
             self._cmd_help_gui(lang)
             return True
@@ -426,13 +492,13 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                      "/like <thing>, /forget <thing>, /forget-fact <text>, "
                      "/whoami, /forget-me, /mood, /reset-mood, /stats, "
                      "/export-log [path], /clear-log, /history, /search <keyword>, "
-                     "/recap, /feeling, /help")
+                     "/recap, /feeling, /avatar, /help")
         else:
             reply = ("コマンド: /gift <プレゼント>、/callme <名前>、/birthday MM-DD、"
                      "/like <好きなもの>、/forget <好きなもの>、/forget-fact <内容>、"
                      "/whoami、/forget-me、/mood、/reset-mood、/stats、"
                      "/export-log [パス]、/clear-log、/history、/search <キーワード>、"
-                     "/recap、/feeling、/help")
+                     "/recap、/feeling、/avatar、/help")
         self._speak_reply(reply)
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
@@ -1028,6 +1094,31 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                      else "最近は落ち着いてるみたいだね。いい感じ。")
         self._speak_reply(reply)
 
+    def _cmd_avatar_gui(self, lang: str) -> None:
+        """GUI の /avatar コマンド: 現在のアバターモデルを表示・再読み込みする。
+
+        --avatar-loader で選び直した直後でも、ここで最新の選択を取り込める。
+        """
+        import os as _os
+        is_en = lang.startswith("en")
+        # 直近の選択を取り込む（既に読み込み済みでも上書きで最新化）。
+        try:
+            self.load_avatar_model()
+        except Exception as e:
+            logger.debug("/avatar 再読み込みに失敗（GUI）: %s", e)
+        path = getattr(self, "avatar_model_path", None)
+        if path:
+            name = _os.path.basename(path)
+            reply = (f"Currently showing avatar: {name}" if is_en
+                     else f"いま表示してるアバター: {name}")
+        else:
+            reply = ("No avatar model loaded — pick one with "
+                     "`python satin_launcher.py --avatar-loader` (.glb/.gltf/.vrm), "
+                     "then restart." if is_en
+                     else "アバターモデルは未設定だよ。`python satin_launcher.py "
+                     "--avatar-loader` で .glb/.gltf/.vrm を選んでから起動し直してね。")
+        self._speak_reply(reply)
+
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:
         """GUI の /birthday MM-DD コマンドを処理する。"""
         if not date_str:
@@ -1083,8 +1174,16 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         glLoadIdentity()
         glTranslatef(self.position[0], self.position[1], -5.0)
         glColor3f(0.6, 0.8, 1.0)
-        quad = gluNewQuadric()
-        gluSphere(quad, 1.0, 32, 32)
+        # 読み込み済みアバターモデルがあればワイヤーフレーム描画、無ければ球体。
+        vertices = self.avatar_model_vertices
+        if vertices is not None and len(vertices) > 0:
+            glBegin(GL_LINE_STRIP)
+            for v in vertices:
+                glVertex3f(float(v[0]), float(v[1]), float(v[2]))
+            glEnd()
+        else:
+            quad = gluNewQuadric()
+            gluSphere(quad, 1.0, 32, 32)
 
 class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
@@ -1102,6 +1201,11 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         self.break_reminder = None
         self.viewer = AutonomousAvatarViewer(self)
         self.viewer.set_tts_queue(self.tts_queue)
+        # --avatar-loader で選んだアバターがあれば起動時に読み込んで描画する。
+        try:
+            self.viewer.load_avatar_model()
+        except Exception as e:
+            logger.debug("起動時のアバターモデル読み込みに失敗: %s", e)
         self.setCentralWidget(self.viewer)
         self.autonomous_btn = QPushButton('自律モードON', self)
         self.autonomous_btn.setGeometry(10, 10, 120, 30)

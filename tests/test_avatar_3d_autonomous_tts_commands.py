@@ -467,6 +467,97 @@ class NewCommandDispatchTests(unittest.TestCase):
             self.assertTrue(v._handle_slash_command_gui("feeling", "ja", None))
             self.assertTrue(v._handle_slash_command_gui("checkin", "ja", None))
 
+    def test_avatar_dispatches(self):
+        v = _fake_viewer(avatar_model_vertices=None, avatar_model_path=None)
+        with mock.patch.object(_mod, "_avatar_model_store", None):
+            self.assertTrue(v._handle_slash_command_gui("avatar", "ja", None))
+
+
+class LoadAvatarModelTests(unittest.TestCase):
+    """AutonomousAvatarViewer.load_avatar_model wires the --avatar-loader
+    selection into the main 3D GUI. Regression for W7: the flagship GUI used
+    to always draw a placeholder sphere with no way to show a chosen model."""
+
+    def _viewer(self):
+        v = _fake_viewer(avatar_model_vertices=None, avatar_model_path=None)
+        v.update = lambda: None  # headless: no real Qt widget
+        return v
+
+    def test_explicit_path_success_sets_state(self):
+        v = self._viewer()
+        with mock.patch.object(_mod, "_load_model_vertices", return_value=[[0, 0, 0], [1, 1, 1]]):
+            ok = v.load_avatar_model("/models/a.glb")
+        self.assertTrue(ok)
+        self.assertEqual(v.avatar_model_path, "/models/a.glb")
+        self.assertIsNotNone(v.avatar_model_vertices)
+
+    def test_load_failure_leaves_state_unchanged(self):
+        v = self._viewer()
+        with mock.patch.object(_mod, "_load_model_vertices", return_value=None):
+            ok = v.load_avatar_model("/models/broken.glb")
+        self.assertFalse(ok)
+        self.assertIsNone(v.avatar_model_path)
+        self.assertIsNone(v.avatar_model_vertices)
+
+    def test_no_path_uses_store_resolution(self):
+        v = self._viewer()
+        fake_store = mock.Mock()
+        fake_store.resolve_selected_avatar.return_value = "/models/resolved.vrm"
+        with mock.patch.object(_mod, "_avatar_model_store", fake_store), \
+             mock.patch.object(_mod, "_load_model_vertices", return_value=[[0, 0, 0]]):
+            ok = v.load_avatar_model()
+        self.assertTrue(ok)
+        self.assertEqual(v.avatar_model_path, "/models/resolved.vrm")
+
+    def test_no_store_and_no_path_returns_false(self):
+        v = self._viewer()
+        with mock.patch.object(_mod, "_avatar_model_store", None):
+            self.assertFalse(v.load_avatar_model())
+
+    def test_store_resolves_none_returns_false(self):
+        v = self._viewer()
+        fake_store = mock.Mock()
+        fake_store.resolve_selected_avatar.return_value = None
+        with mock.patch.object(_mod, "_avatar_model_store", fake_store):
+            self.assertFalse(v.load_avatar_model())
+
+
+class AvatarCommandGuiTests(unittest.TestCase):
+    def _viewer(self):
+        v = _fake_viewer(avatar_model_vertices=None, avatar_model_path=None)
+        v.update = lambda: None
+        return v
+
+    def test_reports_loaded_model_name(self):
+        v = self._viewer()
+        v.avatar_model_path = "/home/u/models/nekomimi.glb"
+        with mock.patch.object(_mod, "_avatar_model_store", None):
+            v._cmd_avatar_gui("ja")
+        self.assertIn("nekomimi.glb", v.comment_text)
+
+    def test_guides_to_loader_when_unset_ja(self):
+        v = self._viewer()
+        with mock.patch.object(_mod, "_avatar_model_store", None):
+            v._cmd_avatar_gui("ja")
+        self.assertIn("--avatar-loader", v.comment_text)
+
+    def test_guides_to_loader_when_unset_en(self):
+        v = self._viewer()
+        with mock.patch.object(_mod, "_avatar_model_store", None):
+            v._cmd_avatar_gui("en")
+        self.assertIn("--avatar-loader", v.comment_text)
+        self.assertIn("No avatar", v.comment_text)
+
+    def test_picks_up_newly_selected_model(self):
+        # /avatar re-resolves, so a selection made after launch is picked up.
+        v = self._viewer()
+        fake_store = mock.Mock()
+        fake_store.resolve_selected_avatar.return_value = "/m/fresh.glb"
+        with mock.patch.object(_mod, "_avatar_model_store", fake_store), \
+             mock.patch.object(_mod, "_load_model_vertices", return_value=[[0, 0, 0]]):
+            v._cmd_avatar_gui("ja")
+        self.assertIn("fresh.glb", v.comment_text)
+
 
 if __name__ == "__main__":
     unittest.main()
