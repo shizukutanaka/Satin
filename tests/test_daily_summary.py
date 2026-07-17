@@ -18,6 +18,11 @@ from daily_summary import (  # noqa: E402
     _load_jsonl, _date_str, _default_event_log, _default_mood_history,
     interaction_streak,
 )
+# Captured at collection time (module import), matching how daily_summary.py's
+# own _DEFAULT_EVENT_LOG was captured — an in-test attribute lookup would
+# instead pick up the per-test conftest.py conversation-log isolation
+# monkeypatch and spuriously mismatch against the already-bound default.
+from conversation_log import DEFAULT_LOGFILE as _REAL_DEFAULT_LOGFILE  # noqa: E402
 
 
 def _ts(dt: datetime) -> float:
@@ -133,8 +138,7 @@ class DefaultPathAlignmentTests(unittest.TestCase):
     always reports 'no activity'."""
 
     def test_event_log_default_matches_conversation_log(self):
-        import conversation_log
-        self.assertEqual(_default_event_log(), conversation_log.DEFAULT_LOGFILE)
+        self.assertEqual(_default_event_log(), _REAL_DEFAULT_LOGFILE)
 
     def test_mood_history_default_matches_mood_module(self):
         import mood

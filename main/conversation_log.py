@@ -26,8 +26,17 @@ from avatar_event_logger import AvatarEventLogger
 
 logger = logging.getLogger(__name__)
 
-# 既存ツール (dashboard / timeline viewer / alert) の既定と同じファイルを共有する
-DEFAULT_LOGFILE = "avatar_event_log.jsonl"
+# 既存ツール (dashboard / timeline viewer / alert) の既定と同じファイルを共有する。
+# 単なるファイル名（相対パス）だとプロセスの cwd 次第でどこに書かれるか変わり、
+# デスクトップショートカット起動・別ディレクトリからのターミナル起動・
+# `pytest tests/` 実行のどれでも別の場所に会話ログが分裂しうる（実際、リポジトリ
+# 直下にテスト実行のたび肥大するファイルが生成される実害があった）。
+# manage_satin.py が既に自前で "_ROOT からの絶対パス" にワークアラウンドして
+# いた通り、ここを唯一の真実の源として絶対パスに固定する。
+DEFAULT_LOGFILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "avatar_event_log.jsonl",
+)
 
 EVENT_USER_COMMENT = "user_comment"
 EVENT_AVATAR_REPLY = "avatar_reply"
@@ -173,9 +182,10 @@ def _iter_gz_lines(gz_path: str) -> Generator[str, None, None]:
 class ConversationLog:
     """ユーザーとアバターの会話を JSONL イベントログへ記録・読み出しするクラス。"""
 
-    def __init__(self, logfile: str = DEFAULT_LOGFILE):
-        self.logfile = logfile
-        self._logger = AvatarEventLogger(logfile)
+    def __init__(self, logfile: Optional[str] = None):
+        # 省略時は呼び出し時点の DEFAULT_LOGFILE（get_conversation_log と同じ理由）。
+        self.logfile = logfile if logfile is not None else DEFAULT_LOGFILE
+        self._logger = AvatarEventLogger(self.logfile)
 
     # ---- 記録 ------------------------------------------------------------ #
     def log_user_comment(self, text: str) -> None:
@@ -439,13 +449,21 @@ _conversation_log: Optional[ConversationLog] = None
 _lock = threading.Lock()
 
 
-def get_conversation_log(logfile: str = DEFAULT_LOGFILE) -> ConversationLog:
-    """共有 ConversationLog を返す（初回呼び出し時に生成）。"""
+def get_conversation_log(logfile: Optional[str] = None) -> ConversationLog:
+    """共有 ConversationLog を返す（初回呼び出し時に生成）。
+
+    logfile 省略時は呼び出し時点の DEFAULT_LOGFILE を使う（関数定義時に束縛した
+    デフォルト引数値ではなく）。これにより、テストが conftest.py 等で
+    conversation_log.DEFAULT_LOGFILE を差し替えれば、引数省略で呼ぶ全モジュール
+    （avatar_3d_autonomous_tts / persona_cli 等）が即座にそれに従う。
+    """
     global _conversation_log
     if _conversation_log is None:
         with _lock:
             if _conversation_log is None:
-                _conversation_log = ConversationLog(logfile)
+                _conversation_log = ConversationLog(
+                    logfile if logfile is not None else DEFAULT_LOGFILE
+                )
     return _conversation_log
 
 

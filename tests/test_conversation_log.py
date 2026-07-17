@@ -16,11 +16,45 @@ sys.path.insert(0, _MAIN)
 
 from conversation_log import (  # noqa: E402
     ConversationLog,
+    DEFAULT_LOGFILE,
     EVENT_AVATAR_REPLY,
     EVENT_USER_COMMENT,
     get_conversation_log,
     reset_conversation_log,
 )
+
+
+class DefaultLogfileIsCwdIndependentTests(unittest.TestCase):
+    """Regression: DEFAULT_LOGFILE used to be the bare string
+    'avatar_event_log.jsonl'. Every production call site
+    (avatar_3d_autonomous_tts.py, persona_cli.py) calls get_conversation_log()
+    with no argument, so a relative default meant the conversation history —
+    the core "memory" behind /recap, /search, and wellbeing tracking — landed
+    in whatever directory the process happened to be launched from, silently
+    fragmenting across desktop-shortcut vs. terminal-vs-test-run invocations.
+    manage_satin.py had already worked around this locally by re-deriving an
+    absolute path; the constant itself must be absolute so every caller
+    (including test runs) resolves to the same real file regardless of cwd.
+    """
+
+    def test_default_logfile_is_absolute(self):
+        self.assertTrue(os.path.isabs(DEFAULT_LOGFILE))
+
+    def test_default_logfile_is_repo_root_anchored(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.assertEqual(DEFAULT_LOGFILE, os.path.join(repo_root, "avatar_event_log.jsonl"))
+
+    def test_default_logfile_independent_of_cwd(self):
+        cwd = os.getcwd()
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                os.chdir(d)
+                # Re-import is unnecessary — DEFAULT_LOGFILE was computed once
+                # at module import from __file__, not from cwd.
+                self.assertTrue(os.path.isabs(DEFAULT_LOGFILE))
+                self.assertNotIn(d, DEFAULT_LOGFILE)
+        finally:
+            os.chdir(cwd)
 
 
 class _TmpLogBase(unittest.TestCase):

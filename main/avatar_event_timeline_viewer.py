@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 import html as _html
@@ -8,8 +9,15 @@ try:
 except ImportError:
     QApplication = QMainWindow = QListWidget = QLabel = QVBoxLayout = QWidget = QFileDialog = Qt = None  # type: ignore
 
+try:
+    from conversation_log import DEFAULT_LOGFILE as _DEFAULT_EVENT_LOG
+except Exception:
+    _DEFAULT_EVENT_LOG = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "avatar_event_log.jsonl"
+    )
+
 class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
-    def __init__(self, logfile="avatar_event_log.jsonl"):
+    def __init__(self, logfile=_DEFAULT_EVENT_LOG):
         super().__init__()
         self.setWindowTitle("アバターイベントタイムラインビューア")
         self.resize(700, 500)

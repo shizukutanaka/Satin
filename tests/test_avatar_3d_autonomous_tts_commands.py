@@ -96,11 +96,20 @@ class _FakeConvLog:
 
 
 class ForgetFactGuiTests(unittest.TestCase):
+    """Regression: these tests didn't mock get_conversation_log (unlike every
+    sibling GUI-command test class in this file), so _cmd_forget_fact_gui's
+    trailing get_conversation_log().log_exchange(...) call hit the REAL
+    process-wide singleton and wrote real "/forget-fact ..." conversation
+    entries into the actual conversation_log.DEFAULT_LOGFILE file on every
+    test run — polluting real user/app data with test fixtures."""
+
     def test_removes_matching_fact_by_partial_value(self):
         v = _fake_viewer()
         prof = _FakeProfile(facts={"hobby": "登山"})
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
         with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
-             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"):
+             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"), \
+             mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
             v._cmd_forget_fact_gui("登山", "ja")
         self.assertNotIn("hobby", prof.facts)
         self.assertIn("わかった", v.comment_text)
@@ -108,8 +117,10 @@ class ForgetFactGuiTests(unittest.TestCase):
     def test_no_match_leaves_facts_untouched(self):
         v = _fake_viewer()
         prof = _FakeProfile(facts={"hobby": "登山"})
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
         with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
-             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"):
+             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"), \
+             mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
             v._cmd_forget_fact_gui("存在しない話", "ja")
         self.assertIn("hobby", prof.facts)
         self.assertIn("存在しない話", v.comment_text)
@@ -117,7 +128,9 @@ class ForgetFactGuiTests(unittest.TestCase):
     def test_empty_arg_shows_usage_without_deleting(self):
         v = _fake_viewer()
         prof = _FakeProfile(facts={"hobby": "登山"})
-        with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof):
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
+        with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
+             mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
             v._cmd_forget_fact_gui("", "ja")
         self.assertIn("hobby", prof.facts)
         self.assertIn("/forget-fact", v.comment_text)
@@ -125,8 +138,10 @@ class ForgetFactGuiTests(unittest.TestCase):
     def test_english_reply(self):
         v = _fake_viewer()
         prof = _FakeProfile(facts={"food": "ramen and udon"})
+        conv_log = _FakeConvLog("/tmp/c.jsonl")
         with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
-             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"):
+             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"), \
+             mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
             v._cmd_forget_fact_gui("udon", "en")
         self.assertNotIn("food", prof.facts)
         self.assertIn("forgotten", v.comment_text)
@@ -264,7 +279,8 @@ class DispatchTests(unittest.TestCase):
         v = _fake_viewer()
         prof = _FakeProfile(facts={"hobby": "登山"})
         with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
-             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"):
+             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"), \
+             mock.patch.object(_mod, "get_conversation_log", return_value=_FakeConvLog("/tmp/c.jsonl")):
             handled = v._handle_slash_command_gui("forget-fact 登山", "ja", None)
         self.assertTrue(handled)
         self.assertNotIn("hobby", prof.facts)
@@ -292,7 +308,8 @@ class DispatchTests(unittest.TestCase):
         v = _fake_viewer()
         prof = _FakeProfile(facts={"hobby": "登山"})
         with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
-             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"):
+             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"), \
+             mock.patch.object(_mod, "get_conversation_log", return_value=_FakeConvLog("/tmp/c.jsonl")):
             v._handle_slash_command_gui("forget-fact 登山", "ja", None)
         # If /forget (interests) had swallowed this, facts would be untouched
         # and the reply would talk about a missing interest instead.

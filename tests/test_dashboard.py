@@ -27,7 +27,32 @@ from dashboard import (  # noqa: E402
     _get_persona_name,
     DEFAULT_DASHBOARD_PORT,
     backup_dir,
+    event_log_path,
 )
+# Captured at collection time (module import), matching event_log_path's own
+# capture — a fresh in-test `from conversation_log import DEFAULT_LOGFILE`
+# would instead pick up the per-test conftest.py isolation monkeypatch and
+# spuriously mismatch against event_log_path (bound once, at real import).
+from conversation_log import DEFAULT_LOGFILE as _REAL_DEFAULT_LOGFILE  # noqa: E402
+
+
+class DefaultPathsAreAbsoluteTests(unittest.TestCase):
+    """Regression: event_log_path and backup_dir used to be bare relative
+    strings ('avatar_event_log.jsonl' / 'event_report'), so their real
+    location depended on the process's cwd. A dashboard backup action from
+    a fresh cwd created event_report/ in the wrong place (observed during
+    development), and event_log_path silently drifted from
+    conversation_log.DEFAULT_LOGFILE (the actual writer) whenever cwd
+    differed — the dashboard would read/search the wrong, empty file."""
+
+    def test_event_log_path_is_absolute(self):
+        self.assertTrue(os.path.isabs(event_log_path))
+
+    def test_backup_dir_is_absolute(self):
+        self.assertTrue(os.path.isabs(backup_dir))
+
+    def test_event_log_path_matches_conversation_log_default(self):
+        self.assertEqual(event_log_path, _REAL_DEFAULT_LOGFILE)
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,27 @@ _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _MAIN)
 
 import avatar_event_timeline_viewer as _mod  # noqa: E402
+# Captured at collection time (module import), matching how this module's own
+# default arg was captured — a fresh in-test `from conversation_log import
+# DEFAULT_LOGFILE` would instead pick up the per-test conftest.py isolation
+# monkeypatch and spuriously mismatch against the already-bound default.
+from conversation_log import DEFAULT_LOGFILE as _REAL_DEFAULT_LOGFILE  # noqa: E402
+
+
+class DefaultLogfileMatchesConversationLogTests(unittest.TestCase):
+    """Regression: the default logfile arg used to be the bare relative
+    string 'avatar_event_log.jsonl', independent of and driftable from
+    conversation_log.DEFAULT_LOGFILE (the actual writer) — a relative cwd
+    resolution meant this standalone viewer could easily point at an empty
+    file instead of the real conversation history."""
+
+    def test_default_is_absolute(self):
+        default = _mod.EventTimelineViewer.__init__.__defaults__[0]
+        self.assertTrue(os.path.isabs(default))
+
+    def test_default_matches_conversation_log_default(self):
+        default = _mod.EventTimelineViewer.__init__.__defaults__[0]
+        self.assertEqual(default, _REAL_DEFAULT_LOGFILE)
 
 
 def _fake_viewer(logfile=""):

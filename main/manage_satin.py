@@ -66,12 +66,12 @@ def _confirm(prompt: str) -> bool:
 
 
 def _get_conversation_log():
-    """絶対パスでシングルトン ConversationLog を初期化して返す。
+    """シングルトン ConversationLog を返す。
 
-    CWD に依存しないよう _ROOT からの絶対パスを使う。
+    conversation_log.DEFAULT_LOGFILE は既に絶対パス（cwd に依存しない）。
     """
-    from conversation_log import get_conversation_log, DEFAULT_LOGFILE
-    return get_conversation_log(os.path.join(_ROOT, DEFAULT_LOGFILE))
+    from conversation_log import get_conversation_log
+    return get_conversation_log()
 
 
 # --------------------------------------------------------------------------- #

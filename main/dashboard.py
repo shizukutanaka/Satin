@@ -27,12 +27,21 @@ except Exception:
     _daily_summary = None
     _summary_greeting = None
 
-# 会話イベント分類は conversation_log を唯一の真実の源とする（集計の食い違い防止）。
+# 会話イベント分類・既定ログパスは conversation_log を唯一の真実の源とする
+# （集計の食い違い・cwd 依存でのファイル分裂を防ぐ）。
 try:
-    from conversation_log import USER_EVENT_TYPES as _USER_TYPES, AVATAR_EVENT_TYPES as _AVATAR_TYPES
+    from conversation_log import (
+        USER_EVENT_TYPES as _USER_TYPES,
+        AVATAR_EVENT_TYPES as _AVATAR_TYPES,
+        DEFAULT_LOGFILE as _DEFAULT_EVENT_LOG,
+    )
 except Exception:
     _USER_TYPES = {"user_comment", "user"}
     _AVATAR_TYPES = {"avatar_reply", "avatar"}
+    _DEFAULT_EVENT_LOG = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "avatar_event_log.jsonl",
+    )
 
 
 def _get_persona_name(fallback: str = "Avatar") -> str:
@@ -100,8 +109,14 @@ else:
         secret_key = ""
     app = _NoopApp()  # type: ignore
 
-event_log_path = 'avatar_event_log.jsonl'
-backup_dir = 'event_report'
+event_log_path = _DEFAULT_EVENT_LOG
+# 相対パスだと cwd 次第でバックアップ zip の置き場所が変わる（実際に起きた:
+# ダッシュボードのバックアップ操作でリポジトリ直下に event_report/ が生成された）。
+# _ROOT からの絶対パスに固定する。
+backup_dir = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "event_report",
+)
 
 # ダッシュボードの既定ポート。satin_launcher.py と dashboard.py の __main__ が
 # 同じ値を参照することで、起動経路によるポート不整合（5000 vs 5003）を防ぐ。
