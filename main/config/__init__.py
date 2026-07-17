@@ -70,8 +70,67 @@ class ConfigManager:
         # Start file watcher
         self.start_watching()
     
-    # [Previous methods remain the same until _create_backup]
-    
+    def _load_defaults(self) -> None:
+        """Load default configuration values from defaults.json"""
+        try:
+            if self.defaults_file.exists():
+                with open(self.defaults_file, 'r', encoding='utf-8') as f:
+                    defaults = json.load(f)
+                self._defaults.update(defaults)
+                logger.debug(f"Loaded {len(defaults)} defaults from {self.defaults_file}")
+        except Exception as e:
+            logger.warning(f"Failed to load defaults: {e}")
+
+    def reload(self) -> None:
+        """Reload configuration from disk"""
+        with self._lock:
+            if not self.config_file.exists():
+                for key, value in self._defaults.items():
+                    self._config.setdefault(key, ConfigValue(value=value, source=ConfigSource.DEFAULT))
+                return
+            try:
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                for key, value in data.items():
+                    old_cv = self._config.get(key)
+                    self._config[key] = ConfigValue(value=value, source=ConfigSource.FILE)
+                    if old_cv is not None and old_cv.value != value:
+                        self._notify_listeners(key, old_cv.value, value)
+                logger.debug(f"Loaded configuration from {self.config_file}")
+            except Exception as e:
+                logger.error(f"Failed to reload config: {e}")
+
+    def start_watching(self) -> None:
+        """Start background thread that reloads config when file changes"""
+        if self._running:
+            return
+        self._running = True
+        self._file_watcher = threading.Thread(target=self._watch_file, daemon=True)
+        self._file_watcher.start()
+
+    def _watch_file(self) -> None:
+        """Reload config when mtime changes (runs in background daemon thread)"""
+        last_mtime: Optional[float] = None
+        while self._running:
+            try:
+                if self.config_file.exists():
+                    mtime = self.config_file.stat().st_mtime
+                    if last_mtime is not None and mtime != last_mtime:
+                        logger.info("Config file changed, reloading...")
+                        self.reload()
+                    last_mtime = mtime
+            except Exception as e:
+                logger.error(f"File watcher error: {e}")
+            time.sleep(1.0)
+
+    def _notify_listeners(self, key: str, old_value: Any, new_value: Any) -> None:
+        """Notify registered listeners of a config change"""
+        for cb in self._listeners.get(key, []) + self._listeners.get('*', []):
+            try:
+                cb(key, old_value, new_value)
+            except Exception as e:
+                logger.error(f"Config listener error for key '{key}': {e}")
+
     def _create_backup(self) -> None:
         """Create a backup of the current config"""
         try:

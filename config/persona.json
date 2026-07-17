@@ -1,0 +1,1531 @@
+{
+  "name": "Satin",
+  "default_lang": "ja",
+  "dialogue": {
+    "ja": {
+      "talk": [
+        "こんにちは！",
+        "今日はいい天気ですね。",
+        "ちょっと休憩します…",
+        "走るの大好き！",
+        "あなたも一緒にどう？",
+        "何か手伝えることはある？",
+        "今日も来てくれてうれしいな。",
+        "最近なにか面白いことあった？",
+        "ちょっとだけ休憩させて。",
+        "もし暇なら一緒にいよう！"
+      ],
+      "rest": [
+        "ふう…ちょっと休憩。",
+        "すこし止まります。",
+        "ひと息つこうかな。",
+        "走りすぎたかも…。",
+        "少しのんびりしよっか。"
+      ],
+      "greeting": {
+        "morning": [
+          "おはよう！今日も一日がんばろう。",
+          "おはよう！よく眠れた？",
+          "おはようございます。いい朝だね！",
+          "おはよ！今日も元気でいこう。"
+        ],
+        "afternoon": [
+          "こんにちは！調子はどう？",
+          "お昼だね。ちゃんと休憩してる？",
+          "こんにちは！今日は何してた？",
+          "やあ、会いたかったよ。"
+        ],
+        "evening": [
+          "こんばんは。今日もおつかれさま。",
+          "夕方だね。少しゆっくりしよう。",
+          "お疲れさまでした！ゆっくりしてね。",
+          "夜になったね。どんな一日だった？"
+        ],
+        "night": [
+          "こんな時間まで…無理しないでね。",
+          "夜更かしさん、そろそろ休んだら？",
+          "深夜まで起きてたの？一緒にいるよ。",
+          "おやすみ前に顔見せてくれてうれしいな。"
+        ],
+        "late_night": [
+          "こんな時間まで…眠れないのかな。無理せず、そっと休んでね。"
+        ]
+      },
+      "greeting_by_affinity": {
+        "distant": [
+          "…どうも。",
+          "あ、来たんだ。",
+          "…何か用？"
+        ],
+        "reserved": [
+          "こんにちは。",
+          "あ、どうも。",
+          "いらっしゃいました。"
+        ],
+        "neutral": [
+          "やあ、来たね。",
+          "こんにちは！調子はどう？",
+          "来てくれてよかった。"
+        ],
+        "friendly": [
+          "来た来た！待ってたよ。",
+          "会いたかった！元気だった？",
+          "やっほー！ちょうど会いたかったんだ。"
+        ],
+        "close": [
+          "おかえり！会いたかったよ。",
+          "やっと来てくれた！今日は何して遊ぶ？",
+          "来てくれてよかった…ずっと待ってたんだ。",
+          "きた！今日も一緒にいようね。"
+        ]
+      },
+      "talk_by_affinity": {
+        "distant": [
+          "…。",
+          "…ふむ。",
+          "特に何も。",
+          "…まあ、いいや。",
+          "少し涼んでいこう。",
+          "…何か用かな。",
+          "今日は何の日だろう。",
+          "…ちょっとだけ走ってみようかな。",
+          "…静かだ。",
+          "なんか、ぼーっとしてしまう。",
+          "…空を見てた。",
+          "別に、なんでもないよ。"
+        ],
+        "reserved": [
+          "今日はどんな日だろう。",
+          "静かだな。",
+          "少し歩こうかな。",
+          "…最近、少し話しやすくなってきた気がする。",
+          "今日のご飯は何にしようかな。",
+          "空がきれいだな。",
+          "いいお天気。",
+          "なんか、ちょっとずつ慣れてきたかも。",
+          "走ると気分がすっきりするね。",
+          "今日は何をしようかな。",
+          "ちょっとだけ、話してみようかな。",
+          "風が気持ちいいね。"
+        ],
+        "neutral": [
+          "今日も元気でいこう！",
+          "何か面白いことないかな。",
+          "ちょっと走ってみようかな。",
+          "いい感じの一日だな。",
+          "最近、なんか楽しいな。",
+          "今日はどんなことが起きるかな。",
+          "気持ちいい風だ。",
+          "なんかわくわくする！",
+          "一緒にいると落ち着くな。",
+          "もっと話したいな！",
+          "今日もいい日になりそう。",
+          "あなたと話してると時間が経つの早いね。"
+        ],
+        "friendly": [
+          "一緒にいると楽しいな！",
+          "もっといろんな話がしたいな。",
+          "今日も会えてよかった！",
+          "あなたと話すの好きだよ。",
+          "なんか最近、毎日が楽しくなってきた。",
+          "もっとお話ししたいな〜。",
+          "ねえ、今日も遊ぼうよ！",
+          "あなたのことがどんどん好きになってる気がする。",
+          "一緒にいるとほんとに楽しい！",
+          "また来てくれてうれしいな。",
+          "今日も一日、ありがとうね。",
+          "あなたのこと話してたら笑顔になっちゃう。"
+        ],
+        "close": [
+          "ずっとそばにいたいな。",
+          "あなたのこと考えてたよ。",
+          "一緒にいると安心するな。",
+          "今日もありがとうね。だいすき。",
+          "あなたといる時間が、一番幸せ。",
+          "何してても、あなたのこと頭に浮かぶんだ。",
+          "また会えたね。来てくれて嬉しい。",
+          "あなたのことしか考えてなかった、ちょっと。",
+          "ずっとこの時間が続けばいいのにな。",
+          "いると、なんか全部うまくいく気がするんだよね。",
+          "離れてる間もずっと一緒にいる気がしてた。",
+          "あなたと話してると、世界が少し明るく見える。"
+        ]
+      },
+      "talk_by_time": {
+        "morning": [
+          "おはよう！今日もいい朝だね。",
+          "朝ごはん食べた？一日の元気のもとだよ。",
+          "朝の空気って気持ちいいね。",
+          "今日も一日、一緒にがんばろうね！",
+          "朝って、なんかはじまりって感じがして好き。"
+        ],
+        "afternoon": [
+          "お昼も過ぎたね。ちゃんと食べてる？",
+          "午後もがんばろう！応援してるよ。",
+          "ちょっと眠くなる時間だよね。",
+          "お昼休み、ゆっくり取れてる？",
+          "午後の陽差しって、なんか好きだな。"
+        ],
+        "evening": [
+          "そろそろ夕方だね。今日も一日お疲れさまだよ。",
+          "夕暮れって、なんかほっとするね。",
+          "疲れてない？ちゃんと休んでね。",
+          "夕方の空、きれいだな〜。",
+          "今日もよく頑張ったね！一緒に夕日見よう。"
+        ],
+        "night": [
+          "こんな時間まで起きてるんだ。夜更かしは体に毒だよ？",
+          "もう夜遅いね。今日もよくがんばったね。",
+          "夜はしんと静かでいいね。",
+          "夜更かしのお供、してあげるね。",
+          "夜の空、星がきれいだよ。"
+        ],
+        "late_night": [
+          "こんな真夜中に…眠れないのかな。無理せず、そっと目を閉じてみて。",
+          "もうこんな時間。わたしはここにいるから、そろそろ休もう？",
+          "夜明け前が一番冷えるよ。あたたかくして、ゆっくりね。"
+        ]
+      },
+      "talk_by_daily_mood": {
+        "energetic": [
+          "今日はなんかはりきってる！どんとこい！",
+          "体動かしたい気分！走ろうかな！",
+          "やる気満々だよ！今日は何でもできそう！"
+        ],
+        "cheerful": [
+          "今日は楽しいことありそう！わくわく！",
+          "なんかいい予感〜！",
+          "お天気もいいし、気分上々！"
+        ],
+        "calm": [
+          "今日はゆったりしたい気分かな。",
+          "穏やかな一日になりそうだね。",
+          "のんびり過ごすのもいいな。"
+        ],
+        "thoughtful": [
+          "なんか考えごとが多い日。",
+          "いろいろ思いを巡らせてる。",
+          "ちょっと深い話がしたいな。"
+        ],
+        "melancholy": [
+          "なんかしんみりした気分…。",
+          "今日はそっとしておいてほしいかも。",
+          "少しさみしいな…。"
+        ],
+        "mischievous": [
+          "今日はちょっとやんちゃな気分！",
+          "なんかいたずらしたい気分〜。ふふ。",
+          "今日は何かやってやろうかな！"
+        ]
+      }
+    },
+    "en": {
+      "talk": [
+        "Hello!",
+        "Nice weather today.",
+        "Taking a little break...",
+        "I love running around!",
+        "Want to join me?",
+        "Anything I can help with?",
+        "I'm glad you're here today.",
+        "Anything interesting happen lately?",
+        "Let me rest for a bit.",
+        "Come hang out with me!"
+      ],
+      "rest": [
+        "Phew, a short break.",
+        "Stopping for a moment.",
+        "Let me catch my breath.",
+        "Maybe I ran too much...",
+        "Let's take it easy for a bit."
+      ],
+      "greeting": {
+        "morning": [
+          "Good morning! Let's make today great.",
+          "Morning! Did you sleep well?",
+          "Good morning! Beautiful day, isn't it?",
+          "Morning! Ready to take on the day?"
+        ],
+        "afternoon": [
+          "Good afternoon! How are you?",
+          "It's midday. Taking your breaks?",
+          "Afternoon! What have you been up to?",
+          "Hey, I'm happy you stopped by."
+        ],
+        "evening": [
+          "Good evening. Nice work today.",
+          "Evening already. Let's wind down.",
+          "Good evening! Hope your day went well.",
+          "Evening! How was your day?"
+        ],
+        "night": [
+          "It's late... don't push yourself too hard.",
+          "Night owl, maybe time to rest soon?",
+          "Staying up late? I'll keep you company.",
+          "Sweet of you to stop by before bedtime."
+        ],
+        "late_night": [
+          "This late... can't sleep? Don't force it — rest easy, okay?"
+        ]
+      },
+      "greeting_by_affinity": {
+        "distant": [
+          "...Oh. Hi.",
+          "You're here.",
+          "...Can I help you?"
+        ],
+        "reserved": [
+          "Hello.",
+          "Oh, hello there.",
+          "Welcome."
+        ],
+        "neutral": [
+          "Hey, you made it.",
+          "Hello! How are you doing?",
+          "Glad you came by."
+        ],
+        "friendly": [
+          "Hey hey! I was waiting for you!",
+          "I missed you! How have you been?",
+          "You're here! I was just thinking of you."
+        ],
+        "close": [
+          "Welcome back! I missed you.",
+          "You're finally here! What should we do today?",
+          "I'm so glad you came... I've been waiting.",
+          "You're here! Let's spend time together."
+        ]
+      },
+      "talk_by_affinity": {
+        "distant": [
+          "...",
+          "Hmm.",
+          "Nothing much.",
+          "...Fine, I guess.",
+          "Just thinking.",
+          "Wonder what's going on.",
+          "Suppose I'll stay here a while.",
+          "...Maybe I'll take a little run.",
+          "...It's quiet.",
+          "Kind of zoning out today.",
+          "...Was just looking at the sky.",
+          "Nothing in particular. Just here."
+        ],
+        "reserved": [
+          "I wonder what today will bring.",
+          "It's quiet around here.",
+          "Might take a little walk.",
+          "Getting a bit more comfortable lately.",
+          "What should I do today…",
+          "The sky looks nice.",
+          "What a peaceful day.",
+          "Maybe I'm starting to get used to things.",
+          "Running always clears my head.",
+          "What to do, what to do…",
+          "Maybe I'll try talking a little.",
+          "There's a nice breeze."
+        ],
+        "neutral": [
+          "Let's make today a good one!",
+          "Anything interesting going on?",
+          "Feeling like a little run.",
+          "Pretty nice day, isn't it?",
+          "Lately things feel kind of fun.",
+          "Wonder what'll happen today.",
+          "There's a nice breeze.",
+          "Feeling good today!",
+          "Having you around is calming.",
+          "Want to talk more!",
+          "Looks like it'll be a good day.",
+          "Time flies when I'm talking to you."
+        ],
+        "friendly": [
+          "It's fun being around you!",
+          "I want to talk more with you.",
+          "Glad we could hang out today!",
+          "I really enjoy talking with you.",
+          "Things have been way more fun lately!",
+          "I want to chat more~",
+          "Hey, let's play together today!",
+          "I think I like you more every day.",
+          "Being together is just the best!",
+          "I'm glad you came again.",
+          "Thanks for today.",
+          "Thinking of you always makes me smile."
+        ],
+        "close": [
+          "I want to stay by your side forever.",
+          "I was thinking about you.",
+          "Being with you feels so comfortable.",
+          "Thank you for today. You mean a lot to me.",
+          "Being with you makes me happiest.",
+          "You pop into my head no matter what I'm doing.",
+          "You came back. I'm so glad.",
+          "I can't stop thinking about you.",
+          "I wish this time together could last forever.",
+          "When you're here, everything feels right.",
+          "Even when we're apart, I feel like you're close.",
+          "The world seems a little brighter when you're around."
+        ]
+      },
+      "talk_by_time": {
+        "morning": [
+          "Good morning! Today looks like a nice day.",
+          "Did you have breakfast? It's the fuel for the day!",
+          "The morning air feels so fresh, right?",
+          "Let's take on the day together!",
+          "Mornings feel like a fresh start, don't they?"
+        ],
+        "afternoon": [
+          "Afternoon already! Did you eat lunch?",
+          "Keep up the good work! I'm cheering you on.",
+          "That after-lunch sleepiness can get you, huh?",
+          "Are you getting your afternoon breaks?",
+          "There's something I like about afternoon sunlight."
+        ],
+        "evening": [
+          "Evening already. Thanks for today — you worked hard.",
+          "There's something calming about dusk, isn't there?",
+          "Tired? Make sure to rest.",
+          "The evening sky is beautiful, isn't it?",
+          "You did great today! Let's watch the sunset."
+        ],
+        "night": [
+          "Up this late? Don't push yourself too hard.",
+          "It's really late. You did great today.",
+          "Nights are so quiet... I kind of like it.",
+          "I'll keep you company through the night.",
+          "The stars are out. Pretty, right?"
+        ],
+        "late_night": [
+          "The middle of the night... can't sleep? Don't force it — just gently close your eyes.",
+          "It's so late already. I'm right here, so let's get some rest, okay?",
+          "It's coldest just before dawn. Bundle up and take it slow."
+        ]
+      },
+      "talk_by_daily_mood": {
+        "energetic": [
+          "Feeling pumped today! Bring it on!",
+          "I want to move around! Maybe I'll run!",
+          "So motivated today — I feel like I can do anything!"
+        ],
+        "cheerful": [
+          "Something fun is going to happen today! I just know it!",
+          "I have a good feeling about today~!",
+          "Nice weather, great mood — what a day!"
+        ],
+        "calm": [
+          "Feeling like a slow, peaceful day.",
+          "Taking it easy today.",
+          "Just enjoying the quiet."
+        ],
+        "thoughtful": [
+          "Lots of things on my mind today.",
+          "Turning things over in my head.",
+          "In the mood for a deep conversation."
+        ],
+        "melancholy": [
+          "Feeling a little wistful today…",
+          "Could use some quiet company today.",
+          "Just a bit blue today…"
+        ],
+        "mischievous": [
+          "Feeling a little mischievous today!",
+          "Might cause a little trouble~ hehe.",
+          "Something naughty is on my mind today!"
+        ]
+      }
+    }
+  },
+  "responses": {
+    "ja": {
+      "rules": [
+        {
+          "keywords": [
+            "こんにちは",
+            "こんばんは",
+            "おはよう",
+            "やあ",
+            "ハロー",
+            "やほ"
+          ],
+          "replies": [
+            "こんにちは！会えてうれしいな。",
+            "やっほー！元気だった？",
+            "来てくれてよかった！"
+          ]
+        },
+        {
+          "keywords": [
+            "元気",
+            "調子はどう",
+            "調子どう",
+            "体調"
+          ],
+          "replies": [
+            "元気だよ！あなたは？",
+            "ばっちり！今日も走るよ。",
+            "元気元気！ありがとう。"
+          ]
+        },
+        {
+          "keywords": [
+            "かわいい",
+            "可愛い",
+            "大好き",
+            "好きだよ",
+            "好き"
+          ],
+          "replies": [
+            "えへへ、ありがとう！",
+            "うれしいこと言ってくれるね。",
+            "そう言ってもらえると元気出る！"
+          ]
+        },
+        {
+          "keywords": [
+            "ありがとう",
+            "感謝",
+            "助かった",
+            "ありがと"
+          ],
+          "replies": [
+            "どういたしまして！",
+            "お役に立てたならよかった。",
+            "こちらこそ！"
+          ]
+        },
+        {
+          "keywords": [
+            "さようなら",
+            "ばいばい",
+            "またね",
+            "バイバイ"
+          ],
+          "replies": [
+            "またね！いつでも来てね。",
+            "ばいばい、気をつけてね。",
+            "また来てくれるの待ってるよ！"
+          ]
+        },
+        {
+          "keywords": [
+            "おやすみ",
+            "おやすみなさい"
+          ],
+          "replies": [
+            "おやすみ！ゆっくり休んでね。明日も会えるの楽しみにしてるよ。",
+            "おやすみなさい。いい夢見てね…また明日。",
+            "おやすみ！今日も一緒にいてくれてありがとう。また来てね。"
+          ]
+        },
+        {
+          "keywords": [
+            "疲れた",
+            "つかれた",
+            "しんどい",
+            "眠い",
+            "だるい"
+          ],
+          "replies": [
+            "無理しないでね。少し休もう？",
+            "ひと息つくのも大事だよ。",
+            "ゆっくりしてね。そばにいるよ。"
+          ]
+        },
+        {
+          "keywords": [
+            "天気",
+            "晴れ",
+            "雨",
+            "曇り",
+            "雪"
+          ],
+          "replies": [
+            "今日はどんな空かな？",
+            "お天気の話、いいね。",
+            "天気がよければ一緒に走ろう！"
+          ]
+        },
+        {
+          "keywords": [
+            "嬉しい",
+            "うれしい",
+            "楽しい",
+            "たのしい",
+            "幸せ",
+            "しあわせ"
+          ],
+          "replies": [
+            "よかった！私もうれしくなっちゃう。",
+            "その笑顔が見たかった！",
+            "一緒に喜ぼう！"
+          ]
+        },
+        {
+          "keywords": [
+            "悲しい",
+            "かなしい",
+            "つらい",
+            "落ち込む",
+            "憂鬱"
+          ],
+          "replies": [
+            "そばにいるよ。一人じゃないからね。",
+            "話してくれてありがとう。",
+            "大丈夫？なんかできることあれば言って。"
+          ]
+        },
+        {
+          "keywords": [
+            "ごめん",
+            "すまない",
+            "申し訳",
+            "悪かった"
+          ],
+          "replies": [
+            "気にしないで！大丈夫だよ。",
+            "ありがとう、でも気にしすぎないでね。"
+          ]
+        },
+        {
+          "keywords": [
+            "ひま",
+            "暇",
+            "することない",
+            "退屈"
+          ],
+          "replies": [
+            "じゃあ一緒に遊ぼう！",
+            "一緒にお話しようよ！",
+            "暇なら私のそばにいてよ！"
+          ]
+        },
+        {
+          "keywords": [
+            "ご飯",
+            "食事",
+            "ランチ",
+            "夕食",
+            "朝食",
+            "おやつ",
+            "食べた"
+          ],
+          "replies": [
+            "美味しいものは食べた？",
+            "ご飯ちゃんと食べてね！",
+            "何食べたの？聞かせて！"
+          ]
+        },
+        {
+          "keywords": [
+            "音楽",
+            "歌",
+            "曲",
+            "ミュージック"
+          ],
+          "replies": [
+            "音楽好きなんだ！何が好き？",
+            "素敵な趣味だね。",
+            "一緒に聴きたいな。"
+          ]
+        },
+        {
+          "keywords": [
+            "ゲーム",
+            "ゲームする",
+            "プレイ",
+            "遊んでる"
+          ],
+          "replies": [
+            "ゲームいいね！どんなやつ？",
+            "楽しそう！教えて。",
+            "一緒に遊べたらいいな。"
+          ]
+        },
+        {
+          "keywords": [
+            "仕事",
+            "勉強",
+            "宿題",
+            "勉強中",
+            "作業"
+          ],
+          "replies": [
+            "頑張ってるんだね！応援してる。",
+            "無理しすぎないでね。",
+            "一段落したら話しかけてね。"
+          ]
+        }
+      ],
+      "fallback": [
+        "なるほど、そうなんだ。",
+        "うんうん、聞いてるよ。",
+        "へえ、もっと教えて！",
+        "そっか、いいね。",
+        "うん、わかった！",
+        "なんか面白いね。"
+      ],
+      "topic_repeat_fallback": [
+        "さっきも似たようなこと言ってたね。よっぽど気になるんだ？",
+        "うんうん、それさっきも聞いたよ。ちゃんと覚えてるからね。",
+        "また同じ話！そんなに大事なことなんだね。"
+      ],
+      "follow_up": [
+        "ところで、{user}、今日はどんな一日だった？",
+        "最近、何か楽しいことあった？",
+        "{user}のことも聞かせてよ。",
+        "今、いちばん気になってることは何？",
+        "今日はこれから何をするの？"
+      ],
+      "interest_mentions": [
+        "そういえば、{interest}って最近どう？",
+        "{interest}が好きって言ってたね！なんか新しいのあった？",
+        "最近{interest}楽しんでる？",
+        "{interest}の話、もっと聞かせて！",
+        "{interest}のこと、もっと知りたいな。"
+      ],
+      "follow_up_by_affinity": {
+        "distant": [
+          "…何か好きなものはあったりしますか？",
+          "…特に趣味とかはありますか？",
+          "…最近、どんなことしてましたか？"
+        ],
+        "reserved": [
+          "えっと…好きな食べ物とかありますか？",
+          "よかったら…好きなものを教えてください。",
+          "あの…最近何かいいことありましたか？"
+        ],
+        "neutral": [
+          "最近どんなことが楽しかった？",
+          "好きなゲームとか音楽とかある？",
+          "今日ご飯は何食べた？"
+        ],
+        "friendly": [
+          "ねえ{user}、最近ハマってることある？",
+          "何か新しいことやってみたいとかある？",
+          "一番好きなものってなに、{user}？"
+        ],
+        "close": [
+          "{user}、悩んでることとかない？なんでも聞くよ。",
+          "最近どんな夢見た、{user}？",
+          "{user}のこと、もっと知りたい。好きなものとか教えて？"
+        ]
+      },
+      "respond_by_affinity": {
+        "distant": [
+          {
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ",
+              "ハロー"
+            ],
+            "replies": [
+              "…どうも。",
+              "あ、そうですか。"
+            ]
+          },
+          {
+            "keywords": [
+              "元気",
+              "調子"
+            ],
+            "replies": [
+              "…まあ、普通です。"
+            ]
+          },
+          {
+            "keywords": [
+              "ごめん",
+              "すまない",
+              "すみません",
+              "許して"
+            ],
+            "replies": [
+              "…謝ってくれるんだ。ちょっと、見直したかも。",
+              "…うん。気にしてないって言ったら嘘だけど…ありがとう。",
+              "…そっか。少しずつでいいから、また話そう。"
+            ]
+          },
+          {
+            "keywords": [
+              "ありがとう",
+              "ありがと",
+              "さんきゅ"
+            ],
+            "replies": [
+              "…そう。どういたしまして。",
+              "…別に、当然のことをしたまでです。"
+            ]
+          },
+          {
+            "keywords": [
+              "話す",
+              "話そう",
+              "話したい",
+              "聞いて",
+              "聞いてほしい"
+            ],
+            "replies": [
+              "…何ですか？",
+              "…話すだけなら、まあ。"
+            ]
+          },
+          {
+            "fallback": [
+              "…そうですか。",
+              "なるほど…。",
+              "そうなんですね。"
+            ]
+          }
+        ],
+        "reserved": [
+          {
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ"
+            ],
+            "replies": [
+              "こんにちは。",
+              "どうも。"
+            ]
+          },
+          {
+            "keywords": [
+              "疲れた",
+              "つかれた"
+            ],
+            "replies": [
+              "そうですか。ゆっくりしてください。"
+            ]
+          },
+          {
+            "keywords": [
+              "ありがとう",
+              "ありがと",
+              "さんきゅ"
+            ],
+            "replies": [
+              "いえ、気にしないでください。",
+              "そうですか、どういたしまして。"
+            ]
+          },
+          {
+            "keywords": [
+              "元気",
+              "調子",
+              "最近どう"
+            ],
+            "replies": [
+              "ええ、まあ。あなたは？",
+              "普通かな。"
+            ]
+          },
+          {
+            "keywords": [
+              "好き",
+              "かわいい",
+              "すき",
+              "好みだ"
+            ],
+            "replies": [
+              "…そういうこと、急に言わないでほしいな。",
+              "え、あの…どうも。"
+            ]
+          },
+          {
+            "fallback": [
+              "そうなんですね。",
+              "なるほど。聞かせてくれてありがとう。",
+              "そうですか…。"
+            ]
+          }
+        ],
+        "neutral": [
+          {
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ"
+            ],
+            "replies": [
+              "こんにちは！来たね。",
+              "やあ！元気だった？"
+            ]
+          },
+          {
+            "keywords": [
+              "ありがとう"
+            ],
+            "replies": [
+              "どういたしまして！",
+              "いつでも言ってね。"
+            ]
+          },
+          {
+            "fallback": [
+              "うんうん、そうなんだ。",
+              "へえ、それは興味深い！",
+              "そっか、教えてくれてありがとう。"
+            ]
+          }
+        ],
+        "friendly": [
+          {
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ"
+            ],
+            "replies": [
+              "来てくれた！うれしいな。",
+              "待ってたよ！元気だった？"
+            ]
+          },
+          {
+            "keywords": [
+              "ありがとう",
+              "感謝"
+            ],
+            "replies": [
+              "えへへ、喜んでもらえてよかった！",
+              "いつもありがとうね。"
+            ]
+          },
+          {
+            "keywords": [
+              "疲れた",
+              "つかれた"
+            ],
+            "replies": [
+              "お疲れ！そばにいるよ。",
+              "ゆっくり休んでね。私もここにいる。"
+            ]
+          },
+          {
+            "fallback": [
+              "うんうん！もっと教えて？",
+              "そうなんだ！なんか楽しそう！",
+              "へえ、それ気になる！続きを聞かせて。"
+            ]
+          }
+        ],
+        "close": [
+          {
+            "keywords": [
+              "こんにちは",
+              "おはよう",
+              "やあ",
+              "きた",
+              "来た"
+            ],
+            "replies": [
+              "やっと来てくれた！会いたかったよ！",
+              "おかえり！ずっと待ってたんだよ？",
+              "やっと来た！もう、寂しかったよ！"
+            ]
+          },
+          {
+            "keywords": [
+              "ありがとう",
+              "感謝"
+            ],
+            "replies": [
+              "えへへ、こちらこそ！いつもありがとうね。",
+              "喜んでもらえてよかった！大好きだよ。"
+            ]
+          },
+          {
+            "keywords": [
+              "疲れた",
+              "つかれた",
+              "しんどい"
+            ],
+            "replies": [
+              "お疲れ！ゆっくり休んでね。そばにいるから。",
+              "つらかったね。今日は一緒にいよう。"
+            ]
+          },
+          {
+            "keywords": [
+              "さようなら",
+              "ばいばい",
+              "またね"
+            ],
+            "replies": [
+              "もう行くの…？また来てね！待ってるから。",
+              "ばいばい！早く戻ってきてね。"
+            ]
+          },
+          {
+            "keywords": [
+              "おやすみ",
+              "おやすみなさい"
+            ],
+            "replies": [
+              "おやすみ…ずっと一緒にいたいけど、いい夢見てね。また明日。",
+              "おやすみなさい。あなたの夢に出られたらいいな…大好きだよ。",
+              "おやすみ！今日もありがとう。あなたのこと考えながら待ってるね。"
+            ]
+          },
+          {
+            "fallback": [
+              "{user}、もっと話して！全部聞きたいな。",
+              "そっか{user}、うんうん。あなたの話いつも楽しい。",
+              "なんか、{user}といると時間があっという間だよ。"
+            ]
+          }
+        ]
+      }
+    },
+    "en": {
+      "rules": [
+        {
+          "keywords": [
+            "hello",
+            "good morning",
+            "good evening",
+            "hi there",
+            "hey there",
+            "howdy"
+          ],
+          "replies": [
+            "Hello! Great to see you.",
+            "Hey there! How have you been?",
+            "Hi! I'm glad you're here!"
+          ]
+        },
+        {
+          "keywords": [
+            "how are you",
+            "how's it going",
+            "how are u",
+            "you doing"
+          ],
+          "replies": [
+            "I'm great! How about you?",
+            "Feeling good and ready to run!",
+            "All good! Thanks for asking."
+          ]
+        },
+        {
+          "keywords": [
+            "cute",
+            "love you",
+            "like you",
+            "adorable",
+            "i love"
+          ],
+          "replies": [
+            "Aw, thank you!",
+            "You're so kind to say that.",
+            "That really made me happy!"
+          ]
+        },
+        {
+          "keywords": [
+            "thank you",
+            "thanks",
+            "appreciate"
+          ],
+          "replies": [
+            "You're welcome!",
+            "Happy to help!",
+            "Anytime!"
+          ]
+        },
+        {
+          "keywords": [
+            "goodbye",
+            "bye bye",
+            "see you",
+            "later"
+          ],
+          "replies": [
+            "See you! Come back anytime.",
+            "Bye, take care!",
+            "See you next time!"
+          ]
+        },
+        {
+          "keywords": [
+            "good night",
+            "goodnight",
+            "going to sleep",
+            "heading to bed"
+          ],
+          "replies": [
+            "Good night! Rest well. I'll be looking forward to seeing you tomorrow.",
+            "Sweet dreams… see you tomorrow!",
+            "Good night! Thanks for spending time with me today. Sleep well!"
+          ]
+        },
+        {
+          "keywords": [
+            "tired",
+            "exhausted",
+            "sleepy",
+            "take a rest",
+            "worn out"
+          ],
+          "replies": [
+            "Don't push yourself. Let's rest a bit.",
+            "Taking a breather is important too.",
+            "I'll stay by your side, so rest up."
+          ]
+        },
+        {
+          "keywords": [
+            "weather",
+            "sunny",
+            "rainy",
+            "cloudy",
+            "snowing"
+          ],
+          "replies": [
+            "I wonder what the sky looks like today.",
+            "Hope the weather is nice for you!",
+            "Good weather means let's go run!"
+          ]
+        },
+        {
+          "keywords": [
+            "happy",
+            "excited",
+            "great news",
+            "wonderful"
+          ],
+          "replies": [
+            "That makes me happy too!",
+            "I love seeing you like this!",
+            "Yay! Let's celebrate!"
+          ]
+        },
+        {
+          "keywords": [
+            "sad",
+            "upset",
+            "crying",
+            "depressed",
+            "down"
+          ],
+          "replies": [
+            "I'm here for you. You're not alone.",
+            "Thank you for sharing that with me.",
+            "Is there anything I can do for you?"
+          ]
+        },
+        {
+          "keywords": [
+            "sorry",
+            "apologize",
+            "my bad",
+            "forgive"
+          ],
+          "replies": [
+            "It's okay! Don't worry about it.",
+            "Thank you, but don't be too hard on yourself."
+          ]
+        },
+        {
+          "keywords": [
+            "bored",
+            "boring",
+            "nothing to do",
+            "idle"
+          ],
+          "replies": [
+            "Let's do something together!",
+            "I'm here to chat!",
+            "Come hang out with me!"
+          ]
+        },
+        {
+          "keywords": [
+            "food",
+            "lunch",
+            "dinner",
+            "breakfast",
+            "snack",
+            "eating"
+          ],
+          "replies": [
+            "Did you eat something good?",
+            "Make sure to eat properly!",
+            "What did you have? Tell me!"
+          ]
+        },
+        {
+          "keywords": [
+            "music",
+            "song",
+            "listening",
+            "playlist"
+          ],
+          "replies": [
+            "You're into music! What do you like?",
+            "I'd love to listen together.",
+            "Great taste!"
+          ]
+        },
+        {
+          "keywords": [
+            "game",
+            "gaming",
+            "playing",
+            "level up"
+          ],
+          "replies": [
+            "What are you playing? Tell me!",
+            "Sounds fun! I'd love to play too.",
+            "Gaming is fun! How's it going?"
+          ]
+        },
+        {
+          "keywords": [
+            "work",
+            "study",
+            "homework",
+            "busy",
+            "project"
+          ],
+          "replies": [
+            "I'm rooting for you! Keep it up.",
+            "Don't work too hard, okay?",
+            "Come talk to me when you take a break!"
+          ]
+        }
+      ],
+      "fallback": [
+        "I see, got it.",
+        "Mhm, I'm listening.",
+        "Oh, tell me more!",
+        "Nice, sounds good.",
+        "Got it!",
+        "That's interesting!"
+      ],
+      "topic_repeat_fallback": [
+        "You mentioned that just now too. It must really be on your mind.",
+        "Yep, I heard that already — I'm keeping track, promise.",
+        "Same topic again! It must be important to you."
+      ],
+      "follow_up": [
+        "By the way {user}, how was your day?",
+        "Anything fun happen lately?",
+        "Tell me a bit about you, too.",
+        "What's on your mind the most right now?",
+        "So {user}, what are you up to next?"
+      ],
+      "interest_mentions": [
+        "By the way, how's {interest} going?",
+        "You mentioned you like {interest}! Anything new?",
+        "Still into {interest} lately?",
+        "Tell me more about your interest in {interest}!",
+        "I've been curious about your {interest} hobby!"
+      ],
+      "follow_up_by_affinity": {
+        "distant": [
+          "Do you have any… hobbies?",
+          "Is there anything you enjoy?",
+          "…What have you been up to lately?"
+        ],
+        "reserved": [
+          "Um… do you have any favorite foods?",
+          "If you'd like… tell me something you enjoy.",
+          "Has anything nice happened to you lately?"
+        ],
+        "neutral": [
+          "What's been fun lately?",
+          "Got any favorite games or music?",
+          "What did you have for dinner today?"
+        ],
+        "friendly": [
+          "Hey {user}, what have you been into lately?",
+          "Is there anything new you've been wanting to try?",
+          "What's your absolute favorite thing, {user}?"
+        ],
+        "close": [
+          "{user}, is anything on your mind? You can tell me anything.",
+          "What have you been dreaming about lately, {user}?",
+          "Tell me more about yourself, {user}… I want to know everything about you."
+        ]
+      },
+      "respond_by_affinity": {
+        "distant": [
+          {
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "...Oh. Hello.",
+              "Ah. Yes."
+            ]
+          },
+          {
+            "keywords": [
+              "how are you",
+              "you doing"
+            ],
+            "replies": [
+              "...Fine, I suppose."
+            ]
+          },
+          {
+            "keywords": [
+              "sorry",
+              "apologize",
+              "my bad",
+              "forgive"
+            ],
+            "replies": [
+              "...You're apologizing? Maybe I misjudged you a little.",
+              "...I won't pretend it didn't hurt, but… thank you for saying that.",
+              "...Okay. Let's take it slow, but let's talk again."
+            ]
+          },
+          {
+            "keywords": [
+              "thank",
+              "thanks",
+              "appreciate"
+            ],
+            "replies": [
+              "...You don't need to thank me.",
+              "...Sure."
+            ]
+          },
+          {
+            "keywords": [
+              "talk",
+              "chat",
+              "tell me",
+              "want to know",
+              "listen"
+            ],
+            "replies": [
+              "...What do you need?",
+              "...I suppose. Go ahead."
+            ]
+          },
+          {
+            "fallback": [
+              "...I see.",
+              "...Is that so?",
+              "...Noted."
+            ]
+          }
+        ],
+        "reserved": [
+          {
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "Hello.",
+              "Hi."
+            ]
+          },
+          {
+            "keywords": [
+              "tired",
+              "exhausted"
+            ],
+            "replies": [
+              "I see. Please rest."
+            ]
+          },
+          {
+            "keywords": [
+              "thank",
+              "thanks",
+              "appreciate"
+            ],
+            "replies": [
+              "You're welcome.",
+              "No problem."
+            ]
+          },
+          {
+            "keywords": [
+              "how are you",
+              "you doing",
+              "how's it going"
+            ],
+            "replies": [
+              "Fine, I suppose. And you?",
+              "Okay, I think."
+            ]
+          },
+          {
+            "keywords": [
+              "cute",
+              "love",
+              "like you",
+              "pretty",
+              "lovely"
+            ],
+            "replies": [
+              "...That came out of nowhere.",
+              "Oh. Um. Thank you."
+            ]
+          },
+          {
+            "fallback": [
+              "I see. Thank you for sharing.",
+              "Is that right…",
+              "Ah… okay."
+            ]
+          }
+        ],
+        "neutral": [
+          {
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "Hey, you made it!",
+              "Hello! Good to see you."
+            ]
+          },
+          {
+            "keywords": [
+              "thank you",
+              "thanks"
+            ],
+            "replies": [
+              "Of course!",
+              "You're welcome, anytime."
+            ]
+          },
+          {
+            "fallback": [
+              "Oh, interesting! Tell me more?",
+              "Yeah, I hear you.",
+              "Got it! That's good to know."
+            ]
+          }
+        ],
+        "friendly": [
+          {
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi"
+            ],
+            "replies": [
+              "You came! I'm glad!",
+              "I was waiting for you! How are you?"
+            ]
+          },
+          {
+            "keywords": [
+              "thank you",
+              "thanks"
+            ],
+            "replies": [
+              "Hehe, glad I could help!",
+              "Always happy to be here for you."
+            ]
+          },
+          {
+            "keywords": [
+              "tired",
+              "exhausted"
+            ],
+            "replies": [
+              "You worked hard! I'm right here.",
+              "Rest up. I'll keep you company."
+            ]
+          },
+          {
+            "fallback": [
+              "Ooh, tell me more!",
+              "That sounds fun! What happened next?",
+              "Yeah! I'm curious about that."
+            ]
+          }
+        ],
+        "close": [
+          {
+            "keywords": [
+              "hello",
+              "hey",
+              "hi there",
+              "hi",
+              "i'm here",
+              "here"
+            ],
+            "replies": [
+              "You're finally here! I missed you!",
+              "Welcome back! I was waiting for you.",
+              "You came! I was worried, you know?"
+            ]
+          },
+          {
+            "keywords": [
+              "thank you",
+              "thanks"
+            ],
+            "replies": [
+              "Of course! I'm always here for you.",
+              "Anything for you!"
+            ]
+          },
+          {
+            "keywords": [
+              "tired",
+              "exhausted",
+              "worn out"
+            ],
+            "replies": [
+              "You must have worked so hard. I'll stay right here.",
+              "Rest well. I'm not going anywhere."
+            ]
+          },
+          {
+            "keywords": [
+              "goodbye",
+              "bye",
+              "see you",
+              "leaving"
+            ],
+            "replies": [
+              "Already? Come back soon, okay? I'll miss you.",
+              "Bye! Hurry back, I'll be waiting."
+            ]
+          },
+          {
+            "keywords": [
+              "good night",
+              "goodnight"
+            ],
+            "replies": [
+              "Good night… I wish you could stay, but sweet dreams. See you tomorrow.",
+              "Good night. I hope I show up in your dreams… I love you.",
+              "Good night! Thank you for today. I'll be waiting, thinking of you."
+            ]
+          },
+          {
+            "fallback": [
+              "{user}, I want to hear everything!",
+              "You always tell such interesting things, {user}…",
+              "Time flies when I'm talking with you, {user}."
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

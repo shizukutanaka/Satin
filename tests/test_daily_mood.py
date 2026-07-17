@@ -1,0 +1,219 @@
+"""
+Unit tests for daily_mood — date-seeded character temperament.
+
+Covers: determinism, valid keys, label/description/emoji accessors,
+language fallback (en/ja), and distribution sanity.
+"""
+import os
+import sys
+import unittest
+from datetime import date
+
+_MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
+sys.path.insert(0, _MAIN)
+
+from daily_mood import (  # noqa: E402
+    all_mood_keys,
+    get_daily_mood,
+    mood_affinity_multiplier,
+    mood_description,
+    mood_emoji,
+    mood_label,
+)
+
+_KNOWN_KEYS = {"energetic", "cheerful", "calm", "thoughtful", "melancholy", "mischievous"}
+
+
+class DeterminismTests(unittest.TestCase):
+    def test_same_date_same_result(self):
+        d = date(2026, 1, 1)
+        self.assertEqual(get_daily_mood(d), get_daily_mood(d))
+
+    def test_same_date_same_salt_same_result(self):
+        d = date(2026, 6, 15)
+        self.assertEqual(get_daily_mood(d, "Alice"), get_daily_mood(d, "Alice"))
+
+    def test_different_dates_may_differ(self):
+        results = {get_daily_mood(date(2026, 1, i)) for i in range(1, 8)}
+        self.assertGreater(len(results), 1)
+
+    def test_different_salts_may_differ(self):
+        d = date(2026, 6, 1)
+        results = {get_daily_mood(d, str(i)) for i in range(20)}
+        self.assertGreater(len(results), 1)
+
+    def test_no_date_uses_today(self):
+        result = get_daily_mood()
+        self.assertIn(result, _KNOWN_KEYS)
+
+
+class ValidKeyTests(unittest.TestCase):
+    def test_result_is_known_key(self):
+        for day in range(1, 32):
+            try:
+                d = date(2026, 1, day)
+            except ValueError:
+                continue
+            self.assertIn(get_daily_mood(d), _KNOWN_KEYS, f"day={day}")
+
+    def test_all_mood_keys_complete(self):
+        keys = set(all_mood_keys())
+        self.assertEqual(keys, _KNOWN_KEYS)
+
+
+class LabelTests(unittest.TestCase):
+    def test_ja_label_nonempty(self):
+        for key in _KNOWN_KEYS:
+            self.assertGreater(len(mood_label(key, "ja")), 0, key)
+
+    def test_en_label_nonempty(self):
+        for key in _KNOWN_KEYS:
+            self.assertGreater(len(mood_label(key, "en")), 0, key)
+
+    def test_en_prefix_triggers_english(self):
+        label_en = mood_label("energetic", "en")
+        label_ja = mood_label("energetic", "ja")
+        self.assertNotEqual(label_en, label_ja)
+
+    def test_en_us_falls_back_to_english(self):
+        self.assertEqual(mood_label("cheerful", "en-US"), mood_label("cheerful", "en"))
+
+    def test_unknown_key_returns_key_itself(self):
+        self.assertEqual(mood_label("nonexistent"), "nonexistent")
+
+
+class DescriptionTests(unittest.TestCase):
+    def test_ja_description_nonempty(self):
+        for key in _KNOWN_KEYS:
+            self.assertGreater(len(mood_description(key, "ja")), 0, key)
+
+    def test_en_description_nonempty(self):
+        for key in _KNOWN_KEYS:
+            self.assertGreater(len(mood_description(key, "en")), 0, key)
+
+    def test_unknown_key_returns_empty(self):
+        self.assertEqual(mood_description("nope"), "")
+
+    def test_descriptions_differ_across_moods(self):
+        descs = {mood_description(k, "ja") for k in _KNOWN_KEYS}
+        self.assertEqual(len(descs), len(_KNOWN_KEYS))
+
+
+class EmojiTests(unittest.TestCase):
+    def test_all_keys_have_emoji(self):
+        for key in _KNOWN_KEYS:
+            self.assertGreater(len(mood_emoji(key)), 0, key)
+
+    def test_unknown_key_returns_empty(self):
+        self.assertEqual(mood_emoji("phantom"), "")
+
+    def test_emojis_differ_across_moods(self):
+        emojis = {mood_emoji(k) for k in _KNOWN_KEYS}
+        self.assertEqual(len(emojis), len(_KNOWN_KEYS))
+
+
+class DistributionTests(unittest.TestCase):
+    """All 6 moods should appear across a reasonable date range."""
+
+    def test_all_moods_appear_in_100_days(self):
+        from datetime import timedelta
+        start = date(2026, 1, 1)
+        seen = set()
+        for i in range(100):
+            seen.add(get_daily_mood(start + timedelta(days=i)))
+        self.assertEqual(seen, _KNOWN_KEYS)
+
+
+class AffinityMultiplierTests(unittest.TestCase):
+    def test_energetic_is_above_one(self):
+        self.assertGreater(mood_affinity_multiplier("energetic"), 1.0)
+
+    def test_cheerful_is_above_one(self):
+        self.assertGreater(mood_affinity_multiplier("cheerful"), 1.0)
+
+    def test_calm_is_one(self):
+        self.assertEqual(mood_affinity_multiplier("calm"), 1.0)
+
+    def test_melancholy_is_below_one(self):
+        self.assertLess(mood_affinity_multiplier("melancholy"), 1.0)
+
+    def test_thoughtful_is_below_one(self):
+        self.assertLess(mood_affinity_multiplier("thoughtful"), 1.0)
+
+    def test_mischievous_is_above_one(self):
+        self.assertGreater(mood_affinity_multiplier("mischievous"), 1.0)
+
+    def test_unknown_key_returns_one(self):
+        self.assertEqual(mood_affinity_multiplier("phantom"), 1.0)
+
+    def test_all_multipliers_positive(self):
+        for key in _KNOWN_KEYS:
+            self.assertGreater(mood_affinity_multiplier(key), 0.0, key)
+
+    def test_all_multipliers_reasonable_range(self):
+        for key in _KNOWN_KEYS:
+            m = mood_affinity_multiplier(key)
+            self.assertGreaterEqual(m, 0.5, key)
+            self.assertLessEqual(m, 2.0, key)
+
+
+class EdgeCaseTests(unittest.TestCase):
+    """Edge-case inputs to daily_mood functions."""
+
+    def test_empty_lang_falls_back_gracefully(self):
+        """Empty language string should not raise; falls back to some default."""
+        key = get_daily_mood(date(2026, 1, 1))
+        label = mood_label(key, "")
+        self.assertIsInstance(label, str)
+
+    def test_invalid_lang_code_returns_string(self):
+        """Unknown lang code should not raise."""
+        key = get_daily_mood(date(2026, 1, 1))
+        for lang in ["zz", "xx-YY", "123"]:
+            result = mood_label(key, lang)
+            self.assertIsInstance(result, str, f"lang={lang!r}")
+
+    def test_non_string_salt_converted(self):
+        """Passing a numeric salt should produce the same result as its string form."""
+        d = date(2026, 3, 15)
+        result_num = get_daily_mood(d, 42)  # type: ignore[arg-type]
+        result_str = get_daily_mood(d, "42")
+        self.assertEqual(result_num, result_str)
+
+    def test_empty_string_salt_deterministic(self):
+        """Empty salt is deterministic across calls."""
+        d = date(2026, 7, 4)
+        self.assertEqual(get_daily_mood(d, ""), get_daily_mood(d, ""))
+
+    def test_none_date_uses_today(self):
+        """Calling get_daily_mood() with no args (today) returns a valid key."""
+        key = get_daily_mood()
+        self.assertIn(key, _KNOWN_KEYS)
+
+    def test_description_empty_lang_no_crash(self):
+        key = get_daily_mood(date(2026, 1, 1))
+        desc = mood_description(key, "")
+        self.assertIsInstance(desc, str)
+
+    def test_emoji_unknown_key_returns_string(self):
+        result = mood_emoji("totally_unknown_key_xyz")
+        self.assertIsInstance(result, str)
+
+    def test_mood_label_unknown_key_returns_string(self):
+        result = mood_label("nonexistent_key_abc", "ja")
+        self.assertIsInstance(result, str)
+
+
+    def test_none_salt_equals_empty_salt(self):
+        """salt=None must produce the same mood as salt='' (empty string).
+
+        Before the fix, f'...:None' and f'...:' were different seeds, causing
+        a silent mood mismatch when callers accidentally passed None.
+        """
+        d = date(2026, 6, 20)
+        self.assertEqual(get_daily_mood(d, salt=None),  # type: ignore[arg-type]
+                         get_daily_mood(d, salt=""))
+
+
+if __name__ == "__main__":
+    unittest.main()

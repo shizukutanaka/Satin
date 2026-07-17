@@ -1,14 +1,10 @@
 """
 バックアップ管理のコマンドラインインターフェース
 """
-import os
 import sys
-import json
 import logging
 import argparse
-from typing import Optional
 from backup_manager import get_backup_manager
-from config_manager import get_config_manager
 
 logger = logging.getLogger(__name__)
 

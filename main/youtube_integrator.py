@@ -5,14 +5,10 @@ YouTube Integration Module
 
 import re
 import json
-import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from pathlib import Path
-from functools import lru_cache
-import logging
 from dataclasses import dataclass, asdict
-from urllib.parse import urlparse, parse_qs
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
@@ -33,7 +29,7 @@ try:
 except ImportError:
     YOUTUBE_API_AVAILABLE = False
 
-from error_handling import handle_error, RetryStrategy, ErrorContext
+from error_handling import handle_error, RetryStrategy
 from cache_manager import CacheManager
 from logging_manager import LoggingManager
 
@@ -63,6 +59,19 @@ class YouTubeVideo:
         data = asdict(self)
         data['published_at'] = self.published_at.isoformat()
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'YouTubeVideo':
+        """to_dict() の逆変換。published_at の ISO 文字列を datetime に戻す。
+
+        （キャッシュ復元時に published_at が文字列のままになり、消費側で
+        .year 等を呼ぶと TypeError になっていた不具合への対処。）
+        """
+        data = dict(data)
+        pub = data.get('published_at')
+        if isinstance(pub, str):
+            data['published_at'] = datetime.fromisoformat(pub)
+        return cls(**data)
 
 
 @dataclass
@@ -156,7 +165,7 @@ class YouTubeIntegrator:
         - https://m.youtube.com/watch?v=VIDEO_ID
         """
         patterns = [
-            r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})',
+            r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})',
             r'youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})',
         ]
 
@@ -189,7 +198,8 @@ class YouTubeIntegrator:
         """YouTube URLからチャンネルIDを抽出"""
         patterns = [
             r'youtube\.com\/channel\/([a-zA-Z0-9_-]+)',
-            r'youtube\.com\/@([a-zA-Z0-9_-]+)',
+            # Handle names can contain dots (e.g. @user.name)
+            r'youtube\.com\/@([a-zA-Z0-9_.%-]+)',
         ]
 
         for pattern in patterns:
@@ -256,7 +266,7 @@ class YouTubeIntegrator:
         cached = self.cache_manager.get(cache_key)
         if cached:
             self.logger.debug(f"Cache hit for video {video_id}")
-            return YouTubeVideo(**cached)
+            return YouTubeVideo.from_dict(cached)
 
         video_info = None
 
@@ -317,12 +327,12 @@ class YouTubeIntegrator:
             channel_id=snippet['channelId'],
             published_at=datetime.fromisoformat(snippet['publishedAt'].replace('Z', '+00:00')),
             duration=duration_seconds,
-            view_count=int(statistics.get('viewCount', 0)),
-            like_count=int(statistics.get('likeCount', 0)),
-            comment_count=int(statistics.get('commentCount', 0)),
+            view_count=int(statistics.get('viewCount') or 0),
+            like_count=int(statistics.get('likeCount') or 0),
+            comment_count=int(statistics.get('commentCount') or 0),
             tags=snippet.get('tags', []),
             category_id=snippet.get('categoryId', ''),
-            thumbnail_url=snippet['thumbnails']['high']['url'],
+            thumbnail_url=((snippet.get('thumbnails') or {}).get('high') or (snippet.get('thumbnails') or {}).get('medium') or (snippet.get('thumbnails') or {}).get('default') or {}).get('url', ''),
             language=snippet.get('defaultLanguage', 'ja')
         )
 
@@ -355,30 +365,39 @@ class YouTubeIntegrator:
             )
 
     def _parse_duration(self, duration_str: str) -> int:
-        """ISO 8601 duration (PT1H2M3S) を秒数に変換"""
-        pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+        """ISO 8601 duration (PT1H2M3S, P1DT2H) を秒数に変換"""
+        # 日 (D) コンポーネントを含むパターン (例: P1DT2H30M0S)。
+        # 旧パターン r'PT...' はPの直後にTを要求するため、1日以上の動画/
+        # ライブ配信 (P1DT2H) に対して 0 を返していた。
+        pattern = r'P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
         match = re.match(pattern, duration_str)
         if not match:
             return 0
 
-        hours = int(match.group(1) or 0)
-        minutes = int(match.group(2) or 0)
-        seconds = int(match.group(3) or 0)
+        days = int(match.group(1) or 0)
+        hours = int(match.group(2) or 0)
+        minutes = int(match.group(3) or 0)
+        seconds = int(match.group(4) or 0)
 
-        return hours * 3600 + minutes * 60 + seconds
+        return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
     @handle_error(RetryStrategy(max_retries=2, backoff_factor=1.5))
-    def get_transcript(self, video_id: str, languages: List[str] = ['ja', 'en']) -> Optional[str]:
+    def get_transcript(self, video_id: str, languages: Optional[List[str]] = None) -> Optional[str]:
         """
         動画字幕を取得
 
         Args:
             video_id: YouTube動画ID
-            languages: 取得する言語リスト（優先順）
+            languages: 取得する言語リスト（優先順）。省略時は ['ja', 'en']。
 
         Returns:
             字幕テキスト or None
         """
+        # ミュータブルなデフォルト引数 (= ['ja','en']) は全呼び出しで同一リストを
+        # 共有し、将来うっかり破壊的操作を足すと呼び出し間で状態が漏れる。None
+        # センチネルで毎回新しいリストを使う。
+        if languages is None:
+            languages = ['ja', 'en']
         if not TRANSCRIPT_AVAILABLE:
             self.logger.warning("youtube-transcript-api not available")
             return None
@@ -451,10 +470,10 @@ class YouTubeIntegrator:
                 channel_id=channel_id,
                 title=snippet['title'],
                 description=snippet['description'],
-                subscriber_count=int(statistics.get('subscriberCount', 0)),
-                video_count=int(statistics.get('videoCount', 0)),
-                view_count=int(statistics.get('viewCount', 0)),
-                thumbnail_url=snippet['thumbnails']['high']['url'],
+                subscriber_count=int(statistics.get('subscriberCount') or 0),
+                video_count=int(statistics.get('videoCount') or 0),
+                view_count=int(statistics.get('viewCount') or 0),
+                thumbnail_url=((snippet.get('thumbnails') or {}).get('high') or (snippet.get('thumbnails') or {}).get('medium') or (snippet.get('thumbnails') or {}).get('default') or {}).get('url', ''),
                 custom_url=snippet.get('customUrl'),
                 country=snippet.get('country')
             )
@@ -607,57 +626,62 @@ class YouTubeIntegrator:
         for i in range(0, len(video_ids), batch_size):
             batch = video_ids[i:i + batch_size]
 
-            # キャッシュチェック
-            cached_videos = []
+            # バッチ内の結果を {video_id: video} に集約してから元の順序で追加する。
+            # 旧実装は uncached 動画を先に videos.append し、その後
+            # videos.extend(cached_videos) を実行していたため、キャッシュ済み動画が
+            # 末尾に固まり入力順序が壊れていた（例: [A,B,C]→[B,A,C]）。
+            result_map: Dict[str, 'YouTubeVideo'] = {}
             uncached_ids = []
 
             for vid in batch:
                 cache_key = f"video_{vid}_{include_transcript}"
                 cached = self.cache_manager.get(cache_key)
                 if cached:
-                    cached_videos.append(YouTubeVideo(**cached))
+                    result_map[vid] = YouTubeVideo.from_dict(cached)
                 else:
                     uncached_ids.append(vid)
 
             # クォータ確認 (videos.list は1 quota消費)
-            if not uncached_ids or not self._check_rate_limit(quota_cost=1):
-                videos.extend(cached_videos)
-                continue
+            if uncached_ids and self._check_rate_limit(quota_cost=1):
+                try:
+                    # バッチAPI呼び出し (最大50個を1リクエストで取得)
+                    request = self.youtube_service.videos().list(
+                        part='snippet,contentDetails,statistics',
+                        id=','.join(uncached_ids)
+                    )
+                    response = request.execute()
 
-            try:
-                # バッチAPI呼び出し (最大50個を1リクエストで取得)
-                request = self.youtube_service.videos().list(
-                    part='snippet,contentDetails,statistics',
-                    id=','.join(uncached_ids)
-                )
-                response = request.execute()
+                    for item in response.get('items', []):
+                        video = self._parse_video_item(item)
+                        if video:
+                            # 字幕取得が必要な場合
+                            if include_transcript:
+                                transcript = self.get_transcript(video.video_id)
+                                video.transcript = transcript
+                                video.captions_available = bool(transcript)
 
-                for item in response.get('items', []):
-                    video = self._parse_video_item(item)
-                    if video:
-                        # 字幕取得が必要な場合
-                        if include_transcript:
-                            transcript = self.get_transcript(video.video_id)
-                            video.transcript = transcript
-                            video.captions_available = bool(transcript)
+                            # キャッシュ保存
+                            cache_key = f"video_{video.video_id}_{include_transcript}"
+                            self.cache_manager.set(cache_key, video.to_dict(), ttl=86400)
 
-                        # キャッシュ保存
-                        cache_key = f"video_{video.video_id}_{include_transcript}"
-                        self.cache_manager.set(cache_key, video.to_dict(), ttl=86400)
+                            result_map[video.video_id] = video
 
-                        videos.append(video)
+                    self.logger.info(
+                        f"Batch retrieved {len(result_map)} videos (batch size: {len(batch)})"
+                    )
 
-                self.logger.info(f"Batch retrieved {len(videos)} videos (batch size: {len(batch)})")
+                except Exception as e:
+                    self.logger.error(f"Batch retrieval failed: {e}, falling back to sequential")
+                    # フォールバック: 逐次取得
+                    for vid in uncached_ids:
+                        video = self.get_video_info(vid, include_transcript=include_transcript)
+                        if video:
+                            result_map[video.video_id] = video
 
-            except Exception as e:
-                self.logger.error(f"Batch retrieval failed: {e}, falling back to sequential")
-                # フォールバック: 逐次取得
-                for vid in uncached_ids:
-                    video = self.get_video_info(vid, include_transcript=include_transcript)
-                    if video:
-                        videos.append(video)
-
-            videos.extend(cached_videos)
+            # 元の入力順序で結果を追加
+            for vid in batch:
+                if vid in result_map:
+                    videos.append(result_map[vid])
 
         return videos
 
@@ -688,12 +712,12 @@ class YouTubeIntegrator:
                 channel_id=snippet['channelId'],
                 published_at=datetime.fromisoformat(snippet['publishedAt'].replace('Z', '+00:00')),
                 duration=duration_seconds,
-                view_count=int(statistics.get('viewCount', 0)),
-                like_count=int(statistics.get('likeCount', 0)),
-                comment_count=int(statistics.get('commentCount', 0)),
+                view_count=int(statistics.get('viewCount') or 0),
+                like_count=int(statistics.get('likeCount') or 0),
+                comment_count=int(statistics.get('commentCount') or 0),
                 tags=snippet.get('tags', []),
                 category_id=snippet.get('categoryId', ''),
-                thumbnail_url=snippet['thumbnails']['high']['url'],
+                thumbnail_url=((snippet.get('thumbnails') or {}).get('high') or (snippet.get('thumbnails') or {}).get('medium') or (snippet.get('thumbnails') or {}).get('default') or {}).get('url', ''),
                 language=snippet.get('defaultLanguage', 'ja')
             )
         except Exception as e:

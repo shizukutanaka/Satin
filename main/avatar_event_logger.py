@@ -4,9 +4,17 @@ import threading
 from datetime import datetime
 
 class AvatarEventLogger:
-    def __init__(self, logfile="avatar_event_log.jsonl"):
+    def __init__(self, logfile="avatar_event_log.jsonl",
+                 max_size=5 * 1024 * 1024, max_backups=5):
         self.logfile = logfile
+        # 無制限増大を防ぐためのサイズ上限。max_size=0 で自動ローテーション無効。
+        # コンパニオンは履歴を貯め続けるので、書き込み経路で自己上限化しないと
+        # ディスクが膨張し、全リーダー（毎回ファイル全走査）も線形に遅くなる。
+        self.max_size = max_size
+        self.max_backups = max_backups
         self.lock = threading.Lock()
+        # 会話ログは私的データ。初回書き込み後に所有者のみ読み書き可へ制限する。
+        self._perms_restricted = False
 
     def log_event(self, event_type, **kwargs):
         event = {
@@ -14,25 +22,48 @@ class AvatarEventLogger:
             "event_type": event_type,
             "details": kwargs
         }
-        with self.lock, open(self.logfile, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        with self.lock:
+            with open(self.logfile, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            if not self._perms_restricted:
+                try:
+                    from fsutil import restrict_to_owner
+                    restrict_to_owner(self.logfile)
+                except Exception:
+                    pass
+                self._perms_restricted = True
+            # 上限超過時に gzip ローテート。ローテーション失敗はログ記録自体を
+            # 壊さないよう握りつぶす（記録の堅牢性を最優先）。
+            if self.max_size:
+                try:
+                    from avatar_event_log_rotate import rotate_log
+                    rotate_log(self.logfile, self.max_size, self.max_backups,
+                               quiet=True)
+                except Exception:
+                    pass
 
     def replay_events(self, callback, delay_factor=1.0):
         """
         callback(event)でイベントを再生
         delay_factor=1.0で実時間通り、<1.0で高速再生
+        ログファイルが存在しない場合は何もしない。
         """
-        with open(self.logfile, encoding="utf-8") as f:
-            events = [json.loads(line) for line in f if line.strip()]
+        import os
+        if not os.path.exists(self.logfile):
+            return
+        # 空行・壊れた行・dict 以外（null 等）の行はスキップする共通ローダを使用。
+        from fsutil import load_jsonl_dicts
+        events = load_jsonl_dicts(self.logfile)
         if not events:
             return
-        base = events[0]["timestamp"]
         for i, event in enumerate(events):
-            t = event["timestamp"]
-            if i > 0:
-                dt = (t - events[i-1]["timestamp"]) * delay_factor
-                if dt > 0:
-                    time.sleep(dt)
+            t = event.get("timestamp")
+            if t is not None and i > 0:
+                prev_t = events[i - 1].get("timestamp")
+                if prev_t is not None:
+                    dt = (t - prev_t) * delay_factor
+                    if dt > 0:
+                        time.sleep(dt)
             callback(event)
 
 # サンプル利用例

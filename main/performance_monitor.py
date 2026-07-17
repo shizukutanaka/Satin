@@ -10,12 +10,15 @@
 - アラート通知機能
 """
 import os
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None  # type: ignore
 import logging
 import threading
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from config_manager import get_config_manager
 
 logger = logging.getLogger(__name__)
@@ -26,25 +29,33 @@ class PerformanceMonitor:
         """初期化"""
         self.config = get_config_manager()
         self.settings = self.config.get_plugin_config("performance_monitor")
-        
+
+        # Defaults — overridden below if plugin config is present
+        self.interval = 5
+        self.thresholds = {
+            "memory": 80,
+            "cpu": 90,
+            "disk": 90,
+            "network": 1_000_000,
+        }
+        self.alert_enabled = True
+        self.alert_threshold = 3
+        self.alert_count = 0
+        self.last_alert = None
+        self.monitor_thread = None
+        self.running = False
+
         if self.settings:
-            self.interval = self.settings.get("interval", 5)  # 監視間隔（秒）
+            self.interval = self.settings.get("interval") or 5
             self.thresholds = {
-                "memory": self.settings.get("memory_threshold", 80),  # メモリ使用率閾値（%）
-                "cpu": self.settings.get("cpu_threshold", 90),  # CPU使用率閾値（%）
-                "disk": self.settings.get("disk_threshold", 90),  # ディスク使用率閾値（%）
-                "network": self.settings.get("network_threshold", 1000000)  # ネットワークIO閾値（bps）
+                "memory": self.settings.get("memory_threshold") or 80,
+                "cpu": self.settings.get("cpu_threshold") or 90,
+                "disk": self.settings.get("disk_threshold") or 90,
+                "network": self.settings.get("network_threshold") or 1_000_000,
             }
-            
-            self.alert_enabled = self.settings.get("alert_enabled", True)
-            self.alert_threshold = self.settings.get("alert_threshold", 3)  # 連続アラート閾値
-            
-            self.alert_count = 0
-            self.last_alert = None
-            
-            # モニタリングスレッドの初期化
-            self.monitor_thread = None
-            self.running = False
+            _ae = self.settings.get("alert_enabled")
+            self.alert_enabled = True if _ae is None else bool(_ae)
+            self.alert_threshold = self.settings.get("alert_threshold") or 3
             
     def start_monitoring(self) -> None:
         """モニタリングを開始"""
@@ -59,7 +70,8 @@ class PerformanceMonitor:
         """モニタリングを停止"""
         self.running = False
         if self.monitor_thread:
-            self.monitor_thread.join()
+            # Bound the join so a sleeping interval doesn't hang the caller.
+            self.monitor_thread.join(timeout=self.interval + 2)
             logger.info("パフォーマンス監視を停止しました")
     
     def _monitor(self) -> None:
@@ -83,6 +95,11 @@ class PerformanceMonitor:
     
     def _collect_stats(self) -> Dict[str, Any]:
         """パフォーマンス統計を収集"""
+        if psutil is None:
+            return {}
+        # disk_io_counters() returns None on platforms where the OS does not
+        # expose per-disk I/O counters (e.g. some VMs / container runtimes).
+        _disk_io = psutil.disk_io_counters()
         return {
             "timestamp": datetime.now().isoformat(),
             "memory": {
@@ -95,8 +112,8 @@ class PerformanceMonitor:
                 "count": psutil.cpu_count()
             },
             "disk": {
-                "io_read": psutil.disk_io_counters().read_bytes,
-                "io_write": psutil.disk_io_counters().write_bytes,
+                "io_read": getattr(_disk_io, 'read_bytes', 0),
+                "io_write": getattr(_disk_io, 'write_bytes', 0),
                 "percent": psutil.disk_usage('/').percent
             },
             "network": {
@@ -107,8 +124,10 @@ class PerformanceMonitor:
     
     def _check_alerts(self, stats: Dict[str, Any]) -> bool:
         """アラート条件をチェック"""
+        if not stats:
+            return False
         alerts = []
-        
+
         # メモリチェック
         if stats["memory"]["percent"] > self.thresholds["memory"]:
             alerts.append(f"メモリ使用率が{self.thresholds['memory']}%を超過")
@@ -145,13 +164,17 @@ class PerformanceMonitor:
             
             # アラート通知（プラットフォームに応じて）
             if os.name == 'nt':
-                import win10toast
-                toaster = win10toast.ToastNotifier()
-                toaster.show_toast(
-                    "Satin Performance Alert",
-                    message,
-                    duration=10
-                )
+                try:
+                    import win10toast
+                    toaster = win10toast.ToastNotifier()
+                    toaster.show_toast(
+                        "Satin Performance Alert",
+                        message,
+                        duration=10
+                    )
+                except ImportError:
+                    logger.warning("win10toast not installed; falling back to console output")
+                    print(f"\n警告: {message}")
             else:
                 print(f"\n警告: {message}")
             
@@ -160,6 +183,8 @@ class PerformanceMonitor:
     
     def _log_stats(self, stats: Dict[str, Any]) -> None:
         """パフォーマンス統計をログに記録"""
+        if not stats:
+            return
         log_msg = f"パフォーマンス統計 - {stats['timestamp']}\n"
         log_msg += f"メモリ: {stats['memory']['percent']}%\n"
         log_msg += f"CPU: {stats['cpu']['usage']}%\n"

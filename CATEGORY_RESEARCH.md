@@ -1,5 +1,11 @@
 # Satin — カテゴリー別 改善リサーチ (10カテゴリ × 各10ソース)
 
+> **⚠️ 対象注意**: 本ドキュメントは TypeScript ライブラリ `satin-companion-core`
+> （`empathy.ts`/`bond.ts`/`bandit.ts` 等）を対象にした構想メモで、**このリポジトリには
+> 存在しない**。実際に出荷されている Python 実装（`main/`、辞書/ルール/キーワードベース、
+> LLM・外部API非依存）に接地した改善リストは
+> [`RESEARCH_DRIVEN_IMPROVEMENTS_PY.md`](RESEARCH_DRIVEN_IMPROVEMENTS_PY.md) を参照。
+
 > 目的: `satin-companion-core`(プライバシーファースト/ゼロ依存/純粋関数のオンデバイス行動知能ライブラリ)
 > を、製品カテゴリーごとに arxiv.org / GitHub の関連情報を集めて改善点を洗い出す。
 > 各ソースは web 検索で実在 URL を確認したもののみ掲載(架空の arxiv ID/URL は不可)。

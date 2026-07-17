@@ -1,5 +1,4 @@
 import os
-import glob
 import json
 import shutil
 from utils_profile import profile_time, log_info, log_error

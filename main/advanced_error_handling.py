@@ -3,12 +3,10 @@
 カスタム例外, エラー回復戦略, エラーコンテキスト管理
 """
 
-import sys
 import logging
 import traceback
-from typing import Type, Callable, Optional, List, Dict, Any, Union
+from typing import Callable, Optional, List, Dict, Any
 from dataclasses import dataclass, field
-from enum import Enum
 from datetime import datetime
 from functools import wraps
 import json
@@ -381,8 +379,9 @@ def with_error_context(operation: str) -> Callable:
         def wrapper(*args, **kwargs):
             with ErrorContextManager(operation) as ctx:
                 result = func(*args, **kwargs)
-                logger.debug(f"Operation '{operation}' completed in {ctx.context.duration_ms:.1f}ms")
-                return result
+            # __exit__ has run; duration_ms is now set
+            logger.debug(f"Operation '{operation}' completed in {ctx.context.duration_ms or 0:.1f}ms")
+            return result
 
         return wrapper
     return decorator
@@ -411,7 +410,7 @@ class StructuredErrorFormatter(logging.Formatter):
         }
 
         # エラー情報を追加
-        if record.exc_info:
+        if record.exc_info and record.exc_info[0] is not None:
             log_data['exception'] = {
                 'type': record.exc_info[0].__name__,
                 'message': str(record.exc_info[1]),

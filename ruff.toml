@@ -1,0 +1,42 @@
+# Ruff configuration for Satin.
+#
+# The "enforced" lint set below is intentionally scoped to correctness /
+# bug-prone rules so it can be kept GREEN and wired into CI / pre-commit as a
+# gate. This session found real bugs that these rules catch:
+#   - F821 undefined-name  -> 7 avatar modules called OpenGL funcs without
+#                             importing them (3D render crashed); cloud_backup
+#                             used List without importing it.
+#   - B006 mutable-default -> shared list defaults across calls.
+#   - B904 raise-without-from -> exception chains discarded on re-raise.
+#
+# Hygiene rules that are noisy but not bugs (F401 unused-import,
+# F841 unused-variable, B007 unused-loop-var, F541) are deliberately NOT in the
+# enforced set yet. Review them as cleanup with, e.g.:
+#   ruff check main/ --select F401,F841,B007
+target-version = "py38"
+line-length = 100
+
+[lint]
+select = [
+    "B006",  # mutable data structure as argument default
+    "B904",  # raise without `from` inside an except block
+    "E711",  # comparison to None should use `is`/`is not`
+    "E712",  # comparison to True/False
+    "E713",  # test for membership should be `not in`
+    "E714",  # test for object identity should be `is not`
+    "E722",  # do not use bare `except`
+    "B007",  # loop control variable not used within the loop body
+    "F811",  # redefinition of unused name
+    "F821",  # undefined name
+    "F823",  # local variable referenced before assignment
+    "F541",  # f-string without any placeholders
+    "PLE",   # Pylint error-category checks
+]
+
+[lint.per-file-ignores]
+# Optional-dependency import shims deliberately redefine names with fallbacks
+# (guarded by `# type: ignore[no-redef]`).
+"main/property_based_tests.py" = ["F811"]
+# Test classes define helper methods named like the module import alias
+# (`_persona`); these live in distinct scopes and do not actually collide.
+"tests/test_persona.py" = ["F811"]

@@ -4,7 +4,6 @@ Configuration utilities for Satin
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, TypeVar, Type, Union
 import shutil
@@ -209,7 +208,7 @@ def set_config_value(
     keys = key_path.split(delimiter)
     current = config
     
-    for i, key in enumerate(keys[:-1]):
+    for _i, key in enumerate(keys[:-1]):
         if key not in current or not isinstance(current[key], dict):
             current[key] = {}
         current = current[key]

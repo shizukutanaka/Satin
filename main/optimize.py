@@ -3,23 +3,51 @@ Performance optimization utilities for Satin
 """
 import functools
 import time
-from typing import Callable, Any, Optional, List, Dict, Tuple, TypeVar, Generic
+from typing import Callable, Any, Optional, List, Dict, Tuple, TypeVar
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import weakref
 from collections import OrderedDict
-import json
-import os
-import logging
-import aiofiles
-import numpy as np
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from statsmodels.tsa.seasonal import seasonal_decompose
-import pandas as pd
+try:
+    import aiofiles
+except ImportError:
+    aiofiles = None  # type: ignore
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore
+try:
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+except ImportError:
+    RandomForestRegressor = train_test_split = StandardScaler = None  # type: ignore
+try:
+    from statsmodels.tsa.seasonal import seasonal_decompose
+except ImportError:
+    seasonal_decompose = None  # type: ignore
+try:
+    import pandas as pd
+except ImportError:
+    pd = None  # type: ignore
 
 T = TypeVar('T')
+
+class _NoopStub:
+    """Placeholder for optional subsystems not yet implemented."""
+    async def forecast_resources(self): return {}
+    async def process_chunk(self, chunk): return chunk
+    def __getattr__(self, name):
+        async def _noop(*a, **kw): pass
+        return _noop
+
+
+class ResourceOptimizer(_NoopStub): pass
+class MLOptimizer(_NoopStub): pass
+class DistributedProcessor(_NoopStub): pass
+class CacheManager(_NoopStub): pass
+class DistributedCache(_NoopStub): pass
+class ResourceForecaster(_NoopStub): pass
+
 
 class PerformanceMonitor:
     """Enhanced performance monitoring system with adaptive optimization"""
@@ -44,8 +72,9 @@ class PerformanceMonitor:
             'disk': None,
             'network': None
         }
-        self._anomaly_detector = AnomalyDetector()
-        self._batch_optimizer = BatchOptimizer()
+        cls = self.__class__
+        self._anomaly_detector = cls.AnomalyDetector()
+        self._batch_optimizer = cls.BatchOptimizer()
         self._distributed_processor = DistributedProcessor()
         self._confidence_intervals = {
             'memory': (0, 0),
@@ -55,12 +84,12 @@ class PerformanceMonitor:
         }
         self._last_anomaly_check = time.time()
         self._anomaly_check_interval = 300  # 5 minutes
-        self._memory_manager = MemoryManager()
+        self._memory_manager = cls.MemoryManager()
         self._cache_manager = CacheManager()
         self._distributed_cache = DistributedCache()
         self._last_memory_optimization = time.time()
         self._memory_optimization_interval = 300  # 5 minutes
-        self._adaptive_optimizer = AdaptiveOptimizer()
+        self._adaptive_optimizer = cls.AdaptiveOptimizer()
         self._resource_forecaster = ResourceForecaster()
         self._last_adaptive_optimization = time.time()
         self._adaptive_optimization_interval = 300  # 5 minutes
@@ -78,12 +107,12 @@ class PerformanceMonitor:
         metrics = self.get_metrics()
         if not metrics:
             return
-            
+
         # Forecast future usage
         predictions = await self._resource_forecaster.forecast_resources()
-        
-        # Analyze patterns
-        patterns = self._analyze_resource_patterns(metrics)
+
+        # Analyze patterns from raw metric lists (not from summary-stats dicts)
+        patterns = self._analyze_resource_patterns(self.metrics)
         
         # Determine optimization strategy
         strategy = self._adaptive_optimizer.determine_strategy(
@@ -97,20 +126,19 @@ class PerformanceMonitor:
         
         self._last_adaptive_optimization = current_time
     
-    def _analyze_resource_patterns(self, metrics: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """Analyze resource usage patterns"""
+    def _analyze_resource_patterns(self, raw_metrics: Dict[str, List[float]]) -> Dict[str, Dict[str, Any]]:
+        """Analyze resource usage patterns from raw metric lists."""
         patterns = {}
-        for name, metric in metrics.items():
-            if 'history' in metric:
-                values = [point['value'] for point in metric['history']]
-                timestamps = [point['timestamp'] for point in metric['history']]
-                patterns[name] = {
-                    'trend': self._calculate_trend(values),
-                    'seasonality': self._calculate_seasonality(values, timestamps),
-                    'variance': self._calculate_variance(values),
-                    'peak': max(values) if values else 0,
-                    'avg': sum(values) / len(values) if values else 0
-                }
+        for name, values in raw_metrics.items():
+            if not values:
+                continue
+            mean = sum(values) / len(values)
+            variance = sum((v - mean) ** 2 for v in values) / len(values)
+            patterns[name] = {
+                'variance': variance,
+                'peak': max(values),
+                'avg': mean,
+            }
         return patterns
     
     class AdaptiveOptimizer:
@@ -149,10 +177,8 @@ class PerformanceMonitor:
             """Determine optimal optimization strategy"""
             strategy = {}
             for resource in self._strategies.keys():
-                if resource in metrics:
-                    current = metrics[resource][-1]['value']
+                if resource in metrics and resource in predictions:
                     predicted = predictions[resource]
-                    pattern = patterns[resource]
                     
                     # Determine strategy based on conditions
                     if predicted > 90:  # High usage predicted
@@ -187,11 +213,6 @@ class PerformanceMonitor:
             
         async def _optimize_heap_optimization(self, resource: str):
             """Optimize heap memory"""
-            # Implementation depends on resource type
-            pass
-            
-        async def _optimize_load_balancing(self, resource: str):
-            """Balance resource load"""
             # Implementation depends on resource type
             pass
             
@@ -450,18 +471,23 @@ class PerformanceMonitor:
         """Calculate confidence interval for resource usage"""
         if resource not in self.metrics:
             return (0, 0)
-            
-        values = [point['value'] for point in self.metrics[resource]['history']]
+
+        values = list(self.metrics[resource])  # flat list of floats
         if not values:
             return (0, 0)
-            
-        mean = np.mean(values)
-        std = np.std(values)
+
+        if np is None:
+            # Fallback: pure-Python mean ± std
+            mean = sum(values) / len(values)
+            std = self._calculate_std_dev(values)
+        else:
+            mean = float(np.mean(values))
+            std = float(np.std(values))
+
         n = len(values)
-        
         z_score = 1.96  # For 95% confidence
-        margin = z_score * (std / np.sqrt(n))
-        
+        margin = z_score * (std / (n ** 0.5))
+
         return (mean - margin, mean + margin)
     
     async def detect_anomalies(self):
@@ -474,16 +500,17 @@ class PerformanceMonitor:
             return
             
         for resource, history in self.metrics.items():
-            if 'history' in history:
-                values = [point['value'] for point in history['history']]
-                latest = values[-1]
-                
-                # Get confidence interval
-                lower, upper = await self.calculate_confidence_interval(resource)
-                
-                # Check for anomaly
-                if latest < lower or latest > upper:
-                    await self._anomaly_detector.handle_anomaly(resource, latest)
+            if resource.endswith('_timestamp') or not history:
+                continue
+            values = list(history)  # flat list of floats
+            latest = values[-1]
+
+            # Get confidence interval
+            lower, upper = await self.calculate_confidence_interval(resource)
+
+            # Check for anomaly
+            if latest < lower or latest > upper:
+                await self._anomaly_detector.handle_anomaly(resource, latest)
                     
         self._last_anomaly_check = current_time
     
@@ -677,65 +704,68 @@ class PerformanceMonitor:
             if name not in self.metrics:
                 self.metrics[name] = []
             self.metrics[name].append(value)
-            
-            # Periodic cleanup
+
+            # Periodic cleanup (called inside the lock — do not re-acquire)
             current_time = time.time()
             if current_time - self._last_cleanup > self._cleanup_interval:
-                await self._cleanup_metrics()
+                await self._cleanup_metrics_unlocked()
                 self._last_cleanup = current_time
-                
+
     def record_metric(self, name: str, value: float):
         """Sync metric recording with cleanup"""
         if name not in self.metrics:
             self.metrics[name] = []
         self.metrics[name].append(value)
-        
+
         # Periodic cleanup
         current_time = time.time()
         if current_time - self._last_cleanup > self._cleanup_interval:
-            self._cleanup_metrics()
+            self._cleanup_metrics_sync()
             self._last_cleanup = current_time
-            
+
     async def _cleanup_metrics(self):
-        """Cleanup old metrics"""
+        """Cleanup old metrics (acquires lock — do NOT call while lock is held)."""
         async with self._lock:
-            # Remove metrics older than 24 hours
-            cutoff = time.time() - 86400
-            for name in list(self.metrics.keys()):
-                if name.endswith('_timestamp'):
-                    continue
-                    
-                timestamps = self.metrics.get(name + '_timestamp', [])
-                if not timestamps:
-                    continue
-                    
-                # Remove old values
-                while timestamps and timestamps[0] < cutoff:
-                    timestamps.pop(0)
-                    self.metrics[name].pop(0)
-                    
-                # Remove empty metrics
-                if not timestamps:
-                    del self.metrics[name]
-                    del self.metrics[name + '_timestamp']
-                    
-    def get_metrics(self) -> dict:
-        """Get all recorded metrics with detailed statistics"""
-        return {
-            name: {
-                'count': len(times),
-                'total': sum(times),
-                'avg': sum(times) / len(times) if times else 0,
-                'min': min(times) if times else 0,
-                'max': max(times) if times else 0,
-                'std_dev': self._calculate_std_dev(times),
-                'p95': self._calculate_percentile(times, 95),
-                'p99': self._calculate_percentile(times, 99)
-            }
-            for name, times in self.metrics.items()
-            if name.endswith('_timestamp')
-        }
-        
+            await self._cleanup_metrics_unlocked()
+
+    async def _cleanup_metrics_unlocked(self):
+        """Cleanup old metrics — must be called with self._lock already held."""
+        cutoff = time.time() - 86400
+        for name in list(self.metrics.keys()):
+            if name.endswith('_timestamp'):
+                continue
+
+            timestamps = self.metrics.get(name + '_timestamp', [])
+            if not timestamps:
+                continue
+
+            while timestamps and timestamps[0] < cutoff:
+                timestamps.pop(0)
+                self.metrics[name].pop(0)
+
+            if not timestamps:
+                del self.metrics[name]
+                del self.metrics[name + '_timestamp']
+
+    def _cleanup_metrics_sync(self):
+        """Sync variant of metric cleanup for use from record_metric."""
+        cutoff = time.time() - 86400
+        for name in list(self.metrics.keys()):
+            if name.endswith('_timestamp'):
+                continue
+
+            timestamps = self.metrics.get(name + '_timestamp', [])
+            if not timestamps:
+                continue
+
+            while timestamps and timestamps[0] < cutoff:
+                timestamps.pop(0)
+                self.metrics[name].pop(0)
+
+            if not timestamps:
+                del self.metrics[name]
+                del self.metrics[name + '_timestamp']
+
     def _calculate_std_dev(self, values: List[float]) -> float:
         """Calculate standard deviation"""
         if not values:
@@ -748,9 +778,11 @@ class PerformanceMonitor:
         """Calculate percentile value"""
         if not values:
             return 0
-            
+
         sorted_values = sorted(values)
-        index = int(len(sorted_values) * (percentile / 100))
+        # Clamp to valid index range; percentile=100 would otherwise produce
+        # index == len, which is one past the end of the list.
+        index = min(int(len(sorted_values) * (percentile / 100)), len(sorted_values) - 1)
         return sorted_values[index]
     
     def get_metrics(self) -> dict:
@@ -759,12 +791,19 @@ class PerformanceMonitor:
             name: {
                 'count': len(times),
                 'total': sum(times),
-                'avg': sum(times) / len(times),
-                'min': min(times),
-                'max': max(times)
+                'avg': sum(times) / len(times) if times else 0,
+                'min': min(times) if times else 0,
+                'max': max(times) if times else 0,
+                'std_dev': self._calculate_std_dev(times),
+                'p95': self._calculate_percentile(times, 95),
+                'p99': self._calculate_percentile(times, 99)
             }
             for name, times in self.metrics.items()
         }
+
+    def shutdown(self) -> None:
+        """Release the internal executor. Call when done with this monitor."""
+        self._executor.shutdown(wait=True)
 
 def cache_result(ttl: int = 300, max_size: int = 1000, compression: bool = False):
     """Enhanced caching decorator with size limit, async support, and compression"""
@@ -785,23 +824,24 @@ def cache_result(ttl: int = 300, max_size: int = 1000, compression: bool = False
             
             # Call function and cache result
             result = await func(*args, **kwargs)
-            
-            # Compress result if enabled
-            if compression:
-                result = compress_result(result)
-            
-            cache[key] = (result, time.time(), compression)
-            
+
+            # Store compressed in cache but always return the original value.
+            # Bug fixed: previously `result` was overwritten with compressed bytes
+            # and then returned to the caller on the first (non-cached) call, while
+            # subsequent cache-hit calls correctly decompressed — an inconsistency.
+            to_store = compress_result(result) if compression else result
+            cache[key] = (to_store, time.time(), compression)
+
             # Enforce size limit
             if len(cache) > max_size:
                 cache.popitem(last=False)
-            
+
             return result
-            
+
         @functools.wraps(func)
         def sync_wrapper(*args, **kwargs):
             key = (args, frozenset(kwargs.items()))
-            
+
             # Check cache
             if key in cache:
                 result, timestamp, compressed = cache[key]
@@ -809,20 +849,18 @@ def cache_result(ttl: int = 300, max_size: int = 1000, compression: bool = False
                     if compressed and compression:
                         result = decompress_result(result)
                     return result
-            
+
             # Call function and cache result
             result = func(*args, **kwargs)
-            
-            # Compress result if enabled
-            if compression:
-                result = compress_result(result)
-            
-            cache[key] = (result, time.time(), compression)
-            
+
+            # Store compressed in cache but always return the original value.
+            to_store = compress_result(result) if compression else result
+            cache[key] = (to_store, time.time(), compression)
+
             # Enforce size limit
             if len(cache) > max_size:
                 cache.popitem(last=False)
-            
+
             return result
             
         if asyncio.iscoroutinefunction(func):
@@ -853,32 +891,32 @@ def optimize_memory():
 async def batch_process(items: List[T], process_func: Callable, batch_size: int = 10, max_workers: int = 4, optimize: bool = True) -> List[T]:
     """Enhanced batch processing with async support, worker pool, and optimization"""
     results = []
-    executor = ThreadPoolExecutor(max_workers=max_workers)
-    
-    async def process_batch(batch: List[T]) -> List[T]:
-        loop = asyncio.get_event_loop()
-        # Optimize batch size based on system resources
-        if optimize:
-            batch_size = optimize_batch_size(len(batch))
-        return await loop.run_in_executor(executor, process_func, batch[:batch_size])
-    
+
     def optimize_batch_size(total: int) -> int:
         """Optimize batch size based on system resources"""
         import psutil
         memory = psutil.virtual_memory()
         cpu_count = psutil.cpu_count()
-        
-        # Adjust batch size based on available resources
+
         if memory.percent > 80:
             return max(1, total // 2)
         elif cpu_count > 4:
             return min(total, 100)
         return min(total, 50)
-    
-    for i in range(0, len(items), batch_size):
-        batch = items[i:i + batch_size]
-        results.extend(await process_batch(batch))
-    
+
+    # Apply optimization to the chunk size rather than truncating within each chunk.
+    # Truncating inside process_batch silently drops items from the tail of every batch.
+    effective_size = optimize_batch_size(batch_size) if optimize else batch_size
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        async def process_batch(batch: List[T]) -> List[T]:
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(executor, process_func, batch)
+
+        for i in range(0, len(items), effective_size):
+            batch = items[i:i + effective_size]
+            results.extend(await process_batch(batch))
+
     return results
     
 async def parallel_process(items: List[T], process_func: Callable, max_workers: int = 4, optimize: bool = True) -> List[T]:
@@ -886,7 +924,7 @@ async def parallel_process(items: List[T], process_func: Callable, max_workers: 
     results = []
     
     async def process_item(item: T) -> T:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         # Optimize processing based on item type
         if optimize:
             item = optimize_item(item)

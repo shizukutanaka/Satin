@@ -4,14 +4,17 @@ Observability 統合基盤
 OpenTelemetry 対応
 """
 
+import collections
 import logging
 import json
 import time
+import threading
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
 import traceback
+import inspect
 from functools import wraps
 import uuid
 
@@ -29,6 +32,31 @@ class LogLevel(Enum):
     WARNING = "WARNING"
     ERROR = "ERROR"
     CRITICAL = "CRITICAL"
+
+
+def _level_from_record(record: "logging.LogRecord") -> "LogLevel":
+    """LogRecord から LogLevel を解決する。
+
+    ``LogLevel[record.levelname]`` を直接使うと、標準の NOTSET や
+    ``logging.addLevelName`` で定義したカスタムレベルで KeyError になり、
+    その構造化ログが丸ごと欠落する。levelname が一致しない場合は数値
+    レベル(levelno)から最も近い標準レベルへ写像してフォールバックする。
+    """
+    name = getattr(record, "levelname", None)
+    try:
+        return LogLevel[name]
+    except (KeyError, TypeError):
+        pass
+    levelno = getattr(record, "levelno", 0) or 0
+    if levelno >= 50:
+        return LogLevel.CRITICAL
+    if levelno >= 40:
+        return LogLevel.ERROR
+    if levelno >= 30:
+        return LogLevel.WARNING
+    if levelno >= 20:
+        return LogLevel.INFO
+    return LogLevel.DEBUG
 
 
 @dataclass
@@ -83,10 +111,12 @@ class StructuredLogHandler(logging.Handler):
     Python logging 用の構造化ログハンドラ
     """
 
-    def __init__(self, trace_provider=None):
+    def __init__(self, trace_provider=None, max_size: int = 10_000):
         super().__init__()
         self.trace_provider = trace_provider
-        self.logs: List[StructuredLog] = []
+        self.max_size = max_size
+        self.logs: collections.deque = collections.deque(maxlen=max_size)
+        self._logs_lock = threading.Lock()
 
     def emit(self, record: logging.LogRecord):
         """ログレコードを構造化ログに変換して出力"""
@@ -96,16 +126,23 @@ class StructuredLogHandler(logging.Handler):
             span_id = getattr(record, 'span_id', str(uuid.uuid4()))
 
             # エラー情報
+            # exc_info=True を「例外が無い文脈」で渡すと sys.exc_info() が
+            # (None, None, None) を返す。これは truthy なので素朴な
+            # `if record.exc_info:` を通過し、exc_info[0].__name__ で
+            # AttributeError になる。型が存在することまで確認する。
             error_info = None
             error_stacktrace = None
-            if record.exc_info:
+            error_message = None
+            has_exc = bool(record.exc_info) and record.exc_info[0] is not None
+            if has_exc:
                 error_info = record.exc_info[0].__name__
                 error_stacktrace = traceback.format_exception(*record.exc_info)
+                error_message = str(record.exc_info[1])
 
             # 構造化ログを生成
             structured = StructuredLog(
                 timestamp=datetime.fromtimestamp(record.created),
-                level=LogLevel[record.levelname],
+                level=_level_from_record(record),
                 logger_name=record.name,
                 message=record.getMessage(),
                 trace_id=trace_id,
@@ -113,7 +150,7 @@ class StructuredLogHandler(logging.Handler):
                 operation=getattr(record, 'operation', None),
                 operation_duration_ms=getattr(record, 'operation_duration_ms', None),
                 error_type=error_info,
-                error_message=str(record.exc_info[1]) if record.exc_info else None,
+                error_message=error_message,
                 error_stacktrace=error_stacktrace,
                 user_id=getattr(record, 'user_id', None),
                 request_id=getattr(record, 'request_id', None),
@@ -123,7 +160,8 @@ class StructuredLogHandler(logging.Handler):
                 custom_attributes=getattr(record, 'custom_attributes', {})
             )
 
-            self.logs.append(structured)
+            with self._logs_lock:
+                self.logs.append(structured)
 
             # 標準出力（JSON）
             print(structured.to_json())
@@ -133,7 +171,9 @@ class StructuredLogHandler(logging.Handler):
 
     def get_logs(self) -> List[Dict[str, Any]]:
         """すべてのログを取得"""
-        return [log.to_dict() for log in self.logs]
+        with self._logs_lock:
+            snapshot = list(self.logs)
+        return [log.to_dict() for log in snapshot]
 
 
 # ========================================================================
@@ -200,6 +240,7 @@ class TraceProvider:
         self.spans: Dict[str, Span] = {}
         self.active_trace_id: Optional[str] = None
         self.active_span_stack: List[str] = []
+        self._max_spans: int = 10_000
 
     def start_span(
         self,
@@ -210,6 +251,15 @@ class TraceProvider:
         """新しいスパンを開始"""
         trace_id = trace_id or str(uuid.uuid4())
         span_id = str(uuid.uuid4())
+
+        if len(self.spans) >= self._max_spans:
+            # Prune ended spans first; if still at limit drop the oldest entry.
+            ended = [sid for sid, s in self.spans.items() if s.end_time is not None]
+            for sid in ended:
+                del self.spans[sid]
+            if len(self.spans) >= self._max_spans:
+                oldest = next(iter(self.spans))
+                del self.spans[oldest]
 
         span = Span(
             span_id=span_id,
@@ -229,8 +279,10 @@ class TraceProvider:
         """スパンを終了"""
         if span_id in self.spans:
             self.spans[span_id].end(status, error)
-            if self.active_span_stack and self.active_span_stack[-1] == span_id:
-                self.active_span_stack.pop()
+            try:
+                self.active_span_stack.remove(span_id)
+            except ValueError:
+                pass  # already removed or never pushed
 
     def get_traces(self) -> Dict[str, List[Dict[str, Any]]]:
         """すべてのトレースを取得"""
@@ -257,27 +309,46 @@ class Metrics:
     cache_hit_rates: Dict[str, float] = field(default_factory=dict)
     active_connections: int = 0
     memory_usage_mb: float = 0.0
+    # Guards the read-modify-write counter updates below so increments are not
+    # lost when recorded from multiple threads (e.g. ThreadPoolExecutor workers).
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False,
+                                  repr=False, compare=False)
+    # Keep at most this many latency samples per operation (bounds memory).
+    _MAX_LATENCY_SAMPLES: int = field(default=1000, init=False, repr=False, compare=False)
 
     def record_operation_latency(self, operation: str, latency_ms: float) -> None:
         """オペレーションレイテンシを記録"""
-        if operation not in self.operation_latencies:
-            self.operation_latencies[operation] = []
-        self.operation_latencies[operation].append(latency_ms)
+        with self._lock:
+            samples = self.operation_latencies.setdefault(operation, [])
+            samples.append(latency_ms)
+            if len(samples) > self._MAX_LATENCY_SAMPLES:
+                del samples[0]
 
     def record_api_call(self, api_name: str) -> None:
         """API 呼び出しをカウント"""
-        self.api_call_counts[api_name] = self.api_call_counts.get(api_name, 0) + 1
+        with self._lock:
+            self.api_call_counts[api_name] = self.api_call_counts.get(api_name, 0) + 1
 
     def record_error(self, error_type: str) -> None:
         """エラーをカウント"""
-        self.error_counts[error_type] = self.error_counts.get(error_type, 0) + 1
+        with self._lock:
+            self.error_counts[error_type] = self.error_counts.get(error_type, 0) + 1
 
     def get_summary(self) -> Dict[str, Any]:
         """メトリクスサマリーを取得"""
         import statistics
 
+        # Take a consistent snapshot under the lock, then compute outside it.
+        with self._lock:
+            latencies_snapshot = {op: list(v) for op, v in self.operation_latencies.items()}
+            api_calls = dict(self.api_call_counts)
+            errors = dict(self.error_counts)
+            cache_hit_rates = dict(self.cache_hit_rates)
+            active_connections = self.active_connections
+            memory_usage_mb = self.memory_usage_mb
+
         latency_stats = {}
-        for op, latencies in self.operation_latencies.items():
+        for op, latencies in latencies_snapshot.items():
             if latencies:
                 latency_stats[op] = {
                     'mean_ms': statistics.mean(latencies),
@@ -289,16 +360,22 @@ class Metrics:
 
         return {
             'operation_latencies': latency_stats,
-            'api_calls': self.api_call_counts,
-            'errors': self.error_counts,
-            'cache_hit_rates': self.cache_hit_rates,
-            'active_connections': self.active_connections,
-            'memory_usage_mb': self.memory_usage_mb
+            'api_calls': api_calls,
+            'errors': errors,
+            'cache_hit_rates': cache_hit_rates,
+            'active_connections': active_connections,
+            'memory_usage_mb': memory_usage_mb
         }
 
 
 # グローバルメトリクス
 global_metrics = Metrics()
+
+# グローバルトレースプロバイダ（@trace_operation が書き込む先。
+# 各呼び出しで使い捨ての TraceProvider を作ると生成したスパンが
+# どこにも蓄積されず ObservabilityExporter からエクスポート不能になるため、
+# global_metrics と同様に単一インスタンスを共有する）。
+global_trace_provider = TraceProvider()
 
 
 # ========================================================================
@@ -314,7 +391,9 @@ class HealthCheckResult:
     uptime_seconds: float = 0.0
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data['timestamp'] = self.timestamp.isoformat()
+        return data
 
 
 class HealthChecker:
@@ -380,19 +459,40 @@ class HealthChecker:
 def trace_operation(operation_name: str):
     """
     デコレータ: 自動トレーシング
+
+    sync / async どちらの関数にも対応する。async 関数に対しては内部で await
+    するため、実行時間・例外・スパン終了が正しく記録される（旧実装は sync
+    ラッパーのみで、async 関数では未 await のコルーチンを返し、レイテンシは
+    常に ~0ms、例外も捕捉できなかった）。
     """
     def decorator(func: Callable) -> Callable:
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                span = global_trace_provider.start_span(operation_name)
+                start_time = time.time()
+                try:
+                    result = await func(*args, **kwargs)
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    global_trace_provider.end_span(span.span_id, status="OK")
+                    global_metrics.record_operation_latency(operation_name, elapsed_ms)
+                    return result
+                except Exception as e:
+                    global_trace_provider.end_span(span.span_id, status="ERROR", error=str(e))
+                    global_metrics.record_error(type(e).__name__)
+                    raise
+            return async_wrapper
+
         @wraps(func)
         def wrapper(*args, **kwargs):
-            trace_provider = TraceProvider()
-            span = trace_provider.start_span(operation_name)
+            span = global_trace_provider.start_span(operation_name)
 
             start_time = time.time()
             try:
                 result = func(*args, **kwargs)
 
                 elapsed_ms = (time.time() - start_time) * 1000
-                span.end(status="OK")
+                global_trace_provider.end_span(span.span_id, status="OK")
 
                 # メトリクス記録
                 global_metrics.record_operation_latency(operation_name, elapsed_ms)
@@ -400,7 +500,7 @@ def trace_operation(operation_name: str):
                 return result
 
             except Exception as e:
-                span.end(status="ERROR", error=str(e))
+                global_trace_provider.end_span(span.span_id, status="ERROR", error=str(e))
                 global_metrics.record_error(type(e).__name__)
                 raise
 
@@ -411,8 +511,24 @@ def trace_operation(operation_name: str):
 def observe_metrics(operation_name: str):
     """
     デコレータ: メトリクス自動記録
+
+    trace_operation と同様に sync / async 双方に対応する。
     """
     def decorator(func: Callable) -> Callable:
+        if inspect.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                start_time = time.time()
+                try:
+                    result = await func(*args, **kwargs)
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    global_metrics.record_operation_latency(operation_name, elapsed_ms)
+                    return result
+                except Exception as e:
+                    global_metrics.record_error(type(e).__name__)
+                    raise
+            return async_wrapper
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             start_time = time.time()

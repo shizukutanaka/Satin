@@ -12,11 +12,29 @@ Implements:
 - API-specific constraint validation
 """
 
-from pydantic import BaseModel, Field, validator, field_validator, ValidationInfo
-from pydantic.functional_validators import AfterValidator
+try:
+    from pydantic import BaseModel, Field, validator, field_validator, ValidationInfo
+    from pydantic.functional_validators import AfterValidator
+    _PYDANTIC_AVAILABLE = True
+except ImportError:
+    _PYDANTIC_AVAILABLE = False
+
+    class BaseModel:  # type: ignore[no-redef]
+        """Fallback stub when Pydantic is not installed."""
+        def __init__(self, **kwargs):
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+        @classmethod
+        def model_json_schema(cls): return {}
+
+    def Field(default=None, **kw): return default  # type: ignore[misc]
+    def validator(*a, **kw): return lambda f: f  # type: ignore[misc]
+    def field_validator(*a, **kw): return lambda f: f  # type: ignore[misc]
+    class ValidationInfo: pass  # type: ignore[no-redef]
+    def AfterValidator(f): return f  # type: ignore[misc]
 from typing import Optional, List, Dict, Any, Annotated, Union
 from enum import Enum
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import urlparse
 import re
 
@@ -50,13 +68,10 @@ class HTTPMethod(str, Enum):
 
 def validate_url(v: str) -> str:
     """Validate URL format."""
-    try:
-        result = urlparse(v)
-        if not all([result.scheme, result.netloc]):
-            raise ValueError("Invalid URL format")
-        return v
-    except Exception as e:
-        raise ValueError(f"URL validation failed: {e}")
+    result = urlparse(v)
+    if not all([result.scheme, result.netloc]):
+        raise ValueError("Invalid URL format")
+    return v
 
 
 def validate_api_key(v: str) -> str:
@@ -197,8 +212,8 @@ class WebScrapingRequest(BaseModel):
         description="Whether to respect robots.txt"
     )
     user_agent: str = Field(
-        default="Satin/1.0 (+http://example.com/bot)",
-        min_length=10,
+        default="Satin/1.0",
+        min_length=5,
         max_length=500,
         description="User agent string"
     )
@@ -286,7 +301,7 @@ class ArxivSearchRequest(BaseModel):
     def validate_categories(cls, v: Optional[List[str]]) -> Optional[List[str]]:
         """Validate arxiv category format."""
         if v:
-            valid_pattern = re.compile(r'^[a-z]+(\.[A-Z]{2})?$')
+            valid_pattern = re.compile(r'^[a-z][a-z0-9-]*(\.[A-Z]{2})?$')
             for cat in v:
                 if not valid_pattern.match(cat):
                     raise ValueError(f"Invalid arxiv category format: {cat}")

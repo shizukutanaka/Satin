@@ -5,12 +5,10 @@ Weak references, 循環参照回避, garbage collection最適化
 
 import logging
 import gc
-import weakref
 from typing import Any, Optional, Dict, List, Tuple, Callable
-from weakref import WeakValueDictionary, WeakKeyDictionary, ref
+from weakref import WeakValueDictionary
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import sys
 from functools import wraps
 
 logger = logging.getLogger(__name__)
@@ -69,6 +67,12 @@ class WeakReferencedCache:
 
     def set(self, key: str, value: Any) -> None:
         """キャッシュに値を設定"""
+        # GC により _cache（WeakValueDictionary）から消えた値の TTL エントリ（孤児）
+        # を除去する。これをしないと _ttl_map が無制限に増え続けメモリリークになる。
+        if len(self._ttl_map) > len(self._cache):
+            for k in [k for k in self._ttl_map if k not in self._cache]:
+                self._ttl_map.pop(k, None)
+
         if len(self._cache) >= self.max_size:
             # LRU 削除（最も古い TTL を削除）
             if self._ttl_map:
@@ -234,6 +238,9 @@ def manage_resources(cleanup_handlers: Dict[str, Callable]) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
             manager = ResourceManager()
+            for name, handler in cleanup_handlers.items():
+                if name in kwargs:
+                    manager.register(name, kwargs[name], handler)
             try:
                 result = func(*args, **kwargs)
                 return result
@@ -354,15 +361,23 @@ class MemoryWatcher:
         self.critical_threshold = critical_threshold
         self.warnings: List[MemoryWarning] = []
 
-    def check_memory(self) -> Optional[MemoryWarning]:
-        """メモリ使用状況をチェック"""
-        optimizer = GarbageCollectionOptimizer()
-        memory_info = optimizer.get_memory_info()
+    def check_memory(self, memory_info: Optional[Dict[str, Any]] = None) -> Optional[MemoryWarning]:
+        """メモリ使用状況をチェック
+
+        Args:
+            memory_info: テスト用に注入可能。None の場合は計測する。
+        """
+        if memory_info is None:
+            memory_info = GarbageCollectionOptimizer().get_memory_info()
 
         if 'percent' in memory_info:
+            # psutil の memory_percent() は 0-100 スケール。閾値は割合(0-1)なので
+            # 100 倍して同じスケールで比較する（以前は 0.95 と 2.5% を比較し常に CRITICAL だった）。
             percent = memory_info['percent']
+            critical_pct = self.critical_threshold * 100
+            warning_pct = self.warning_threshold * 100
 
-            if percent >= self.critical_threshold:
+            if percent >= critical_pct:
                 warning = MemoryWarning(
                     level='CRITICAL',
                     message=f"Memory usage critical: {percent:.1f}%",
@@ -373,7 +388,7 @@ class MemoryWatcher:
                 logger.critical(warning.message)
                 return warning
 
-            elif percent >= self.warning_threshold:
+            elif percent >= warning_pct:
                 warning = MemoryWarning(
                     level='WARNING',
                     message=f"Memory usage warning: {percent:.1f}%",

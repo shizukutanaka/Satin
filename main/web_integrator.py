@@ -11,9 +11,8 @@ from typing import Dict, List, Optional, Any, Set
 from datetime import datetime
 from pathlib import Path
 from dataclasses import dataclass, asdict
-from urllib.parse import urlparse, urljoin, quote
+from urllib.parse import urlparse, urljoin
 from collections import deque
-import logging
 
 try:
     import requests
@@ -92,6 +91,23 @@ class WebPage:
         if self.published_date:
             data['published_date'] = self.published_date.isoformat()
         return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WebPage':
+        """to_dict() の逆変換。fetch_time / published_date の ISO 文字列を
+        datetime に戻す。
+
+        （キャッシュ復元時に日時フィールドが文字列のままになり、消費側で
+        .year 等を呼ぶと AttributeError になっていた不具合への対処。）
+        """
+        data = dict(data)
+        ft = data.get('fetch_time')
+        if isinstance(ft, str):
+            data['fetch_time'] = datetime.fromisoformat(ft)
+        pd = data.get('published_date')
+        if isinstance(pd, str):
+            data['published_date'] = datetime.fromisoformat(pd)
+        return cls(**data)
 
 
 @dataclass
@@ -194,7 +210,7 @@ class WebIntegrator:
 
     def close(self):
         """リソースを確実に解放"""
-        if self.driver:
+        if getattr(self, "driver", None):
             try:
                 self.driver.quit()
                 self.logger.info("Selenium driver closed successfully")
@@ -232,8 +248,12 @@ class WebIntegrator:
         if use_cache:
             cached = self.cache_manager.get(cache_key)
             if cached:
-                self.logger.debug(f"Cache hit for {url}")
-                return WebPage(**cached)
+                try:
+                    self.logger.debug(f"Cache hit for {url}")
+                    return WebPage.from_dict(cached)
+                except Exception:
+                    self.logger.warning(f"Corrupted cache entry for {url}, evicting")
+                    self.cache_manager.delete(cache_key)
 
         # HTML取得
         html = self._fetch_html(url)
@@ -253,8 +273,56 @@ class WebIntegrator:
         self.logger.info(f"Successfully fetched page: {url}")
         return page
 
+    def _is_safe_url(self, url: str) -> bool:
+        """SSRF 対策: http(s) 以外のスキームや、ループバック/プライベート/
+        リンクローカル/予約済み IP アドレスへの URL を拒否する。
+
+        _fetch_html はユーザ入力の URL（get_content_by_url 経由）や、
+        クロール中に取得したページ自身が含むリンク（crawl_site が
+        page.links を辿ってキューに積む）をそのまま fetch_page() に渡す。
+        検証が一切無いと、http://127.0.0.1:6379/ のような内部サービスや
+        http://169.254.169.254/latest/meta-data/ のようなクラウド
+        メタデータエンドポイントへも区別なくリクエストしてしまう
+        （crawl_site の場合、取得したサードパーティ製ページのリンクは
+        本質的に信頼できない入力である）。
+
+        DNS 解決結果に基づく判定のため DNS rebinding の完全な防御には
+        ならないが、専用のエグレスプロキシ/ファイアウォールを持たない
+        アプリケーションにおける標準的な緩和策として、何も検証しない
+        状態からの大幅な改善となる。
+        """
+        import ipaddress
+        import socket
+
+        try:
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                return False
+            hostname = parsed.hostname
+            if not hostname:
+                return False
+            try:
+                addrs = socket.getaddrinfo(hostname, None)
+            except socket.gaierror:
+                return False
+            for _family, _type, _proto, _canonname, sockaddr in addrs:
+                try:
+                    ip = ipaddress.ip_address(sockaddr[0])
+                except ValueError:
+                    continue
+                if (ip.is_private or ip.is_loopback or ip.is_link_local
+                        or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                    return False
+            return True
+        except Exception:
+            return False
+
     def _fetch_html(self, url: str) -> Optional[str]:
         """HTMLを取得"""
+        if not self._is_safe_url(url):
+            self.logger.warning(f"Blocked potentially unsafe URL (SSRF guard): {url}")
+            return None
+
         # Method 1: Requests
         if REQUESTS_AVAILABLE:
             try:
@@ -383,7 +451,7 @@ class WebIntegrator:
                     elif property_attr == 'article:published_time':
                         try:
                             published_date = datetime.fromisoformat(content_attr.replace('Z', '+00:00'))
-                        except:
+                        except Exception:
                             pass
 
                 # 本文抽出（フォールバック）
@@ -455,12 +523,13 @@ class WebIntegrator:
         parsed = urlparse(url)
 
         # スキーム正規化 (http → https)
-        scheme = 'https' if not parsed.scheme else parsed.scheme
+        scheme = 'https' if parsed.scheme in ('', 'http') else parsed.scheme
 
         # ホストの小文字化
         netloc = parsed.netloc.lower()
 
-        # パスの正規化
+        # パスの正規化 (末尾スラッシュを除去; ルートパス "/" も "" に正規化して
+        # https://example.com と https://example.com/ が同一と判定されるようにする)
         path = parsed.path.rstrip('/')
 
         # クエリパラメータの正規化 (ソート)
@@ -499,7 +568,7 @@ class WebIntegrator:
             robots = RobotFileParser(robots_url)
             robots.read()
 
-            can_fetch = robots.can_fetch(self.user_agent, url)
+            can_fetch = robots.can_fetch("*", url)
             if not can_fetch:
                 self.logger.warning(f"robots.txt denies access to {url}")
             return can_fetch
@@ -597,11 +666,19 @@ class WebIntegrator:
 
         while queue and len(pages) < max_pages:
             url, depth = queue.popleft()
+            # 正規化した URL で重複判定する（末尾スラッシュ・クエリ順序違い等で
+            # 同一ページを二重取得しないように normalize_url を通す）。
+            norm_url = self.normalize_url(url)
 
-            if url in visited or depth > depth_limit:
+            if norm_url in visited or depth > depth_limit:
                 continue
 
-            visited.add(url)
+            visited.add(norm_url)
+
+            # robots.txt チェック (エントリ URL 以外のサブページも対象)
+            if not self.check_robots_txt(url):
+                self.logger.info(f"robots.txt denies {url}, skipping")
+                continue
 
             # ページ取得
             page = self.fetch_page(url)
@@ -613,7 +690,7 @@ class WebIntegrator:
 
             # リンク追加
             for link in page.links:
-                if link not in visited:
+                if self.normalize_url(link) not in visited:
                     link_domain = urlparse(link).netloc
 
                     # 同一ドメインチェック
@@ -651,7 +728,10 @@ class WebIntegrator:
                 if not html or not BS4_AVAILABLE:
                     continue
 
-                soup = BeautifulSoup(html, 'xml') or BeautifulSoup(html, 'html.parser')
+                try:
+                    soup = BeautifulSoup(html, 'xml')
+                except Exception:
+                    soup = BeautifulSoup(html, 'html.parser')
 
                 # URL要素を検索
                 entries = []
@@ -666,7 +746,7 @@ class WebIntegrator:
                     if lastmod:
                         try:
                             entry.lastmod = datetime.fromisoformat(lastmod.get_text(strip=True).replace('Z', '+00:00'))
-                        except:
+                        except Exception:
                             pass
 
                     changefreq = url_tag.find('changefreq')
@@ -677,7 +757,7 @@ class WebIntegrator:
                     if priority:
                         try:
                             entry.priority = float(priority.get_text(strip=True))
-                        except:
+                        except Exception:
                             pass
 
                     entries.append(entry)

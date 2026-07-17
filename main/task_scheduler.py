@@ -6,10 +6,10 @@ import time
 import threading
 import queue
 import uuid
+import itertools
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Callable, Any, Dict, List, Optional, Tuple, Union
-from datetime import datetime, timedelta
 
 class TaskPriority(Enum):
     """Task priority levels"""
@@ -43,20 +43,22 @@ class ScheduledTask:
     created_at: float = field(compare=False, default_factory=time.time)
     
     def run(self):
-        """Execute the task"""
+        """Execute the task, retrying in-process up to max_retries on failure."""
         self.status = TaskStatus.RUNNING
-        try:
-            self.result = self.func(*self.args, **self.kwargs)
-            self.status = TaskStatus.COMPLETED
-            return self.result
-        except Exception as e:
-            self.error = e
-            if self.retries < self.max_retries:
-                self.retries += 1
-                self.status = TaskStatus.PENDING
-                return None
-            self.status = TaskStatus.FAILED
-            raise
+        while True:
+            try:
+                self.result = self.func(*self.args, **self.kwargs)
+                self.status = TaskStatus.COMPLETED
+                return self.result
+            except Exception as e:
+                self.error = e
+                if self.retries < self.max_retries:
+                    # Previously this returned None and left the task PENDING
+                    # without ever re-running it; retry here so max_retries works.
+                    self.retries += 1
+                    continue
+                self.status = TaskStatus.FAILED
+                raise
 
 class TaskScheduler:
     """Task scheduler with priority queue"""
@@ -65,22 +67,59 @@ class TaskScheduler:
         self.ready_queue = queue.PriorityQueue()
         self.scheduled_tasks: List[Tuple[float, ScheduledTask]] = []
         self.tasks: Dict[str, ScheduledTask] = {}
+        # Task ids for which periodic rescheduling has been cancelled. A periodic
+        # task reschedules itself in a finally block; without this set, cancelling
+        # it while it is mid-execution (status RUNNING, not PENDING) had no effect
+        # and the task ran forever.
+        self._cancelled: set = set()
         self.workers: List[threading.Thread] = []
         self.running = False
         self.lock = threading.RLock()
+        # Monotonic tiebreaker for ready_queue entries. Without it, two queue
+        # items with equal priority fall back to comparing the payload, and a
+        # real task vs the (priority, None) shutdown sentinel raises
+        # TypeError: '<' not supported between NoneType and ScheduledTask.
+        # itertools.count().__next__ is atomic under the GIL.
+        self._seq = itertools.count()
+        # Wakes the scheduler loop when a new (possibly earlier) task is added,
+        # so a task scheduled during the loop's idle wait isn't delayed by up to
+        # a full second. Without it, the first task after an idle period — and
+        # the first tick of a short-interval periodic task — ran ~1s late.
+        self._wakeup = threading.Event()
+        self._num_workers = num_workers
         self.worker_semaphore = threading.Semaphore(num_workers)
         self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
-    
+
     def start(self) -> None:
         """Start the scheduler"""
         if self.running:
             return
-            
+
+        # A Thread can only be started once, so (re)create the scheduler thread
+        # and worker handles on every start() to support stop()/start() restart
+        # cycles. Also clear the wakeup flag and drain any leftover shutdown
+        # sentinels (None payloads enqueued by a prior stop()) so freshly started
+        # workers don't immediately see a shutdown signal and exit.
+        self._wakeup.clear()
+        with self.lock:
+            kept = []
+            try:
+                while True:
+                    item = self.ready_queue.get_nowait()
+                    if item[2] is not None:
+                        kept.append(item)
+            except queue.Empty:
+                pass
+            for item in kept:
+                self.ready_queue.put(item)
+        self.workers = []
+        self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
+
         self.running = True
         self.scheduler_thread.start()
-        
+
         # Start worker threads
-        for i in range(self.worker_semaphore._value):
+        for i in range(self._num_workers):
             worker = threading.Thread(
                 target=self._worker_loop,
                 name=f"Worker-{i}",
@@ -95,16 +134,19 @@ class TaskScheduler:
             return
             
         self.running = False
-        
-        # Wake up all threads
+        self._wakeup.set()  # interrupt the scheduler loop's wait so it exits promptly
+
+        # Wake up all threads (sentinel: lowest tuple, unique seq, None payload)
         with self.lock:
             for _ in range(len(self.workers)):
-                self.ready_queue.put((0, None))
-        
+                self.ready_queue.put((0, next(self._seq), None))
+
         if wait:
-            self.scheduler_thread.join()
+            # Bounded joins so a worker stuck in a long task cannot hang stop()
+            # indefinitely; workers are daemon threads and exit with the process.
+            self.scheduler_thread.join(timeout=5)
             for worker in self.workers:
-                worker.join()
+                worker.join(timeout=5)
     
     def schedule(
         self,
@@ -138,12 +180,15 @@ class TaskScheduler:
         
         with self.lock:
             if delay <= 0:
-                self.ready_queue.put((task.priority, task))
+                self.ready_queue.put((task.priority, next(self._seq), task))
             else:
                 heapq.heappush(self.scheduled_tasks, (scheduled_time, task))
-            
+
             self.tasks[task_id] = task
-        
+
+        # Interrupt the scheduler's idle wait so the new task is picked up
+        # promptly rather than after the current sleep elapses.
+        self._wakeup.set()
         return task_id
     
     def schedule_periodic(
@@ -161,32 +206,49 @@ class TaskScheduler:
             kwargs = {}
             
         task_id = task_id or str(uuid.uuid4())
-        
+        # Allow re-scheduling a previously-cancelled periodic id.
+        with self.lock:
+            self._cancelled.discard(task_id)
+
         def periodic_wrapper():
+            # Anchor the next run to the intended fire time, not to when func
+            # finishes. Rescheduling with a flat delay=interval from the finally
+            # block makes the real period interval+execution_time, which drifts
+            # cumulatively. Subtract the elapsed execution time instead.
+            start = time.time()
             try:
                 func(*args, **kwargs)
             finally:
-                # Reschedule the task
-                if self.running:
+                # Reschedule unless the scheduler stopped or this periodic task
+                # was cancelled (checked here so cancellation works even if it
+                # arrived while func was executing).
+                with self.lock:
+                    should_reschedule = self.running and task_id not in self._cancelled
+                if should_reschedule:
+                    next_delay = max(0.0, interval - (time.time() - start))
                     self.schedule(
                         periodic_wrapper,
-                        delay=interval,
+                        delay=next_delay,
                         priority=priority,
                         max_retries=max_retries,
                         task_id=task_id
                     )
         
-        # Schedule the first execution
+        # Schedule the first execution (carry max_retries so the first run uses
+        # the same retry policy as every subsequent reschedule).
         return self.schedule(
             periodic_wrapper,
             delay=interval,
             priority=priority,
+            max_retries=max_retries,
             task_id=task_id
         )
     
     def cancel_task(self, task_id: str) -> bool:
         """Cancel a scheduled task"""
         with self.lock:
+            # Halt any periodic rescheduling regardless of current status.
+            self._cancelled.add(task_id)
             if task_id in self.tasks:
                 task = self.tasks[task_id]
                 if task.status == TaskStatus.PENDING:
@@ -229,11 +291,15 @@ class TaskScheduler:
                 while self.scheduled_tasks and self.scheduled_tasks[0][0] <= now:
                     _, task = heapq.heappop(self.scheduled_tasks)
                     if task.status == TaskStatus.PENDING:
-                        self.ready_queue.put((task.priority, task))
+                        self.ready_queue.put((task.priority, next(self._seq), task))
             
-            # Sleep until the next scheduled task or 1 second
-            next_run = max(0, (self.scheduled_tasks[0][0] - now) if self.scheduled_tasks else 1)
-            time.sleep(min(1.0, next_run))
+            # Wait until the next scheduled task (capped at 1s), but wake early
+            # if schedule()/stop() signals a new task or shutdown.
+            with self.lock:
+                next_run = (self.scheduled_tasks[0][0] - now) if self.scheduled_tasks else 1.0
+            next_run = max(0.0, min(1.0, next_run))
+            if self._wakeup.wait(timeout=next_run):
+                self._wakeup.clear()
     
     def _worker_loop(self) -> None:
         """Worker thread loop"""
@@ -241,12 +307,17 @@ class TaskScheduler:
             try:
                 # Get a task with timeout to allow checking self.running
                 try:
-                    _, task = self.ready_queue.get(timeout=1)
+                    _, _, task = self.ready_queue.get(timeout=1)
                     if task is None:  # Shutdown signal
                         break
                 except queue.Empty:
                     continue
-                
+
+                # Skip tasks cancelled after they were enqueued.
+                if task.status == TaskStatus.CANCELLED:
+                    self.ready_queue.task_done()
+                    continue
+
                 with self.worker_semaphore:
                     try:
                         task.run()

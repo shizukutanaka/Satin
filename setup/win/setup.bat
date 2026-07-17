@@ -1,8 +1,13 @@
 @echo off
 REM ====================================
 REM Satin セットアップスクリプト (Windows版)
-REM 最終更新: 2025-05-24
+REM 最終更新: 2026-07-13
 REM ====================================
+
+:: このスクリプト自身の場所からリポジトリルートを解決する
+:: (setup\win\setup.bat からの相対パスに依存しない)
+set "SCRIPT_DIR=%~dp0"
+set "ROOT_DIR=%SCRIPT_DIR%..\.."
 
 :: 管理者権限の確認
 net session >nul 2>&1
@@ -31,7 +36,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-pip install -r requirements.txt
+pip install -r "%ROOT_DIR%\setup\requirements.txt"
 if %ERRORLEVEL% NEQ 0 (
     echo エラー: 依存関係のインストールに失敗しました。
     pause
@@ -43,6 +48,6 @@ echo.
 echo ====================================
 echo Satinのセットアップが完了しました！
 echo 以下のコマンドで起動できます：
-echo run_satin.bat
+echo launch\win\run_satin.bat
 echo ====================================
 pause

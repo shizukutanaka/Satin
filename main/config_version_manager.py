@@ -3,9 +3,9 @@ import glob
 import json
 import shutil
 import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from utils_profile import profile_time, log_info, log_error
-from .error_handling import ConfigError
+from error_handling import ConfigError
 
 VERSIONS_DIR = "config_versions"
 MAX_VERSIONS = 10  # 最大バージョン数
@@ -27,7 +27,10 @@ def save_config_version(config_path: str = "config.json", description: Optional[
             raise ConfigError(f"Configuration file not found: {config_path}")
             
         os.makedirs(VERSIONS_DIR, exist_ok=True)
-        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Include microseconds so two saves in the same second (e.g. a manual save
+        # plus restore's "before_restore" backup) don't produce an identical
+        # filename and silently overwrite each other (version data loss).
+        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         base = os.path.basename(config_path)
         
         # Create version filename
@@ -48,7 +51,7 @@ def save_config_version(config_path: str = "config.json", description: Optional[
         
     except Exception as e:
         log_error(f"Error saving configuration version: {str(e)}")
-        raise ConfigError(f"Failed to save configuration version: {str(e)}")
+        raise ConfigError(f"Failed to save configuration version: {str(e)}") from e
 
 @profile_time
 def list_config_versions(config_path: str = "config.json") -> List[Dict[str, Any]]:
@@ -87,7 +90,7 @@ def list_config_versions(config_path: str = "config.json") -> List[Dict[str, Any
         
     except Exception as e:
         log_error(f"Error listing configuration versions: {str(e)}")
-        raise ConfigError(f"Failed to list configuration versions: {str(e)}")
+        raise ConfigError(f"Failed to list configuration versions: {str(e)}") from e
 
 @profile_time
 def restore_config_version(version_path: str, config_path: str = "config.json") -> None:
@@ -107,14 +110,26 @@ def restore_config_version(version_path: str, config_path: str = "config.json") 
             
         # Backup current config before restoring
         save_config_version(config_path, description="before_restore")
-        
-        # Restore the version
-        shutil.copy2(version_path, config_path)
+
+        # Restore the version atomically: copy to a temp file in the same
+        # directory, then os.replace() (atomic rename on the same filesystem) so
+        # an interruption mid-copy can't leave config.json truncated/corrupt.
+        import tempfile
+        dest_dir = os.path.dirname(os.path.abspath(config_path)) or "."
+        fd, tmp_path = tempfile.mkstemp(dir=dest_dir)
+        os.close(fd)
+        try:
+            shutil.copy2(version_path, tmp_path)
+            os.replace(tmp_path, config_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
         log_info(f"Restored configuration from: {version_path}")
         
     except Exception as e:
         log_error(f"Error restoring configuration version: {str(e)}")
-        raise ConfigError(f"Failed to restore configuration version: {str(e)}")
+        raise ConfigError(f"Failed to restore configuration version: {str(e)}") from e
 
 @profile_time
 def compare_versions(version1: str, version2: str) -> Dict[str, Any]:
@@ -134,10 +149,14 @@ def compare_versions(version1: str, version2: str) -> Dict[str, Any]:
             
         with open(version1, 'r', encoding='utf-8') as f1:
             config1 = json.load(f1)
-            
+            if not isinstance(config1, dict):
+                config1 = {}
+
         with open(version2, 'r', encoding='utf-8') as f2:
             config2 = json.load(f2)
-            
+            if not isinstance(config2, dict):
+                config2 = {}
+
         # Compare configurations
         differences = {}
         for key in set(config1.keys()).union(config2.keys()):
@@ -156,7 +175,7 @@ def compare_versions(version1: str, version2: str) -> Dict[str, Any]:
         
     except Exception as e:
         log_error(f"Error comparing versions: {str(e)}")
-        raise ConfigError(f"Failed to compare versions: {str(e)}")
+        raise ConfigError(f"Failed to compare versions: {str(e)}") from e
 
 @profile_time
 def cleanup_old_versions(config_path: str = "config.json") -> None:
@@ -180,7 +199,7 @@ def cleanup_old_versions(config_path: str = "config.json") -> None:
                 
     except Exception as e:
         log_error(f"Error cleaning up old versions: {str(e)}")
-        raise ConfigError(f"Failed to clean up old versions: {str(e)}")
+        raise ConfigError(f"Failed to clean up old versions: {str(e)}") from e
 
 if __name__ == "__main__":
     print("[INFO] Configuration Version Management Tool")
@@ -223,7 +242,10 @@ if __name__ == "__main__":
                 idx1 = input("Enter first version number: ")
                 idx2 = input("Enter second version number: ")
                 
-                if idx1.isdigit() and idx2.isdigit():
+                n = len(versions)
+                if (idx1.isdigit() and idx2.isdigit()
+                        and 1 <= int(idx1) <= n
+                        and 1 <= int(idx2) <= n):
                     v1 = versions[int(idx1)-1]['path']
                     v2 = versions[int(idx2)-1]['path']
                     differences = compare_versions(v1, v2)
@@ -239,15 +261,3 @@ if __name__ == "__main__":
         else:
             print("Invalid choice. Please try again.")
 
-if __name__ == "__main__":
-    print("[INFO] 設定ファイル バージョン管理ツール")
-    ans = input("現在のconfig.jsonをバージョン保存しますか？ [y/N]: ")
-    if ans.lower() == "y":
-        save_config_version()
-    ans2 = input("バージョン一覧を表示しますか？ [y/N]: ")
-    if ans2.lower() == "y":
-        files = list_config_versions()
-        if files:
-            idx = input(f"復元したい番号を指定(0-{len(files)-1}) またはEnterでスキップ: ")
-            if idx.isdigit() and 0 <= int(idx) < len(files):
-                restore_config_version(files[int(idx)])

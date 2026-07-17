@@ -1,27 +1,71 @@
 """
-Property-based testing framework for Satin using Hypothesis.
+Property-based tests for schema_validators.py using Hypothesis.
 
-Provides strategies for generating test data and property tests for
-YouTube, Web, and Paper integrators with edge case coverage.
+Provides strategies for generating test data and property tests for the
+YouTube/Web/Arxiv search request and cache/result validation models with
+edge case coverage.
 
 Implements:
 - Custom Hypothesis strategies for Satin data types
-- Property-based tests for integrator functions
+- Property-based tests for schema_validators' pydantic models
 - Edge case and invariant testing
-- Regression test creation from failures
 """
+import os
+import sys
 
-from hypothesis import given, strategies as st, settings, HealthCheck, assume
-from hypothesis.strategies import composite, SearchStrategy
-from typing import List, Dict, Any, Optional, Tuple
+_MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
+sys.path.insert(0, _MAIN)
+
+try:
+    from hypothesis import given, strategies as st, settings, HealthCheck, assume
+    from hypothesis.strategies import composite, SearchStrategy
+    _HYPOTHESIS_AVAILABLE = True
+except ImportError:
+    _HYPOTHESIS_AVAILABLE = False
+    # Provide stubs so the module body parses cleanly without hypothesis installed.
+    def given(*a, **kw): return lambda f: f  # type: ignore[misc]
+    def composite(f):  # type: ignore[misc]
+        def _stub(*a, **kw): return None
+        return _stub
+    def assume(cond): pass  # type: ignore[misc]
+    class _StStrategies:  # type: ignore[no-redef]
+        """Catch-all stub for hypothesis.strategies when hypothesis is absent."""
+        def __getattr__(self, name):
+            return lambda *a, **kw: None
+    st = _StStrategies()  # type: ignore[assignment]
+    class _HCMeta(type):
+        def __getattr__(cls, name): return name
+    class HealthCheck(metaclass=_HCMeta): all = []  # type: ignore[no-redef]
+    class SearchStrategy: pass  # type: ignore[no-redef]
+    settings = lambda *a, **kw: (lambda f: f)  # type: ignore[misc,assignment]
+
+try:
+    import pytest
+except ImportError:
+    class pytest:  # type: ignore[no-redef]
+        @staticmethod
+        def raises(exc, *a, **kw):
+            import contextlib
+            @contextlib.contextmanager
+            def _ctx():
+                try: yield
+                except exc: pass
+                else: raise AssertionError(f"Expected {exc}")
+            return _ctx()
+
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-import pytest
 
-from main.schema_validators import (
-    ContentType, APIProvider, HTTPMethod,
-    YouTubeSearchRequest, WebScrapingRequest, ArxivSearchRequest,
-    SearchResult, RateLimitConfig, APIErrorInfo, CacheEntry
-)
+try:
+    from schema_validators import (
+        ContentType, APIProvider, HTTPMethod,
+        YouTubeSearchRequest, WebScrapingRequest, ArxivSearchRequest,
+        SearchResult, RateLimitConfig, APIErrorInfo, CacheEntry,
+    )
+except ImportError:
+    ContentType = APIProvider = HTTPMethod = None  # type: ignore
+    YouTubeSearchRequest = WebScrapingRequest = ArxivSearchRequest = None  # type: ignore
+    SearchResult = RateLimitConfig = APIErrorInfo = CacheEntry = None  # type: ignore
 
 
 # Custom Hypothesis Strategies
@@ -74,11 +118,14 @@ def valid_api_keys(draw) -> str:
 def youtube_search_requests(draw) -> YouTubeSearchRequest:
     """Strategy for generating YouTubeSearchRequest objects."""
     return YouTubeSearchRequest(
+        # .filter() excludes whitespace-only draws: the alphabet includes a
+        # space, so an unfiltered draw can be all-spaces, which
+        # YouTubeSearchRequest's own validator correctly rejects.
         query=draw(st.text(
             alphabet='abcdefghijklmnopqrstuvwxyz ',
             min_size=1,
             max_size=100
-        )),
+        ).filter(lambda s: s.strip())),
         max_results=draw(st.integers(min_value=1, max_value=50)),
         api_key=draw(st.one_of(
             st.none(),
@@ -245,16 +292,26 @@ class TestYouTubeSearchRequest:
     @given(st.text(min_size=1, max_size=2000))
     def test_query_validation(self, query: str):
         """Test query field validation."""
+        # YouTubeSearchRequest's own validator correctly rejects
+        # whitespace-only queries ("Query cannot be empty or whitespace") —
+        # st.text() can generate those, so skip them rather than assert a
+        # weaker contract than the real validator enforces.
+        assume(query.strip())
         req = YouTubeSearchRequest(query=query)
         assert req.query is not None
 
     @given(
-        st.integers(min_value=0, max_value=3600),
-        st.integers(min_value=1, max_value=3600)
+        st.integers(min_value=0, max_value=1799),
+        st.integers(min_value=1, max_value=1800)
     )
-    def test_duration_range_validation(self, min_dur: int, max_dur: int):
-        """Test duration range constraints."""
-        assume(max_dur > min_dur)
+    def test_duration_range_validation(self, min_dur: int, delta: int):
+        """Test duration range constraints.
+
+        Derive max_duration = min_duration + delta so it is always strictly
+        greater, instead of generating it independently and discarding ~half the
+        cases via assume(max_dur > min_dur).
+        """
+        max_dur = min_dur + delta  # in (min_dur, 3599], always valid
         req = YouTubeSearchRequest(
             query="test",
             min_duration=min_dur,
@@ -328,19 +385,28 @@ class TestSearchResult:
         assert 0 <= result.relevance_score <= 100
 
     @given(
-        st.floats(min_value=-1.0, max_value=101.0)
+        st.floats(min_value=-50.0, max_value=150.0,
+                  allow_nan=False, allow_infinity=False)
     )
     def test_relevance_score_bounds(self, score: float):
-        """Test relevance score is properly bounded."""
-        assume(0 <= score <= 100)
-        result = SearchResult(
+        """In-range scores are accepted; out-of-range scores are rejected.
+
+        (Previously this asserted ``score == score`` after assume()-filtering to
+        the valid range, so it never exercised the bound at all.)
+        """
+        kwargs = dict(
             title="test",
             url="https://example.com",
             content_type=ContentType.ARTICLE,
             source=APIProvider.WEB_SEARCH,
-            relevance_score=score
+            relevance_score=score,
         )
-        assert result.relevance_score == score
+        if 0 <= score <= 100:
+            result = SearchResult(**kwargs)
+            assert result.relevance_score == score
+        else:
+            with pytest.raises(ValueError):
+                SearchResult(**kwargs)
 
 
 class TestCacheEntry:
@@ -364,11 +430,18 @@ class TestCacheEntry:
         assert not entry.is_expired
 
     @given(
-        st.datetimes(min_value=datetime(2025, 1, 1)),
-        st.timedeltas(min_value=timedelta(seconds=300))
+        # Bounded to 10 years: unbounded timedeltas can push `created + delta`
+        # past datetime.max and overflow — no real cache TTL needs centuries.
+        st.timedeltas(min_value=timedelta(seconds=300), max_value=timedelta(days=3650))
     )
-    def test_expiration_calculation(self, created: datetime, delta: timedelta):
+    def test_expiration_calculation(self, delta: timedelta):
         """Test expiration is calculated correctly."""
+        # `created` must be "now" at execution time, matching the
+        # cache_entries() strategy above — CacheEntry's own validator
+        # requires expires_at > datetime.now(), so a hardcoded historical
+        # anchor (e.g. a fixed year) goes stale and starts failing once
+        # real time catches up to it.
+        created = datetime.now()
         expires = created + delta
         entry = CacheEntry(
             key="test",

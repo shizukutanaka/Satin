@@ -1,14 +1,12 @@
 import sys
-import random
 import threading
 import queue
-import numpy as np
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QPushButton, QLabel, QLineEdit
-from PyQt5.QtCore import Qt, QTimer
-from OpenGL.GL import *
-from OpenGL.GLU import *
-import pyttsx3
-import sounddevice as sd
+
+from optional_deps import (  # noqa: E402
+    np, QApplication, QMainWindow, QOpenGLWidget,
+    QPushButton, QLabel, QLineEdit, QTimer,
+    sd,
+)
 
 # --- マイク音量取得スレッド ---
 class MicVolumeThread(threading.Thread):
@@ -19,6 +17,9 @@ class MicVolumeThread(threading.Thread):
         self.volume = 0.0
 
     def run(self):
+        if np is None or sd is None:
+            return
+
         def callback(indata, frames, time, status):
             vol = np.linalg.norm(indata) / frames
             self.volume = min(vol * 10, 1.0)  # 正規化
@@ -26,29 +27,19 @@ class MicVolumeThread(threading.Thread):
             while self.running:
                 sd.sleep(50)
 
-# --- TTSスレッド ---
-class TTSThread(threading.Thread):
-    def __init__(self, tts_queue):
-        super().__init__()
-        self.tts_queue = tts_queue
-        self.engine = pyttsx3.init()
-        self.daemon = True
-        self.running = True
-        self.is_speaking = False
+# --- TTSスレッド (共有実装) ---
+from tts_thread import TTSThread  # noqa: E402,F401
+from gl_widget_base import GLViewportMixin  # noqa: E402
 
-    def run(self):
-        while self.running:
-            try:
-                text = self.tts_queue.get(timeout=0.1)
-                if text:
-                    self.is_speaking = True
-                    self.engine.say(text)
-                    self.engine.runAndWait()
-                    self.is_speaking = False
-            except queue.Empty:
-                continue
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
 
-class Avatar3DModesViewer(QOpenGLWidget):
+class Avatar3DModesViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -91,17 +82,6 @@ class Avatar3DModesViewer(QOpenGLWidget):
             self.mouth_open = 0.0
         self.update()
 
-    def initializeGL(self):
-        glClearColor(0.2, 0.2, 0.2, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45.0, float(w)/float(h), 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)
-
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
@@ -122,7 +102,7 @@ class Avatar3DModesViewer(QOpenGLWidget):
         gluSphere(quad, 1.0, 32, 16)
         glPopMatrix()
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("3Dアバター：マイク口パク/コメントTTSモード切替")

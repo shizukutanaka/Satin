@@ -1,0 +1,649 @@
+"""
+Unit tests for gifts — the /gift command catalog and lookup.
+"""
+import os
+import sys
+import unittest
+
+_MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
+sys.path.insert(0, _MAIN)
+
+from gifts import (  # noqa: E402
+    all_gift_keys,
+    gift_catalog_text,
+    lookup_gift,
+)
+
+_KNOWN_KEYS = {"flowers", "chocolate", "book", "music", "cake", "ribbon", "letter"}
+
+
+class LookupTests(unittest.TestCase):
+    def test_ja_flower_exact(self):
+        result = lookup_gift("花", lang="ja")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertGreater(bonus, 0)
+        self.assertIsInstance(reply, str)
+        self.assertGreater(len(reply), 0)
+
+    def test_en_flower_exact(self):
+        result = lookup_gift("flowers", lang="en")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertGreater(bonus, 0)
+
+    def test_ja_case_insensitive(self):
+        result = lookup_gift("チョコ", lang="ja")
+        self.assertIsNotNone(result)
+
+    def test_en_case_insensitive(self):
+        result = lookup_gift("CHOCOLATE", lang="en")
+        self.assertIsNotNone(result)
+
+    def test_unknown_item_returns_none(self):
+        self.assertIsNone(lookup_gift("unknown_xyzzy_item", lang="ja"))
+        self.assertIsNone(lookup_gift("unknown_xyzzy_item", lang="en"))
+
+    def test_empty_returns_none(self):
+        self.assertIsNone(lookup_gift("", lang="ja"))
+        self.assertIsNone(lookup_gift("", lang="en"))
+
+    def test_whitespace_only_returns_none(self):
+        """Whitespace-only input must not match the first gift in the catalog.
+
+        Before the fix, ' '.strip() == '' and '' in any alias was True,
+        causing /gift <space> to award the first gift for free.
+        """
+        self.assertIsNone(lookup_gift(" ", lang="ja"))
+        self.assertIsNone(lookup_gift("   ", lang="en"))
+        self.assertIsNone(lookup_gift("\t", lang="ja"))
+
+    def test_single_char_does_not_match(self):
+        """Single ASCII characters are substrings of every word — must not match.
+
+        Before the len>=3 guard, lookup_gift('a') matched 'chocolate' via
+        'a' in 'chocolate', giving a free gift for a trivially short input.
+        """
+        for ch in list("aeiouflnkct"):
+            self.assertIsNone(lookup_gift(ch, lang="en"), f"single char {ch!r} should not match")
+
+    def test_three_char_prefix_still_matches(self):
+        """3-character prefix inputs should still work after the guard."""
+        self.assertIsNotNone(lookup_gift("cho", lang="en"))   # chocolate
+        self.assertIsNotNone(lookup_gift("flo", lang="en"))   # flowers
+        self.assertIsNotNone(lookup_gift("boo", lang="en"))   # book
+
+    def test_all_ja_aliases_resolve(self):
+        from gifts import _GIFTS
+        for gift in _GIFTS:
+            for alias in gift["ja"]["aliases"]:
+                result = lookup_gift(alias, lang="ja")
+                self.assertIsNotNone(result, f"ja alias '{alias}' not found")
+
+    def test_all_en_aliases_resolve(self):
+        from gifts import _GIFTS
+        for gift in _GIFTS:
+            for alias in gift["en"]["aliases"]:
+                result = lookup_gift(alias, lang="en")
+                self.assertIsNotNone(result, f"en alias '{alias}' not found")
+
+    def test_affinity_bonus_positive(self):
+        for key in _KNOWN_KEYS:
+            from gifts import _GIFTS
+            gift = next(g for g in _GIFTS if g["key"] == key)
+            self.assertGreater(gift["affinity"], 0, key)
+
+    def test_letter_has_highest_affinity(self):
+        from gifts import _GIFTS
+        letter_bonus = next(g["affinity"] for g in _GIFTS if g["key"] == "letter")
+        for g in _GIFTS:
+            if g["key"] != "letter":
+                self.assertGreaterEqual(letter_bonus, g["affinity"])
+
+    def test_replies_are_nonempty(self):
+        for key in _KNOWN_KEYS:
+            result_ja = lookup_gift(key, lang="ja")
+            if result_ja:
+                _, reply = result_ja
+                self.assertGreater(len(reply), 0, f"{key} ja reply empty")
+
+
+class AllGiftKeysTests(unittest.TestCase):
+    def test_returns_all_known_keys(self):
+        self.assertEqual(set(all_gift_keys()), _KNOWN_KEYS)
+
+    def test_no_duplicates(self):
+        keys = all_gift_keys()
+        self.assertEqual(len(keys), len(set(keys)))
+
+
+class CatalogTextTests(unittest.TestCase):
+    def test_ja_catalog_nonempty(self):
+        text = gift_catalog_text("ja")
+        self.assertIsInstance(text, str)
+        self.assertGreater(len(text), 0)
+
+    def test_en_catalog_nonempty(self):
+        text = gift_catalog_text("en")
+        self.assertIsInstance(text, str)
+        self.assertGreater(len(text), 0)
+
+    def test_catalog_shows_bonus(self):
+        text = gift_catalog_text("ja")
+        self.assertIn("+", text)
+
+    def test_catalog_line_count(self):
+        text = gift_catalog_text("ja")
+        lines = [l for l in text.splitlines() if l.strip()]
+        self.assertEqual(len(lines), len(_KNOWN_KEYS))
+
+    def test_catalog_bonus_matches_rounded_affinity(self):
+        """Regression: int() truncated 3.5→3; round() gives the correct display value."""
+        import gifts as _g
+        for gift in _g._GIFTS:
+            expected = round(gift["affinity"])
+            for lang in ("ja", "en"):
+                text = gift_catalog_text(lang)
+                alias = gift[lang]["aliases"][0]
+                # find the line for this gift and check the bonus
+                for line in text.splitlines():
+                    if line.strip().startswith(alias):
+                        self.assertIn(f"+{expected}", line,
+                            f"Gift '{gift['key']}' (affinity={gift['affinity']}) "
+                            f"should show +{expected} in {lang} catalog")
+
+    def test_given_keys_marks_gift_ja(self):
+        """Gifts in given_keys get the 'given today' marker (ja)."""
+        text = gift_catalog_text("ja", given_keys={"chocolate"})
+        for line in text.splitlines():
+            if line.strip().startswith("チョコ"):
+                self.assertIn("今日は贈り済み", line)
+            else:
+                self.assertNotIn("今日は贈り済み", line)
+
+    def test_given_keys_marks_gift_en(self):
+        text = gift_catalog_text("en", given_keys={"flowers"})
+        for line in text.splitlines():
+            if line.strip().startswith("flowers"):
+                self.assertIn("(given today)", line)
+            else:
+                self.assertNotIn("(given today)", line)
+
+    def test_given_keys_none_matches_legacy_output(self):
+        """Backward compat: given_keys=None must produce byte-identical output."""
+        self.assertEqual(gift_catalog_text("ja"), gift_catalog_text("ja", given_keys=None))
+        self.assertEqual(gift_catalog_text("en"), gift_catalog_text("en", given_keys=None))
+
+    def test_empty_given_keys_matches_legacy_output(self):
+        self.assertEqual(gift_catalog_text("ja"), gift_catalog_text("ja", given_keys=set()))
+
+
+class CLIGiftIntegrationTests(unittest.TestCase):
+    """Test _give_gift() helper via persona_cli."""
+
+    def setUp(self):
+        import persona_cli
+        self._pc = persona_cli
+
+    def test_give_flower_increases_affinity(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=30.0)
+        before = tracker.affinity
+        self._pc._give_gift("花", tracker, "TestAvatar", "ja", lambda t: None)
+        self.assertGreater(tracker.affinity, before)
+
+    def test_give_unknown_item_no_crash(self):
+        logs = []
+        self._pc._give_gift("xyz_unknown_item", None, "TestAvatar", "ja", logs.append)
+        self.assertTrue(any("xyz_unknown_item" in l or "分からない" in l for l in logs))
+
+    def test_give_list_shows_catalog(self):
+        logs = []
+        self._pc._give_gift("list", None, "TestAvatar", "ja", logs.append)
+        self.assertTrue(any("+" in l for l in logs))
+
+    def test_give_empty_shows_catalog(self):
+        logs = []
+        self._pc._give_gift("", None, "TestAvatar", "en", logs.append)
+        # Should show list or usage
+        self.assertTrue(len(logs) > 0)
+
+    def test_give_letter_en_reply(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=50.0)
+        logs = []
+        self._pc._give_gift("letter", tracker, "Avatar", "en", logs.append)
+        self.assertTrue(any("TestAvatar" in l or "Avatar" in l or "letter" in l.lower()
+                            or "affinity" in l.lower() for l in logs))
+
+
+class LevelGatingTests(unittest.TestCase):
+    """lookup_gift() returns (0.0, decline_msg) when level < min_level."""
+
+    def test_music_declined_for_distant(self):
+        result = lookup_gift("音楽", lang="ja", level="distant")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+        self.assertGreater(len(reply), 0)
+
+    def test_music_declined_for_reserved(self):
+        result = lookup_gift("music", lang="en", level="reserved")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+        self.assertGreater(len(reply), 0)
+
+    def test_music_accepted_at_neutral(self):
+        result = lookup_gift("音楽", lang="ja", level="neutral")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_music_accepted_at_close(self):
+        result = lookup_gift("music", lang="en", level="close")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_ribbon_declined_for_distant(self):
+        result = lookup_gift("リボン", lang="ja", level="distant")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertEqual(bonus, 0.0)
+
+    def test_ribbon_accepted_at_neutral(self):
+        result = lookup_gift("ribbon", lang="en", level="neutral")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_letter_declined_for_neutral(self):
+        result = lookup_gift("手紙", lang="ja", level="neutral")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+        self.assertGreater(len(reply), 0)
+
+    def test_letter_declined_en_for_reserved(self):
+        result = lookup_gift("letter", lang="en", level="reserved")
+        self.assertIsNotNone(result)
+        bonus, reply = result
+        self.assertEqual(bonus, 0.0)
+
+    def test_letter_accepted_at_friendly(self):
+        result = lookup_gift("手紙", lang="ja", level="friendly")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_letter_accepted_at_close(self):
+        result = lookup_gift("letter", lang="en", level="close")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_no_level_arg_bypasses_gate(self):
+        """Callers that don't pass level still get the bonus (backward compat)."""
+        result = lookup_gift("手紙", lang="ja")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_flowers_always_accepted(self):
+        """Items without min_level are always accepted regardless of level."""
+        for lvl in ("distant", "reserved", "neutral", "friendly", "close"):
+            result = lookup_gift("花", lang="ja", level=lvl)
+            self.assertIsNotNone(result)
+            bonus, _ = result
+            self.assertGreater(bonus, 0.0, f"flowers should be accepted at level={lvl}")
+
+    def test_decline_message_nonempty_ja(self):
+        result = lookup_gift("手紙", lang="ja", level="distant")
+        self.assertIsNotNone(result)
+        _, msg = result
+        self.assertGreater(len(msg.strip()), 0)
+
+    def test_decline_message_nonempty_en(self):
+        result = lookup_gift("letter", lang="en", level="distant")
+        self.assertIsNotNone(result)
+        _, msg = result
+        self.assertGreater(len(msg.strip()), 0)
+
+
+class CLILevelGatingIntegrationTests(unittest.TestCase):
+    """_give_gift() must respect level-gating and not apply bonus on decline."""
+
+    def setUp(self):
+        import persona_cli
+        self._pc = persona_cli
+
+    def test_music_declined_at_reserved_no_bonus(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=10.0)  # reserved level
+        before = tracker.affinity
+        logs = []
+        self._pc._give_gift("音楽", tracker, "Avatar", "ja", logs.append)
+        self.assertEqual(tracker.affinity, before, "Affinity must not change on decline")
+
+    def test_music_declined_shows_decline_message(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=10.0)
+        logs = []
+        self._pc._give_gift("音楽", tracker, "Avatar", "ja", logs.append)
+        full_output = " ".join(logs)
+        self.assertGreater(len(full_output), 0)
+        # Should show the decline text, not a bonus line
+        self.assertNotIn("+", full_output)
+
+    def test_letter_accepted_at_friendly(self):
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=60.0)  # friendly level
+        before = tracker.affinity
+        self._pc._give_gift("手紙", tracker, "Avatar", "ja", lambda t: None)
+        self.assertGreater(tracker.affinity, before)
+
+    def test_no_mood_no_level_check(self):
+        """Without a mood tracker, level gating is bypassed (level=None)."""
+        logs = []
+        self._pc._give_gift("音楽", None, "Avatar", "ja", logs.append)
+        # With no level, should get a reply (not the decline) — but won't crash either way
+        self.assertTrue(len(logs) > 0)
+
+
+class GiftPersistenceTests(unittest.TestCase):
+    """_give_gift() must save mood immediately so bonus survives an abrupt exit."""
+
+    def setUp(self):
+        import persona_cli
+        self._pc = persona_cli
+
+    def test_mood_saved_immediately_after_gift(self):
+        """Affinity bonus from /gift is written to disk inside _give_gift()."""
+        import json
+        import os
+        import tempfile
+        from mood import MoodTracker
+
+        tmp = tempfile.mkdtemp()
+        mood_path = os.path.join(tmp, "mood.json")
+        history_path = os.path.join(tmp, "history.json")
+        tracker = MoodTracker(affinity=20.0)
+
+        # _give_gift() does `from mood import _default_mood_path` locally, so patch at source
+        from unittest import mock
+        import mood as _mood_mod
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: mood_path), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path",
+                               lambda: history_path):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        self.assertTrue(os.path.exists(mood_path),
+                        "mood.json must be written immediately after a gift")
+        with open(mood_path, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertGreater(data["affinity"], 20.0,
+                           "Saved affinity should reflect the gift bonus")
+
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_mood_save_failure_does_not_crash(self):
+        """If mood save throws (disk full, etc.), _give_gift() still completes."""
+        from mood import MoodTracker
+        tracker = MoodTracker(affinity=30.0)
+        logs = []
+        from unittest import mock
+        import mood as _mood_mod
+        with mock.patch.object(_mood_mod, "_default_mood_path",
+                               lambda: "/nonexistent/path/mood.json"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path",
+                               lambda: "/nonexistent/path/history.json"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", logs.append)
+
+        # Should have printed the reply and the bonus message without crashing
+        self.assertTrue(any("花" in l or "+" in l or "Avatar" in l for l in logs))
+
+
+class GiftCooldownTests(unittest.TestCase):
+    """MoodTracker gift_received_today / record_gift, and _give_gift() cooldown enforcement."""
+
+    def test_gift_received_today_false_initially(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        self.assertFalse(tracker.gift_received_today("flowers"))
+
+    def test_record_gift_marks_as_received(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        tracker.record_gift("flowers")
+        self.assertTrue(tracker.gift_received_today("flowers"))
+
+    def test_different_gift_not_marked(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        tracker.record_gift("flowers")
+        self.assertFalse(tracker.gift_received_today("chocolate"))
+
+    def test_gift_history_persists_in_to_dict(self):
+        from mood import MoodTracker
+        tracker = MoodTracker()
+        tracker.record_gift("cake")
+        d = tracker.to_dict()
+        self.assertIn("gift_history", d)
+        import datetime
+        self.assertEqual(d["gift_history"]["cake"], datetime.date.today().isoformat())
+
+    def test_gift_history_loads_from_dict(self):
+        from mood import MoodTracker
+        import datetime
+        today = datetime.date.today().isoformat()
+        tracker = MoodTracker.from_dict({"gift_history": {"flowers": today}})
+        self.assertTrue(tracker.gift_received_today("flowers"))
+
+    def test_old_date_in_history_is_not_today(self):
+        from mood import MoodTracker
+        tracker = MoodTracker.from_dict({"gift_history": {"flowers": "2000-01-01"}})
+        self.assertFalse(tracker.gift_received_today("flowers"))
+
+    def test_give_gift_cooldown_blocks_second_gift(self):
+        """Giving the same gift twice in one session should block the second."""
+        import persona_cli
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+        tracker = MoodTracker(affinity=50.0)
+        logs1 = []
+        logs2 = []
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"):
+            # First gift should succeed
+            try:
+                persona_cli._give_gift("花", tracker, "Avatar", "ja", logs1.append)
+            except Exception:
+                pass
+            # Second gift of the same item should be blocked by cooldown
+            persona_cli._give_gift("花", tracker, "Avatar", "ja", logs2.append)
+
+        # If cooldown fired, the second output should NOT include "+" bonus
+        # but SHOULD include some message from the avatar
+        self.assertTrue(len(logs2) > 0)
+        second_output = " ".join(logs2)
+        self.assertNotIn("+", second_output, "Cooldown should prevent bonus on repeat gift")
+
+    def test_lookup_gift_key_returns_canonical_key(self):
+        from gifts import lookup_gift_key
+        self.assertEqual(lookup_gift_key("花", lang="ja"), "flowers")
+        self.assertEqual(lookup_gift_key("flowers", lang="en"), "flowers")
+        self.assertEqual(lookup_gift_key("チョコ", lang="ja"), "chocolate")
+
+    def test_lookup_gift_key_unknown_returns_none(self):
+        from gifts import lookup_gift_key
+        self.assertIsNone(lookup_gift_key("xyz_unknown_xyzzy", lang="ja"))
+
+    def test_lookup_gift_key_whitespace_only_returns_none(self):
+        from gifts import lookup_gift_key
+        self.assertIsNone(lookup_gift_key("   ", lang="ja"))
+        self.assertIsNone(lookup_gift_key(" ", lang="en"))
+
+    def test_cooldown_message_nonempty(self):
+        from gifts import cooldown_message
+        self.assertGreater(len(cooldown_message("ja")), 0)
+        self.assertGreater(len(cooldown_message("en")), 0)
+
+
+class GiftDailyMoodMultiplierTests(unittest.TestCase):
+    """Gift bonus is multiplied by the daily mood affinity multiplier."""
+
+    def setUp(self):
+        import persona_cli
+        self._pc = persona_cli
+
+    def test_energetic_mood_amplifies_gift_bonus(self):
+        """energetic mood (1.2x multiplier) makes the flower bonus larger."""
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+
+        tracker = MoodTracker(affinity=50.0)
+        before = tracker.affinity
+
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"), \
+             mock.patch.object(self._pc, "_get_daily_mood", lambda: "energetic"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        # energetic multiplier is 1.2x, flower base bonus is 5.0 → 6.0
+        self.assertGreater(tracker.affinity - before, 5.0)
+
+    def test_melancholy_mood_reduces_gift_bonus(self):
+        """melancholy mood (< 1.0x multiplier) reduces the gift bonus."""
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+
+        tracker = MoodTracker(affinity=50.0)
+        before = tracker.affinity
+
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"), \
+             mock.patch.object(self._pc, "_get_daily_mood", lambda: "melancholy"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        # melancholy multiplier < 1.0, flower base is 5.0 → less than 5.0
+        self.assertLess(tracker.affinity - before, 5.0)
+        # But still positive
+        self.assertGreater(tracker.affinity - before, 0.0)
+
+    def test_calm_mood_no_change_in_bonus(self):
+        """calm mood (1.0x multiplier) leaves the gift bonus unchanged."""
+        from mood import MoodTracker
+        from unittest import mock
+        import mood as _mood_mod
+
+        tracker = MoodTracker(affinity=50.0)
+        before = tracker.affinity
+
+        with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
+             mock.patch.object(_mood_mod, "_default_mood_history_path", lambda: "/dev/null"), \
+             mock.patch.object(self._pc, "_get_daily_mood", lambda: "calm"):
+            self._pc._give_gift("花", tracker, "Avatar", "ja", lambda t: None)
+
+        actual_bonus = tracker.affinity - before
+        self.assertAlmostEqual(actual_bonus, 5.0, places=1)
+
+
+class ShortAliasSubstringTests(unittest.TestCase):
+    """Regression tests for the single-kanji alias false-positive bug.
+
+    Before the fix, `alias in norm` had no minimum-length guard on the alias
+    side, so single-kanji aliases ("本", "花") would match any compound word
+    containing that kanji — e.g. "日本のケーキ" matched the book gift because
+    "本" ⊂ "日本", and "花見ケーキ" matched the flowers gift because "花" ⊂ "花見".
+
+    Fix: `alias in norm` now requires `len(alias) >= 2`, so single-char aliases
+    only match via exact lookup (which still works correctly).
+    """
+
+    def test_nihon_no_cake_matches_cake_not_book(self):
+        """'日本のケーキ' contains '本' (book alias) but must match cake."""
+        result = lookup_gift("日本のケーキ", lang="ja")
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("日本のケーキ", lang="ja")
+        self.assertEqual(key, "cake",
+            "Single-kanji alias '本' must not false-match '日本のケーキ'; "
+            "the 3-char 'ケーキ' alias should win instead.")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_hanami_cake_matches_cake_not_flowers(self):
+        """'花見ケーキ' contains '花' (flower alias) but must match cake."""
+        result = lookup_gift("花見ケーキ", lang="ja")
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("花見ケーキ", lang="ja")
+        self.assertEqual(key, "cake",
+            "Single-kanji alias '花' must not false-match '花見ケーキ'; "
+            "the 3-char 'ケーキ' alias should win instead.")
+        self.assertIsNotNone(result)
+
+    def test_single_kanji_flower_exact_still_works(self):
+        """After the fix, the single-kanji alias '花' must still work via exact match."""
+        result = lookup_gift("花", lang="ja")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_single_kanji_book_exact_still_works(self):
+        """After the fix, the single-kanji alias '本' must still work via exact match."""
+        result = lookup_gift("本", lang="ja")
+        self.assertIsNotNone(result)
+        bonus, _ = result
+        self.assertGreater(bonus, 0.0)
+
+    def test_two_char_alias_substring_still_matches(self):
+        """2-char aliases ('お花') in a longer string still trigger fuzzy match."""
+        result = lookup_gift("お花をどうぞ", lang="ja")
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("お花をどうぞ", lang="ja")
+        self.assertEqual(key, "flowers",
+            "2-char alias 'お花' must still match via substring when embedded in input.")
+
+    def test_hon_in_compound_does_not_match_book(self):
+        """'一本ください' contains '本' but must NOT match the book gift."""
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("一本ください", lang="ja")
+        self.assertNotEqual(key, "book",
+            "Counter usage '一本' (one flower) must not false-match the book gift.")
+
+    def test_lookup_gift_key_shares_same_fix(self):
+        """lookup_gift_key() uses the same matching logic; the fix must apply there too."""
+        from gifts import lookup_gift_key
+        key = lookup_gift_key("日本のケーキ", lang="ja")
+        self.assertEqual(key, "cake")
+
+
+class DeclineMessageCompletenessTests(unittest.TestCase):
+    """Every min_level value used in the gift catalog must have a corresponding
+    entry in _DECLINE_MESSAGES for both 'ja' and 'en'.  Without it, declined
+    gifts silently return an empty reply, giving no feedback to the user."""
+
+    def test_all_min_levels_have_decline_messages(self):
+        from gifts import _GIFTS, _DECLINE_MESSAGES
+        used_levels = {g["min_level"] for g in _GIFTS if g.get("min_level")}
+        for lang in ("ja", "en"):
+            lang_msgs = _DECLINE_MESSAGES.get(lang, {})
+            for lvl in used_levels:
+                self.assertIn(
+                    lvl, lang_msgs,
+                    f"_DECLINE_MESSAGES['{lang}'] is missing an entry for min_level '{lvl}'. "
+                    f"Gifts at this level will silently return an empty decline reply.",
+                )
+                self.assertGreater(
+                    len(lang_msgs[lvl].strip()), 0,
+                    f"_DECLINE_MESSAGES['{lang}']['{lvl}'] must not be empty.",
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()

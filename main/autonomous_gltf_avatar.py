@@ -1,12 +1,22 @@
 import sys
 import random
-import numpy as np
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QFileDialog, QPushButton, QLabel
-from PyQt5.QtCore import Qt, QTimer
-from OpenGL.GL import *
-from OpenGL.GLU import *
-import pygltflib
-import os
+
+from optional_deps import (  # noqa: E402
+    np, QApplication, QMainWindow, QOpenGLWidget,
+    QFileDialog, QPushButton, QLabel, QTimer, pygltflib,
+)
+
+from gltf_utils import load_first_mesh_vertices  # noqa: E402
+from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
+from gl_widget_base import GLViewportMixin  # noqa: E402
+
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
 
 class GLTFModel:
     def __init__(self, filename):
@@ -19,16 +29,15 @@ class GLTFModel:
         self.load_gltf()
 
     def load_gltf(self):
+        if pygltflib is None or np is None:
+            return
         # 頂点・面・アニメーションの簡易ローダー
         gltf = pygltflib.GLTF2().load(self.filename)
-        if not gltf.meshes:
+        vertices = load_first_mesh_vertices(gltf, np)
+        if vertices is None:
             return
+        self.vertices = vertices
         mesh = gltf.meshes[0]
-        accessor = gltf.accessors[mesh.primitives[0].attributes.POSITION]
-        buffer_view = gltf.bufferViews[accessor.bufferView]
-        buffer = gltf.buffers[buffer_view.buffer]
-        data = np.frombuffer(buffer.data, dtype=np.float32)
-        self.vertices = data.reshape(-1, 3)
         if mesh.primitives[0].indices is not None:
             idx_accessor = gltf.accessors[mesh.primitives[0].indices]
             idx_buffer_view = gltf.bufferViews[idx_accessor.bufferView]
@@ -77,7 +86,9 @@ class GLTFModel:
         glEnd()
 
 
-class AutonomousGLTFAvatarViewer(QOpenGLWidget):
+class AutonomousGLTFAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
+    GL_CLEAR_COLOR = (0.8, 0.9, 1.0, 1.0)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -107,23 +118,15 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget):
         self.model = GLTFModel(filename)
         self.update()
 
-    def start_autonomous(self):
-        self.is_autonomous = True
-        self.mode = 'run'
-        self.ticks = 0
-        self.direction = random.uniform(0, 360)
-        self.talk_text = ''
-
-    def stop_autonomous(self):
-        self.is_autonomous = False
-        self.mode = 'idle'
-        self.talk_text = ''
-        self.update()
+    def _autonomous_run_extra(self):
+        # 画面端で反射
+        for i in range(2):
+            if abs(self.position[i]) > 1.2:
+                self.direction += 180
 
     def update_autonomous(self):
         if not self.is_autonomous:
             return
-        self.ticks += 1
         # 状態ごとにアニメーションを進める
         if self.model and self.model.animations:
             if self.mode == 'run':
@@ -133,35 +136,7 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget):
             elif self.mode == 'talk':
                 self.model.current_animation = 2 if len(self.model.animations) > 2 else 0
             self.model.advance_animation(0.05, self.model.current_animation)
-        if self.mode == 'run':
-            # 駆け回る
-            speed = 0.03
-            self.position[0] += speed * np.cos(np.radians(self.direction))
-            self.position[1] += speed * np.sin(np.radians(self.direction))
-            # 画面端で反射
-            for i in range(2):
-                if abs(self.position[i]) > 1.2:
-                    self.direction += 180
-            # ランダムに方向転換
-            if random.random() < 0.05:
-                self.direction += random.uniform(-60, 60)
-            if self.ticks > 60 + random.randint(0, 40):  # 3秒程度
-                self.mode = 'rest'
-                self.ticks = 0
-        elif self.mode == 'rest':
-            # 休憩
-            if self.ticks == 1:
-                self.talk_text = random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
-            if self.ticks > 40 + random.randint(0, 20):  # 2秒程度
-                self.mode = 'talk'
-                self.ticks = 0
-        elif self.mode == 'talk':
-            if self.ticks == 1:
-                self.talk_text = random.choice(self.talks)
-            if self.ticks > 40 + random.randint(0, 20):
-                self.mode = 'run'
-                self.talk_text = ''
-                self.ticks = 0
+        self._advance_autonomous_state()
         # UIアニメーション状態表示
         if self.model and self.model.animations:
             anim_name = ['歩行','待機','トーク']
@@ -170,17 +145,6 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget):
         else:
             self.anim_state.setText('アニメーション: なし')
         self.update()
-
-    def initializeGL(self):
-        glClearColor(0.8, 0.9, 1.0, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45, w / h if h != 0 else 1, 0.1, 100)
-        glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -197,7 +161,7 @@ class AutonomousGLTFAvatarViewer(QOpenGLWidget):
         if self.talk_text:
             self.renderText(0, 2.0, 0, self.talk_text)
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("自律3Dアバター(GLTF)ビューア")

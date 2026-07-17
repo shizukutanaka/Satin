@@ -19,9 +19,8 @@ Suitable for:
 import inspect
 import logging
 from typing import (
-    Any, Callable, Dict, List, Optional, Type, TypeVar, Generic, Union
+    Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 )
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 import asyncio
@@ -275,6 +274,9 @@ class ServiceContainer:
     def create_scope(self) -> 'ServiceScope':
         """Create a new service scope."""
         scope = ServiceScope(self)
+        # Prune dead references first so this list doesn't grow unbounded with
+        # stale weakrefs over the container's lifetime (nothing else evicts them).
+        self._scopes = [ref for ref in self._scopes if ref() is not None]
         self._scopes.append(weakref.ref(scope))
         return scope
 
@@ -353,7 +355,7 @@ class ServiceBuilder:
         implementation: Optional[Union[Type[T], T]] = None
     ) -> 'ServiceBuilder':
         """Add singleton service."""
-        if isinstance(implementation, type):
+        if implementation is None or isinstance(implementation, type):
             self._container.register(
                 service_type,
                 implementation,

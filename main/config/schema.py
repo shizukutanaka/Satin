@@ -1,7 +1,7 @@
 """
 Configuration schema and validation for Satin
 """
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, Optional
 from enum import Enum
 from pydantic import BaseModel, Field, validator, root_validator
 from pathlib import Path
@@ -80,17 +80,19 @@ class SatinConfig(BaseModel):
         try:
             version.parse(v)
             return v
-        except version.InvalidVersion:
-            raise ValueError(f"Invalid version format: {v}")
+        except version.InvalidVersion as e:
+            raise ValueError(f"Invalid version format: {v}") from e
     
     @root_validator
     def validate_paths(cls, values):
         """Ensure paths are absolute"""
-        paths = values.get('paths', {})
-        for field in paths.__fields__:
-            path = getattr(paths, field)
+        paths = values.get('paths')
+        if not isinstance(paths, PathsConfig):
+            return values
+        for field_name in paths.__fields__:
+            path = getattr(paths, field_name)
             if path and not path.is_absolute():
-                setattr(paths, field, Path.cwd() / path)
+                setattr(paths, field_name, Path.cwd() / path)
         return values
 
 def create_default_config() -> Dict[str, Any]:

@@ -3,11 +3,23 @@
 """
 import os
 import json
-import yaml
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union
-from dataclasses import dataclass, asdict
+from typing import Dict, Any, List, Union
+from dataclasses import dataclass
+
+try:
+    import yaml
+except ImportError:  # PyYAML is optional; only needed for .yaml/.yml config files
+    yaml = None
+
+try:
+    # 環境変数オーバーレイ (12-factor)。config パッケージが import 出来ない環境でも
+    # 設定読み込み自体は壊れないよう、失敗時は無効化する。
+    from config.env import apply_env_overrides, ENV_SELECTOR_VAR
+except Exception:  # pragma: no cover - defensive
+    apply_env_overrides = None
+    ENV_SELECTOR_VAR = 'SATIN_ENV'
 
 # ロガーの設定
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
@@ -15,7 +27,28 @@ logger = logging.getLogger(__name__)
 
 # 設定ファイルのデフォルトパス
 DEFAULT_CONFIG_DIR = Path(__file__).parent / "config"
-DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
+
+
+def _resolve_default_config_file() -> Path:
+    """既定の設定ファイルパスを解決する。
+
+    歴史的に既定は main/config/config.json を指していたが、リポジトリで実際に
+    バージョン管理されている設定はルートの config/config.json にある。前者が
+    存在しない環境では get_config() が常に空 {} を返していた（＝設定が一切
+    読み込まれない）。存在する候補を優先し、どれも無ければ従来の書き込み先
+    （main/config/config.json）を返す。
+    """
+    candidates = [
+        Path(__file__).parent / "config" / "config.json",          # main/config/config.json
+        Path(__file__).parent.parent / "config" / "config.json",   # <repo>/config/config.json
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+DEFAULT_CONFIG_FILE = _resolve_default_config_file()
 
 @dataclass
 class ConfigSchema:
@@ -33,13 +66,45 @@ class ConfigSchema:
             plugins=data.get("plugins", [])
         )
 
+def _read_config_file(file_path: Path) -> Dict[str, Any]:
+    """単一の設定ファイルを読み込む（環境レイヤーの合成は行わない）。"""
+    if not file_path.exists():
+        logger.warning(f"設定ファイルが存在しません: {file_path}")
+        return {}
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            if file_path.suffix.lower() == '.json':
+                return json.load(f) or {}
+            elif file_path.suffix.lower() in ('.yaml', '.yml'):
+                if yaml is None:
+                    logger.error("YAML 設定の読み込みには PyYAML が必要です: pip install pyyaml")
+                    return {}
+                return yaml.safe_load(f) or {}
+            else:
+                logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
+                return {}
+    except Exception as e:
+        logger.error(f"設定ファイルの読み込みに失敗しました: {file_path}\n{str(e)}")
+        return {}
+
+def _environment_layer_path(base_path: Path, env_name: str) -> Path:
+    """ベース config.json に対する環境レイヤー config.<env>.json のパスを返す。"""
+    return base_path.with_name(f"{base_path.stem}.{env_name}{base_path.suffix}")
+
 def load_config(file_path: Union[str, Path] = None) -> Dict[str, Any]:
     """
-    設定ファイルを読み込む
-    
+    設定ファイルを読み込む（レイヤード・マルチ環境対応）。
+
+    ベース設定ファイルを読み込んだ後、環境変数 ``SATIN_ENV`` が設定されていて
+    対応する隣接ファイル ``config.<env>.json`` が存在する場合は、それをベース上に
+    ディープマージする（Dynaconf / Hydra のレイヤード設定に相当）。
+    環境変数によるオーバーレイ（個別キーの上書き）は get_config() 側で更に上に
+    適用されるため、優先順位は「実環境変数/.env > 環境レイヤーファイル > ベース」。
+
     Args:
         file_path: 設定ファイルのパス。Noneの場合はデフォルトパスを使用
-        
+
     Returns:
         Dict[str, Any]: 設定値の辞書
     """
@@ -47,23 +112,18 @@ def load_config(file_path: Union[str, Path] = None) -> Dict[str, Any]:
         file_path = DEFAULT_CONFIG_FILE
     else:
         file_path = Path(file_path)
-    
-    if not file_path.exists():
-        logger.warning(f"設定ファイルが存在しません: {file_path}")
-        return {}
-    
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            if file_path.suffix.lower() == '.json':
-                return json.load(f)
-            elif file_path.suffix.lower() in ('.yaml', '.yml'):
-                return yaml.safe_load(f)
-            else:
-                logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
-                return {}
-    except Exception as e:
-        logger.error(f"設定ファイルの読み込みに失敗しました: {file_path}\n{str(e)}")
-        return {}
+
+    config = _read_config_file(file_path)
+
+    env_name = os.environ.get(ENV_SELECTOR_VAR)
+    if env_name:
+        layer_path = _environment_layer_path(file_path, env_name)
+        if layer_path.exists():
+            layer = _read_config_file(layer_path)
+            config = merge_configs(config, layer)
+            logger.info(f"環境レイヤーを適用しました ({env_name}): {layer_path.name}")
+
+    return config
 
 def save_config(config: Dict[str, Any], file_path: Union[str, Path] = None) -> bool:
     """
@@ -81,22 +141,48 @@ def save_config(config: Dict[str, Any], file_path: Union[str, Path] = None) -> b
     else:
         file_path = Path(file_path)
     
+    suffix = file_path.suffix.lower()
+    if suffix not in ('.json', '.yaml', '.yml'):
+        logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
+        return False
+    if suffix in ('.yaml', '.yml') and yaml is None:
+        logger.error("YAML 設定の保存には PyYAML が必要です: pip install pyyaml")
+        return False
+
+    # 原子的書き込み: 同一ディレクトリの一時ファイルへ全量書き込み、fsync で
+    # ディスクへ確実に flush してから os.replace で差し替える。
+    # 直接 open(path,'w') で書くと、書き込み途中のクラッシュ・電源断や
+    # json.dump がシリアライズ不能値で例外を投げた場合に config.json が
+    # 切り詰められ、次回起動でアプリ全体が壊れる（基底設定なので影響大）。
+    # 一時ファイルは必ず同一ディレクトリに作る（os.replace のクロスデバイス回避）。
+    tmp_path = None
     try:
-        # 親ディレクトリが存在しない場合は作成
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            if file_path.suffix.lower() == '.json':
+        import tempfile
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=file_path.name + ".", suffix=".tmp", dir=str(file_path.parent)
+        )
+        tmp_path = Path(tmp_name)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            if suffix == '.json':
                 json.dump(config, f, ensure_ascii=False, indent=2)
-            elif file_path.suffix.lower() in ('.yaml', '.yml'):
-                yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
             else:
-                logger.error(f"サポートされていないファイル形式です: {file_path.suffix}")
-                return False
+                yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, file_path)
+        tmp_path = None  # 差し替え成功。finally での削除対象から外す
         return True
     except Exception as e:
         logger.error(f"設定ファイルの保存に失敗しました: {file_path}\n{str(e)}")
         return False
+    finally:
+        # 失敗時に中途半端な一時ファイルを残さない
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 def validate_config(config: Dict[str, Any], schema: Dict[str, Any] = None) -> Dict[str, List[str]]:
     """
@@ -180,21 +266,19 @@ def merge_configs(base_config: Dict[str, Any], override_config: Dict[str, Any]) 
 # 設定のシングルトンインスタンス
 _config_instance = None
 
-def get_config(reload: bool = False) -> Dict[str, Any]:
+def _ensure_loaded(reload: bool = False) -> Dict[str, Any]:
     """
-    設定を取得する（シングルトンパターン）
-    
-    Args:
-        reload: Trueの場合、設定を再読み込みする
-        
-    Returns:
-        Dict[str, Any]: 設定の辞書
+    ファイル由来のベース設定（シングルトン）を返す。
+
+    環境変数オーバーレイは含めない。書き戻し（update_config / save_config）が
+    実行時の環境変数値をファイルへ永続化してしまうのを防ぐため、ベース設定と
+    実効設定を分離している。
     """
     global _config_instance
-    
+
     if _config_instance is None or reload:
         _config_instance = load_config()
-        
+
         # 設定のバリデーション
         errors = validate_config(_config_instance)
         if errors:
@@ -202,8 +286,28 @@ def get_config(reload: bool = False) -> Dict[str, Any]:
             for field, msgs in errors.items():
                 for msg in msgs:
                     logger.warning(f"  - {field}: {msg}")
-    
+
     return _config_instance
+
+def get_config(reload: bool = False) -> Dict[str, Any]:
+    """
+    設定を取得する（シングルトン + 環境変数オーバーレイ）
+
+    ファイルから読み込んだベース設定に、`SATIN_` プレフィックス付き環境変数を
+    重ねた実効設定を返す。オーバーレイは読み取り時のみ適用され、ファイルへは
+    書き戻されない。
+
+    Args:
+        reload: Trueの場合、設定を再読み込みする
+
+    Returns:
+        Dict[str, Any]: 設定の辞書（環境変数オーバーレイ適用済み）
+    """
+    base = _ensure_loaded(reload)
+
+    if apply_env_overrides is None:
+        return base
+    return apply_env_overrides(base)
 
 def update_config(new_config: Dict[str, Any], save_to_file: bool = True) -> bool:
     """
@@ -217,22 +321,27 @@ def update_config(new_config: Dict[str, Any], save_to_file: bool = True) -> bool
         bool: 更新に成功したかどうか
     """
     global _config_instance
-    
-    # バリデーション
-    errors = validate_config(new_config)
+
+    # 先にマージし、最終的な設定をバリデーションする。
+    # （部分更新で version/settings を毎回渡さなくて済むよう、マージ後に検証する。
+    #   以前は部分的な new_config を検証していたため必須フィールド欠落で常に失敗していた。）
+    # ベース設定を使う（環境変数オーバーレイ込みの get_config() ではない）。
+    # そうしないと実行時の環境変数値がファイルに永続化されてしまう。
+    current_config = _ensure_loaded()
+    merged_config = merge_configs(current_config, new_config)
+
+    errors = validate_config(merged_config)
     if errors:
         logger.error("設定の更新に失敗しました。バリデーションエラーがあります:")
         for field, msgs in errors.items():
             for msg in msgs:
                 logger.error(f"  - {field}: {msg}")
         return False
-    
-    # マージ
-    current_config = get_config()
-    _config_instance = merge_configs(current_config, new_config)
-    
+
+    _config_instance = merged_config
+
     # ファイルに保存
     if save_to_file:
         return save_config(_config_instance)
-    
+
     return True

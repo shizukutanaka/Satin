@@ -1,6 +1,6 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 from abc import ABC, abstractmethod
-from .error_handling import PluginError
+from error_handling import PluginError
 
 class PluginBase(ABC):
     """Base class for all plugins"""

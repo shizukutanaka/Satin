@@ -18,8 +18,9 @@ Integrates with:
 
 import ast
 import logging
+import textwrap
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import inspect
@@ -255,7 +256,7 @@ class CodeComplexityAnalyzer:
             )
 
         try:
-            tree = ast.parse(source)
+            tree = ast.parse(textwrap.dedent(source))
         except SyntaxError:
             return ComplexityMetrics(
                 name=func.__name__,

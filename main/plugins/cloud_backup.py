@@ -11,7 +11,7 @@ import os
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List
 from google.cloud import storage
 from config_manager import get_config_manager
 

@@ -1,7 +1,6 @@
 """
 Advanced error handling and recovery system for Satin
 """
-import sys
 import traceback
 from typing import Callable, TypeVar, Any, Optional, Type, Dict
 from functools import wraps
@@ -53,6 +52,28 @@ class ValidationError(SatinError):
         details = {'field': field} if field else {}
         super().__init__(message, code=400, details=details)
 
+
+class ConfigError(SatinError):
+    """Raised when configuration loading/saving/validation fails."""
+    def __init__(self, message: str, details: Optional[Dict] = None):
+        super().__init__(message, code=500, details=details)
+
+
+# Backwards/forwards-compatible alias (some modules import ConfigurationError).
+class ConfigurationError(ConfigError):
+    """Alias of ConfigError for callers expecting this name."""
+
+
+class BackupError(SatinError):
+    """Raised when a backup operation fails."""
+
+
+class PluginError(SatinError):
+    """Raised when a plugin fails to load or execute."""
+    def __init__(self, message: str, plugin: Optional[str] = None):
+        details = {'plugin': plugin} if plugin else {}
+        super().__init__(message, code=500, details=details)
+
 class ErrorHandler:
     """Global error handler and recovery manager"""
     
@@ -88,10 +109,17 @@ class ErrorHandler:
         return handler(error)
     
     def _find_handler(self, exc_type: Type[Exception]) -> Callable:
-        """Find the most specific handler for an exception type"""
-        for et in self._handlers:
-            if issubclass(exc_type, et):
-                return self._handlers[et]
+        """Find the most specific handler for an exception type using MRO order.
+
+        Iterating self._handlers in insertion order returns the *first* base
+        class that matches, not the most-derived one registered.  For example,
+        RetryableError (subclass of SatinError) would always resolve to the
+        SatinError handler, so the RetryableError-specific handler was dead code.
+        Walking exc_type.__mro__ instead finds the closest registered ancestor.
+        """
+        for cls in exc_type.__mro__:
+            if cls in self._handlers:
+                return self._handlers[cls]
         return self._handle_generic_error
     
     def _log_error(self, error: Exception) -> None:
@@ -239,8 +267,14 @@ def retry_on_error(
 # Global error handler instance
 _error_handler = ErrorHandler()
 
-def handle_error(error: Exception) -> Any:
-    """Handle an error using the global error handler"""
+def handle_global_error(error: Exception) -> Any:
+    """Handle an error using the global error handler.
+
+    NOTE: renamed from `handle_error` to avoid shadowing the `@handle_error`
+    decorator factory defined above — the previous duplicate definition replaced
+    the decorator with this function, so `@handle_error(RetryStrategy(...))`
+    raised `TypeError: 'dict' object is not callable`.
+    """
     return _error_handler.handle_error(error)
 
 def set_global_error_handler(handler: ErrorHandler) -> None:

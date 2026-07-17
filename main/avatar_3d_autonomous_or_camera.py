@@ -1,56 +1,28 @@
 import sys
 import random
-import threading
 import queue
-import numpy as np
-import cv2
-import mediapipe as mp
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QPushButton, QLabel
-from PyQt5.QtCore import Qt, QTimer
-from OpenGL.GL import *
-from OpenGL.GLU import *
 
-# --- Camera tracking thread ---
-mp_face_mesh = mp.solutions.face_mesh
-mp_drawing = mp.solutions.drawing_utils
+from optional_deps import (  # noqa: E402
+    np, QApplication, QMainWindow, QOpenGLWidget,
+    QPushButton, QLabel, QTimer,
+)
+from camera_thread import CameraThread  # noqa: E402
+from gl_widget_base import GLViewportMixin  # noqa: E402
 
-class CameraThread(threading.Thread):
-    def __init__(self, pose_queue):
-        super().__init__()
-        self.pose_queue = pose_queue
-        self.running = True
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
 
-    def run(self):
-        cap = cv2.VideoCapture(0)
-        with mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5) as face_mesh:
-            while self.running and cap.isOpened():
-                success, image = cap.read()
-                if not success:
-                    continue
-                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                results = face_mesh.process(image_rgb)
-                pose = None
-                if results.multi_face_landmarks:
-                    face_landmarks = results.multi_face_landmarks[0]
-                    nose = face_landmarks.landmark[1]
-                    left_eye = face_landmarks.landmark[33]
-                    right_eye = face_landmarks.landmark[263]
-                    pose = (nose.x, nose.y, left_eye.x, left_eye.y, right_eye.x, right_eye.y)
-                self.pose_queue.put(pose)
-                # オーバーレイ表示
-                mp_drawing.draw_landmarks(image, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION)
-                cv2.imshow('Webcam FaceMesh', image)
-                if cv2.waitKey(1) & 0xFF == 27:
-                    self.running = False
-                    break
-        cap.release()
-        cv2.destroyAllWindows()
+try:
+    from persona import get_persona  # noqa: E402
+except Exception:  # pragma: no cover - defensive
+    get_persona = None
 
-class Avatar3DAutoOrCamViewer(QOpenGLWidget):
+class Avatar3DAutoOrCamViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -75,6 +47,22 @@ class Avatar3DAutoOrCamViewer(QOpenGLWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_logic)
         self.timer.start(50)
+
+    def _pick_rest_text(self):
+        """休憩台詞。ペルソナ優先、無ければハードコード配列にフォールバック。"""
+        if get_persona is not None:
+            text = get_persona().rest()
+            if text:
+                return text
+        return random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
+
+    def _pick_talk_text(self):
+        """雑談台詞。ペルソナ優先、無ければ self.talks にフォールバック。"""
+        if get_persona is not None:
+            text = get_persona().talk()
+            if text:
+                return text
+        return random.choice(self.talks)
 
     def set_mode(self, mode):
         if mode == self.mode:
@@ -117,16 +105,17 @@ class Avatar3DAutoOrCamViewer(QOpenGLWidget):
         if self.ticks < 60:
             # 駆け回る
             speed = 0.03
-            self.position[0] += speed * np.cos(np.radians(self.direction))
-            self.position[1] += speed * np.sin(np.radians(self.direction))
+            if np is not None:
+                self.position[0] += speed * np.cos(np.radians(self.direction))
+                self.position[1] += speed * np.sin(np.radians(self.direction))
             if random.random() < 0.05:
                 self.direction += random.uniform(-60, 60)
         elif self.ticks < 100:
             # 休憩
-            self.talk_text = random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
+            self.talk_text = self._pick_rest_text()
         elif self.ticks < 140:
             # お話し
-            self.talk_text = random.choice(self.talks)
+            self.talk_text = self._pick_talk_text()
         else:
             self.ticks = 0
             self.talk_text = ''
@@ -139,17 +128,6 @@ class Avatar3DAutoOrCamViewer(QOpenGLWidget):
                     self.current_pose = pose
         except queue.Empty:
             pass
-
-    def initializeGL(self):
-        glClearColor(0.2, 0.2, 0.2, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45.0, float(w)/float(h), 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -175,7 +153,7 @@ class Avatar3DAutoOrCamViewer(QOpenGLWidget):
             quad = gluNewQuadric()
             gluSphere(quad, 1.0, 32, 32)
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("3Dアバター：自律モード/カメラ連動切り替え")

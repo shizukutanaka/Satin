@@ -1,56 +1,22 @@
 import sys
-import threading
 import queue
-import numpy as np
-import cv2
-import mediapipe as mp
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget
-from PyQt5.QtCore import Qt, QTimer
-from OpenGL.GL import *
-from OpenGL.GLU import *
 
-# --- MediaPipe FaceMesh Setup ---
-mp_face_mesh = mp.solutions.face_mesh
-mp_drawing = mp.solutions.drawing_utils
+from optional_deps import (  # noqa: E402
+    QApplication, QMainWindow, QOpenGLWidget,
+    QTimer,
+)
+from camera_thread import CameraThread  # noqa: E402
+from gl_widget_base import GLViewportMixin  # noqa: E402
 
-class CameraThread(threading.Thread):
-    def __init__(self, pose_queue):
-        super().__init__()
-        self.pose_queue = pose_queue
-        self.running = True
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
 
-    def run(self):
-        cap = cv2.VideoCapture(0)
-        with mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5) as face_mesh:
-            while self.running and cap.isOpened():
-                success, image = cap.read()
-                if not success:
-                    continue
-                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                results = face_mesh.process(image_rgb)
-                pose = None
-                if results.multi_face_landmarks:
-                    face_landmarks = results.multi_face_landmarks[0]
-                    # 例: 鼻先・左右目・口の3点座標抽出
-                    nose = face_landmarks.landmark[1]
-                    left_eye = face_landmarks.landmark[33]
-                    right_eye = face_landmarks.landmark[263]
-                    pose = (nose.x, nose.y, left_eye.x, left_eye.y, right_eye.x, right_eye.y)
-                self.pose_queue.put(pose)
-                # オーバーレイ表示
-                mp_drawing.draw_landmarks(image, face_landmarks, mp_face_mesh.FACEMESH_TESSELATION)
-                cv2.imshow('Webcam FaceMesh', image)
-                if cv2.waitKey(1) & 0xFF == 27:
-                    self.running = False
-                    break
-        cap.release()
-        cv2.destroyAllWindows()
-
-class Avatar3DSyncViewer(QOpenGLWidget):
+class Avatar3DSyncViewer(GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
     def __init__(self, pose_queue, parent=None):
         super().__init__(parent)
         self.pose_queue = pose_queue
@@ -70,17 +36,6 @@ class Avatar3DSyncViewer(QOpenGLWidget):
             pass
         self.update()
 
-    def initializeGL(self):
-        glClearColor(0.2, 0.2, 0.2, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45.0, float(w)/float(h), 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)
-
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
@@ -97,7 +52,7 @@ class Avatar3DSyncViewer(QOpenGLWidget):
             glRotatef(dx * 200, 0, 1, 0)
             glRotatef(dy * 200, 1, 0, 0)
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self, pose_queue):
         super().__init__()
         self.setWindowTitle("3Dアバター同期ビューア（カメラ連動サンプル）")

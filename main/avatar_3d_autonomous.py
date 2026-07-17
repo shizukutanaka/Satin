@@ -1,11 +1,24 @@
 import sys
 import random
-from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QPushButton, QLabel
-from PyQt5.QtCore import Qt, QTimer
-from OpenGL.GL import *
-from OpenGL.GLU import *
 
-class AutonomousAvatarViewer(QOpenGLWidget):
+from optional_deps import (  # noqa: E402
+    QApplication, QMainWindow, QOpenGLWidget,
+    QPushButton, QLabel, QTimer,
+)
+from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
+from gl_widget_base import GLViewportMixin  # noqa: E402
+
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
+try:
+    from OpenGL.GL import *  # noqa: F401,F403
+    from OpenGL.GLU import *  # noqa: F401,F403
+except ImportError:
+    pass
+
+class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
+    reset_direction_on_run = True
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(640, 480)
@@ -26,62 +39,11 @@ class AutonomousAvatarViewer(QOpenGLWidget):
             'あなたも一緒にどう？'
         ]
 
-    def start_autonomous(self):
-        self.is_autonomous = True
-        self.mode = 'run'
-        self.ticks = 0
-        self.direction = random.uniform(0, 360)
-        self.talk_text = ''
-
-    def stop_autonomous(self):
-        self.is_autonomous = False
-        self.mode = 'idle'
-        self.talk_text = ''
-        self.update()
-
     def update_autonomous(self):
         if not self.is_autonomous:
             return
-        self.ticks += 1
-        if self.mode == 'run':
-            # 駆け回る
-            speed = 0.03
-            self.position[0] += speed * np.cos(np.radians(self.direction))
-            self.position[1] += speed * np.sin(np.radians(self.direction))
-            # ランダムに方向転換
-            if random.random() < 0.05:
-                self.direction += random.uniform(-60, 60)
-            if self.ticks > 60 + random.randint(0, 40):  # 3秒程度
-                self.mode = 'rest'
-                self.ticks = 0
-        elif self.mode == 'rest':
-            # 休憩
-            if self.ticks == 1:
-                self.talk_text = random.choice(['ふう…ちょっと休憩。', 'すこし止まります。'])
-            if self.ticks > 40 + random.randint(0, 20):  # 2秒程度
-                self.mode = 'talk'
-                self.ticks = 0
-        elif self.mode == 'talk':
-            # お話し
-            if self.ticks == 1:
-                self.talk_text = random.choice(self.talks)
-            if self.ticks > 40 + random.randint(0, 20):  # 2秒程度
-                self.mode = 'run'
-                self.direction = random.uniform(0, 360)
-                self.ticks = 0
-                self.talk_text = ''
+        self._advance_autonomous_state()
         self.update()
-
-    def initializeGL(self):
-        glClearColor(0.2, 0.2, 0.2, 1.0)
-        glEnable(GL_DEPTH_TEST)
-
-    def resizeGL(self, w, h):
-        glViewport(0, 0, w, h)
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(45.0, float(w)/float(h), 0.1, 100.0)
-        glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -91,7 +53,7 @@ class AutonomousAvatarViewer(QOpenGLWidget):
         quad = gluNewQuadric()
         gluSphere(quad, 1.0, 32, 32)
 
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("自律モード 3Dアバターサンプル")
@@ -124,7 +86,6 @@ class MainWindow(QMainWindow):
             self.talk_label.setText('')
 
 if __name__ == "__main__":
-    import numpy as np
     app = QApplication(sys.argv)
     win = MainWindow()
     win.show()

@@ -1,0 +1,684 @@
+"""
+Stdlib-only tests for main/daily_summary.py.
+
+Run: python -m unittest tests.test_daily_summary -v
+"""
+import json
+import os
+import sys
+import tempfile
+import unittest
+from datetime import date, timedelta, datetime
+
+_MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
+sys.path.insert(0, _MAIN)
+
+from daily_summary import (  # noqa: E402
+    daily_summary, summary_greeting, yesterday_summary, yesterday_greeting,
+    _load_jsonl, _date_str, _default_event_log, _default_mood_history,
+    interaction_streak,
+)
+# Captured at collection time (module import), matching how daily_summary.py's
+# own _DEFAULT_EVENT_LOG was captured — an in-test attribute lookup would
+# instead pick up the per-test conftest.py conversation-log isolation
+# monkeypatch and spuriously mismatch against the already-bound default.
+from conversation_log import DEFAULT_LOGFILE as _REAL_DEFAULT_LOGFILE  # noqa: E402
+
+
+def _ts(dt: datetime) -> float:
+    return dt.timestamp()
+
+
+def _write_events(path: str, events: list) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        for ev in events:
+            f.write(json.dumps(ev) + "\n")
+
+
+def _write_mood(path: str, entries: list) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        for e in entries:
+            f.write(json.dumps(e) + "\n")
+
+
+class InteractionStreakTests(unittest.TestCase):
+    """interaction_streak counts the trailing run of consecutive active days
+    in the (one-per-day) mood history."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._mood = os.path.join(self._tmp, "mood.jsonl")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _write_dates(self, days_ago_list):
+        today = date.today()
+        rows = [{"date": (today - timedelta(days=d)).isoformat(),
+                 "affinity": 50.0, "level": "neutral"} for d in days_ago_list]
+        _write_mood(self._mood, rows)
+
+    def test_no_history_is_zero(self):
+        self.assertEqual(interaction_streak(self._mood), 0)
+
+    def test_single_day_is_one(self):
+        self._write_dates([0])
+        self.assertEqual(interaction_streak(self._mood), 1)
+
+    def test_three_consecutive_days(self):
+        self._write_dates([2, 1, 0])
+        self.assertEqual(interaction_streak(self._mood), 3)
+
+    def test_gap_breaks_streak(self):
+        # active 5 days ago, then yesterday + today -> trailing run is 2
+        self._write_dates([5, 1, 0])
+        self.assertEqual(interaction_streak(self._mood), 2)
+
+    def test_duplicate_dates_counted_once(self):
+        today = date.today()
+        rows = [
+            {"date": today.isoformat(), "affinity": 50.0, "level": "neutral"},
+            {"date": today.isoformat(), "affinity": 55.0, "level": "neutral"},
+            {"date": (today - timedelta(days=1)).isoformat(), "affinity": 50.0, "level": "neutral"},
+        ]
+        _write_mood(self._mood, rows)
+        self.assertEqual(interaction_streak(self._mood), 2)
+
+    def test_corrupt_date_skipped(self):
+        today = date.today()
+        rows = [
+            {"date": "not-a-date", "affinity": 50.0, "level": "neutral"},
+            {"date": today.isoformat(), "affinity": 50.0, "level": "neutral"},
+        ]
+        _write_mood(self._mood, rows)
+        self.assertEqual(interaction_streak(self._mood), 1)
+
+    def test_stale_streak_returns_zero(self):
+        """A consecutive run that ended 2+ days ago must return 0, not its length.
+
+        Before the fix, the function returned the run length even when the user
+        had been inactive for weeks, causing "5 days in a row!" in today's greeting
+        for a stale historical run.
+        """
+        self._write_dates([15, 16, 17, 18, 19])   # 5-day run, ended 15 days ago
+        self.assertEqual(interaction_streak(self._mood), 0)
+
+    def test_streak_broken_two_days_ago_returns_zero(self):
+        """Last activity was exactly 2 days ago — streak is broken."""
+        self._write_dates([2, 3, 4])
+        self.assertEqual(interaction_streak(self._mood), 0)
+
+    def test_streak_ending_yesterday_still_valid(self):
+        """Last activity yesterday is still a live streak (app not opened today yet)."""
+        self._write_dates([1, 2, 3])
+        self.assertEqual(interaction_streak(self._mood), 3)
+
+    def test_streak_in_summary_dict(self):
+        self._write_dates([1, 0])
+        ev = os.path.join(self._tmp, "ev.jsonl")
+        open(ev, "w").close()
+        result = daily_summary(event_log_path=ev, mood_history_path=self._mood)
+        self.assertEqual(result["streak"], 2)
+
+    def test_streak_appears_in_today_greeting(self):
+        self._write_dates([2, 1, 0])
+        ev = os.path.join(self._tmp, "ev.jsonl")
+        today = date.today()
+        noon = datetime(today.year, today.month, today.day, 12, 0, 0).timestamp()
+        with open(ev, "w") as f:
+            f.write(json.dumps({"event_type": "user_comment", "timestamp": noon}) + "\n")
+        g = summary_greeting(lang="en", event_log_path=ev, mood_history_path=self._mood)
+        self.assertIn("3 days in a row", g)
+
+
+class DefaultPathAlignmentTests(unittest.TestCase):
+    """daily_summary's default paths MUST point at what the app actually writes,
+    else the morning greeting (which omits paths) reads non-existent files and
+    always reports 'no activity'."""
+
+    def test_event_log_default_matches_conversation_log(self):
+        self.assertEqual(_default_event_log(), _REAL_DEFAULT_LOGFILE)
+
+    def test_mood_history_default_matches_mood_module(self):
+        import mood
+        self.assertEqual(_default_mood_history(), mood._default_mood_history_path())
+
+    def test_event_log_default_not_the_old_wrong_path(self):
+        # Regression: it used to default to logs/avatar_events.jsonl (never written).
+        self.assertNotIn(os.path.join("logs", "avatar_events.jsonl"), _default_event_log())
+
+
+class LoadJsonlTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_missing_file_returns_empty(self):
+        result = _load_jsonl(os.path.join(self._tmp, "nonexistent.jsonl"))
+        self.assertEqual(result, [])
+
+    def test_loads_valid_lines(self):
+        path = os.path.join(self._tmp, "data.jsonl")
+        _write_events(path, [{"key": "a"}, {"key": "b"}])
+        result = _load_jsonl(path)
+        self.assertEqual(len(result), 2)
+
+    def test_skips_corrupt_lines(self):
+        path = os.path.join(self._tmp, "mixed.jsonl")
+        with open(path, "w") as f:
+            f.write('{"key": "ok"}\n')
+            f.write("not json {\n")
+            f.write('{"key": "also_ok"}\n')
+        result = _load_jsonl(path)
+        self.assertEqual(len(result), 2)
+
+    def test_null_jsonl_line_is_skipped(self):
+        # Regression: json.loads("null") returns None (valid JSON, no exception).
+        # Without an isinstance guard, None is appended and ev.get() later crashes.
+        path = os.path.join(self._tmp, "null_line.jsonl")
+        with open(path, "w") as f:
+            f.write('{"key": "valid"}\n')
+            f.write("null\n")
+            f.write('{"key": "also_valid"}\n')
+        result = _load_jsonl(path)
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(isinstance(e, dict) for e in result))
+
+
+class DateStrTests(unittest.TestCase):
+    def test_valid_timestamp(self):
+        dt = datetime(2024, 6, 1, 10, 0, 0)
+        self.assertEqual(_date_str(dt.timestamp()), "2024-06-01")
+
+    def test_zero_returns_epoch_date(self):
+        result = _date_str(0)
+        self.assertIsInstance(result, str)
+
+    def test_none_returns_empty_string(self):
+        """Regression: None timestamp (JSON null) must return '' not raise TypeError."""
+        self.assertEqual(_date_str(None), "")
+
+    def test_string_timestamp_returns_empty_string(self):
+        """Non-numeric timestamp must return '' not raise TypeError."""
+        self.assertEqual(_date_str("not-a-ts"), "")
+
+
+class DailySummaryNoDataTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _no_data_paths(self):
+        return {
+            "event_log_path": os.path.join(self._tmp, "ev.jsonl"),
+            "mood_history_path": os.path.join(self._tmp, "mood.jsonl"),
+        }
+
+    def test_returns_dict_when_no_data(self):
+        result = daily_summary(**self._no_data_paths())
+        self.assertIsInstance(result, dict)
+
+    def test_zero_interactions_when_no_data(self):
+        result = daily_summary(**self._no_data_paths())
+        self.assertEqual(result["total_interactions"], 0)
+
+    def test_date_in_result(self):
+        result = daily_summary(**self._no_data_paths())
+        self.assertEqual(result["date"], date.today().strftime("%Y-%m-%d"))
+
+    def test_affinity_none_when_no_mood_data(self):
+        result = daily_summary(**self._no_data_paths())
+        self.assertIsNone(result["affinity"])
+
+    def test_peak_hour_none_when_no_data(self):
+        result = daily_summary(**self._no_data_paths())
+        self.assertIsNone(result["peak_hour"])
+
+
+class DailySummaryWithDataTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        today = date.today()
+        today_str = today.strftime("%Y-%m-%d")
+        noon = datetime(today.year, today.month, today.day, 12, 0, 0)
+        eve = datetime(today.year, today.month, today.day, 18, 0, 0)
+
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+
+        events = [
+            {"event_type": "user_comment", "timestamp": _ts(noon)},
+            {"event_type": "avatar_reply", "timestamp": _ts(noon)},
+            {"event_type": "user_comment", "timestamp": _ts(noon)},
+            {"event_type": "avatar_reply", "timestamp": _ts(eve)},
+            {"event_type": "user_comment", "timestamp": _ts(eve)},
+        ]
+        _write_events(self._ev_path, events)
+
+        # History keeps one snapshot per day; change is measured vs the prior day.
+        yesterday_str = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        mood_entries = [
+            {"date": yesterday_str, "affinity": 50.0, "level": "neutral"},
+            {"date": today_str, "affinity": 55.0, "level": "neutral"},
+        ]
+        _write_mood(self._mood_path, mood_entries)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_user_messages_counted(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["user_messages"], 3)
+
+    def test_avatar_replies_counted(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["avatar_replies"], 2)
+
+    def test_total_interactions(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["total_interactions"], 5)
+
+    def test_peak_hour_detected(self):
+        result = daily_summary(**self._kwargs())
+        # noon has 3 events, eve has 2 → peak is 12
+        self.assertEqual(result["peak_hour"], 12)
+
+    def test_affinity_from_last_mood_entry(self):
+        result = daily_summary(**self._kwargs())
+        self.assertAlmostEqual(result["affinity"], 55.0)
+
+    def test_affinity_change_computed(self):
+        # today 55.0 vs previous day 50.0 → +5.0 (must actually fire, not None)
+        result = daily_summary(**self._kwargs())
+        self.assertIsNotNone(result["affinity_change"])
+        self.assertAlmostEqual(result["affinity_change"], 5.0)
+
+    def test_event_counts_dict(self):
+        result = daily_summary(**self._kwargs())
+        self.assertIn("user_comment", result["event_counts"])
+        self.assertIn("avatar_reply", result["event_counts"])
+
+    def test_has_all_expected_keys(self):
+        result = daily_summary(**self._kwargs())
+        for key in ("date", "user_messages", "avatar_replies", "total_interactions",
+                    "peak_hour", "affinity", "affinity_level", "affinity_change",
+                    "event_counts"):
+            self.assertIn(key, result)
+
+
+class DailySummaryDateFilterTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        today_noon = datetime(today.year, today.month, today.day, 12, 0, 0)
+        yesterday_noon = datetime(yesterday.year, yesterday.month, yesterday.day, 12, 0, 0)
+
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+
+        events = [
+            {"event_type": "user_comment", "timestamp": _ts(today_noon)},
+            {"event_type": "user_comment", "timestamp": _ts(yesterday_noon)},
+            {"event_type": "user_comment", "timestamp": _ts(yesterday_noon)},
+        ]
+        _write_events(self._ev_path, events)
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_today_only_includes_today_events(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["user_messages"], 1)
+
+    def test_yesterday_only_includes_yesterday_events(self):
+        yesterday = date.today() - timedelta(days=1)
+        result = daily_summary(target_date=yesterday, **self._kwargs())
+        self.assertEqual(result["user_messages"], 2)
+
+
+class NullTimestampRobustnessTests(unittest.TestCase):
+    """Regression: events with null/string timestamps must not crash daily_summary.
+
+    dict.get("timestamp", 0) returns None when the key is present with value null,
+    and datetime.fromtimestamp(None) raises TypeError (not OSError/ValueError).
+    Both _date_str and the hour_counts loop must guard against this.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_null_timestamp_event_does_not_crash(self):
+        today = date.today()
+        valid_ts = datetime(today.year, today.month, today.day, 12, 0, 0).timestamp()
+        events = [
+            {"event_type": "user_comment", "timestamp": valid_ts},
+            {"event_type": "avatar_reply", "timestamp": None},   # JSON null
+            {"event_type": "user_comment", "timestamp": "bad"},  # string timestamp
+        ]
+        _write_events(self._ev_path, events)
+        result = daily_summary(**self._kwargs())  # must not raise
+        self.assertEqual(result["user_messages"], 1)  # only valid-ts user event counted
+
+    def test_string_timestamp_event_does_not_crash(self):
+        events = [{"event_type": "user_comment", "timestamp": "2024-01-01T00:00:00"}]
+        _write_events(self._ev_path, events)
+        result = daily_summary(**self._kwargs())  # must not raise TypeError
+        self.assertIsInstance(result, dict)
+
+    def test_string_affinity_in_mood_history_does_not_crash(self):
+        """A mood entry with a non-numeric affinity must not crash the diff calc
+        or the downstream ``:.1f`` formatting; it degrades to None."""
+        today = date.today()
+        date_key = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": "2000-01-01", "affinity": "not_a_number", "level": "neutral"},
+            {"date": date_key, "affinity": "also_bad", "level": "friendly"},
+        ])
+        result = daily_summary(**self._kwargs())  # must not raise
+        self.assertIsNone(result["affinity"])
+        self.assertIsNone(result["affinity_change"])
+
+    def test_null_date_in_mood_history_does_not_crash(self):
+        """A mood entry with "date": null must not crash daily_summary.
+
+        The prior-day diff did `e.get("date", "") < date_key`, but get returns
+        None (not "") for a present-but-null key, and None < str raises
+        TypeError.  daily_summary is called from greetings, the dashboard and
+        the CLI, so this would propagate widely.
+        """
+        today = date.today()
+        date_key = today.strftime("%Y-%m-%d")
+        # One valid prior entry, one with a null date (must be skipped, not crash)
+        _write_mood(self._mood_path, [
+            {"date": None, "affinity": 40.0, "level": "neutral"},
+            {"date": "2000-01-01", "affinity": 45.0, "level": "neutral"},
+            {"date": date_key, "affinity": 60.0, "level": "friendly"},
+        ])
+        result = daily_summary(**self._kwargs())  # must not raise
+        self.assertIsInstance(result, dict)
+        # The valid prior entry (2000-01-01, affinity 45) drives the change calc
+        self.assertAlmostEqual(result["affinity_change"], 60.0 - 45.0, places=1)
+
+
+class LegacyAliasConsistencyTests(unittest.TestCase):
+    """daily_summary must count legacy 'user'/'avatar' event aliases the same
+    way the dashboard does, so /stats and /summary never disagree on one log."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        today = date.today()
+        noon = datetime(today.year, today.month, today.day, 12, 0, 0).timestamp()
+        events = [
+            {"event_type": "user_comment", "timestamp": noon},
+            {"event_type": "user", "timestamp": noon},          # legacy alias
+            {"event_type": "avatar_reply", "timestamp": noon},
+            {"event_type": "avatar", "timestamp": noon},        # legacy alias
+        ]
+        _write_events(self._ev_path, events)
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_legacy_user_alias_counted(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["user_messages"], 2)
+
+    def test_legacy_avatar_alias_counted(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["avatar_replies"], 2)
+
+    def test_agrees_with_dashboard_conversation_stats(self):
+        import dashboard
+        result = daily_summary(**self._kwargs())
+        cs = dashboard._conversation_stats(self._ev_path)
+        self.assertEqual(result["user_messages"], cs["total_user"])
+        self.assertEqual(result["avatar_replies"], cs["total_avatar"])
+
+    def test_shared_constants_are_imported_from_conversation_log(self):
+        import daily_summary as ds
+        import conversation_log as cl
+        self.assertIs(ds.USER_EVENT_TYPES, cl.USER_EVENT_TYPES)
+        self.assertIs(ds.AVATAR_EVENT_TYPES, cl.AVATAR_EVENT_TYPES)
+
+
+class AffinityChangeTests(unittest.TestCase):
+    """affinity_change is measured vs the PREVIOUS day's snapshot. History keeps
+    one entry per day (same-day overwrites), so an intra-day delta is impossible;
+    the old len(day_moods)>=2 check could never fire."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        open(self._ev_path, "w").close()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _summary(self, target=None):
+        return daily_summary(
+            target_date=target,
+            event_log_path=self._ev_path,
+            mood_history_path=self._mood_path,
+        )
+
+    def test_increase_vs_previous_day(self):
+        today = date.today()
+        y = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        t = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": y, "affinity": 40.0, "level": "neutral"},
+            {"date": t, "affinity": 48.0, "level": "neutral"},
+        ])
+        self.assertAlmostEqual(self._summary()["affinity_change"], 8.0)
+
+    def test_decrease_vs_previous_day(self):
+        today = date.today()
+        y = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        t = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": y, "affinity": 60.0, "level": "friendly"},
+            {"date": t, "affinity": 52.0, "level": "neutral"},
+        ])
+        self.assertAlmostEqual(self._summary()["affinity_change"], -8.0)
+
+    def test_first_day_has_no_change(self):
+        # Only one day of history → no prior baseline → None (not 0, not crash).
+        t = date.today().strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [{"date": t, "affinity": 50.0, "level": "neutral"}])
+        self.assertIsNone(self._summary()["affinity_change"])
+
+    def test_no_mood_history_has_no_change(self):
+        self.assertIsNone(self._summary()["affinity_change"])
+
+    def test_uses_most_recent_prior_day_not_oldest(self):
+        today = date.today()
+        d2 = (today - timedelta(days=2)).strftime("%Y-%m-%d")
+        d1 = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+        t = today.strftime("%Y-%m-%d")
+        _write_mood(self._mood_path, [
+            {"date": d2, "affinity": 20.0, "level": "reserved"},
+            {"date": d1, "affinity": 50.0, "level": "neutral"},
+            {"date": t, "affinity": 55.0, "level": "neutral"},
+        ])
+        # change is vs yesterday (50.0), not the day before (20.0)
+        self.assertAlmostEqual(self._summary()["affinity_change"], 5.0)
+
+
+class PeakHourSemanticsTests(unittest.TestCase):
+    """peak_hour must reflect USER activity (matching dashboard /stats), not
+    total event volume. Otherwise /summary and /stats print different peaks."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        today = date.today()
+
+        def at(hour):
+            return datetime(today.year, today.month, today.day, hour, 0, 0).timestamp()
+
+        # Hour 9: 3 USER messages.
+        # Hour 14: 1 user + 5 avatar replies (6 total events).
+        # All-events peak would be 14; USER-activity peak is 9.
+        events = (
+            [{"event_type": "user_comment", "timestamp": at(9)}] * 3
+            + [{"event_type": "user_comment", "timestamp": at(14)}]
+            + [{"event_type": "avatar_reply", "timestamp": at(14)}] * 5
+        )
+        _write_events(self._ev_path, events)
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_peak_hour_reflects_user_activity_not_total_events(self):
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["peak_hour"], 9)
+
+    def test_peak_hour_agrees_with_dashboard(self):
+        import dashboard
+        result = daily_summary(**self._kwargs())
+        cs = dashboard._conversation_stats(self._ev_path)
+        self.assertEqual(result["peak_hour"], cs["peak_hour"])
+
+    def test_non_conversation_events_do_not_skew_peak(self):
+        # A burst of non-conversation events must not become the peak hour.
+        today = date.today()
+        ts = datetime(today.year, today.month, today.day, 3, 0, 0).timestamp()
+        with open(self._ev_path, "a", encoding="utf-8") as f:
+            for _ in range(20):
+                f.write(json.dumps({"event_type": "system_tick", "timestamp": ts}) + "\n")
+        result = daily_summary(**self._kwargs())
+        self.assertEqual(result["peak_hour"], 9)  # still user-driven, not hour 3
+
+
+class SummaryGreetingTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._ev_path = os.path.join(self._tmp, "ev.jsonl")
+        self._mood_path = os.path.join(self._tmp, "mood.jsonl")
+        _write_mood(self._mood_path, [])
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _kwargs(self):
+        return {"event_log_path": self._ev_path, "mood_history_path": self._mood_path}
+
+    def test_returns_string_when_no_data(self):
+        result = summary_greeting(**self._kwargs())
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+    def test_returns_string_in_english(self):
+        result = summary_greeting(lang="en", **self._kwargs())
+        self.assertIsInstance(result, str)
+
+    def test_with_many_interactions_uses_many_template(self):
+        today = date.today()
+        events = [
+            {"event_type": "user_comment",
+             "timestamp": datetime(today.year, today.month, today.day, 12, 0, 0).timestamp()}
+        ] * 10
+        _write_events(self._ev_path, events)
+        result = summary_greeting(lang="ja", **self._kwargs())
+        self.assertIn("10", result)
+
+    def test_yesterday_greeting_returns_string(self):
+        result = yesterday_greeting(lang="ja", **self._kwargs())
+        self.assertIsInstance(result, str)
+
+    def test_yesterday_summary_returns_dict(self):
+        result = yesterday_summary(lang="ja", **self._kwargs())
+        self.assertIsInstance(result, dict)
+        self.assertIn("date", result)
+
+    def test_affinity_drop_shown_as_negative_magnitude(self):
+        """When affinity decreased, the displayed delta should be -X.X (not --X.X)."""
+        today = date.today()
+        today_str = today.isoformat()
+        yesterday_str = (today - __import__("datetime").timedelta(days=1)).isoformat()
+        mood_entries = [
+            {"date": yesterday_str, "affinity": 60.0},
+            {"date": today_str, "affinity": 54.0},
+        ]
+        _write_mood(self._mood_path, mood_entries)
+        result = summary_greeting(lang="en", **self._kwargs())
+        self.assertIn("-6.0", result, f"Expected '-6.0' not '--6.0'; got: {result}")
+        self.assertNotIn("--", result, f"Double-negative sign should not appear; got: {result}")
+
+    def test_affinity_rise_shown_as_positive_magnitude(self):
+        """When affinity increased, the displayed delta should be +X.X."""
+        today = date.today()
+        today_str = today.isoformat()
+        yesterday_str = (today - __import__("datetime").timedelta(days=1)).isoformat()
+        mood_entries = [
+            {"date": yesterday_str, "affinity": 50.0},
+            {"date": today_str, "affinity": 56.5},
+        ]
+        _write_mood(self._mood_path, mood_entries)
+        result = summary_greeting(lang="en", **self._kwargs())
+        self.assertIn("+6.5", result, f"Expected '+6.5' in output; got: {result}")
+
+    def test_unsupported_lang_falls_back_to_english(self):
+        """summary_greeting with unknown lang code returns a non-empty string (en fallback)."""
+        result = summary_greeting(lang="zh", **self._kwargs())
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+    def test_none_lang_does_not_crash(self):
+        """summary_greeting(lang=None) must not raise TypeError on lang[:2]."""
+        result = summary_greeting(lang=None, **self._kwargs())  # type: ignore[arg-type]
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+    def test_empty_lang_does_not_crash(self):
+        """summary_greeting(lang='') falls back gracefully without raising."""
+        result = summary_greeting(lang="", **self._kwargs())
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

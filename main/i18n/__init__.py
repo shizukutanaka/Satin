@@ -32,7 +32,10 @@ class I18nManager:
             for k in keys:
                 value = value[k]
             return value.format(**kwargs) if isinstance(value, str) else str(value)
-        except (KeyError, AttributeError):
+        except (KeyError, AttributeError, IndexError, ValueError):
+            # KeyError/AttributeError: キー未登録や型不一致でのナビゲーション失敗。
+            # IndexError/ValueError: 書式不正（位置指定 {0}・孤立した { 等）。
+            # いずれもクラッシュさせず元のキーを返してグレースフルに劣化する。
             return key
 
 # グローバルインスタンス

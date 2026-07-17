@@ -17,8 +17,8 @@ Suitable for:
 import time
 import asyncio
 import logging
-from typing import Dict, Optional, Tuple, List
-from dataclasses import dataclass, field
+from typing import Dict, Optional, List
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from collections import deque
 from abc import ABC, abstractmethod
@@ -56,7 +56,13 @@ class RateLimiter(ABC):
 
     @abstractmethod
     async def acquire(self, tokens: int = 1) -> bool:
-        """Acquire tokens, blocking until available."""
+        """Try to acquire tokens without blocking.
+
+        Returns True if the tokens were granted, False if rate-limited. This is
+        non-blocking — callers check the bool and back off themselves. (A
+        blocking variant is provided by limiters that support waiting, e.g.
+        TokenBucketLimiter.acquire_blocking.)
+        """
         pass
 
     @abstractmethod
@@ -87,6 +93,10 @@ class TokenBucketLimiter(RateLimiter):
             refill_rate: Tokens added per second
             name: Limiter identifier
         """
+        if refill_rate <= 0:
+            raise ValueError("refill_rate must be > 0")
+        if capacity <= 0:
+            raise ValueError("capacity must be > 0")
         self.capacity = capacity
         self.refill_rate = refill_rate
         self.name = name
@@ -125,15 +135,46 @@ class TokenBucketLimiter(RateLimiter):
                 )
 
     async def acquire(self, tokens: int = 1) -> bool:
-        """Acquire tokens, blocking until available."""
+        """Try to acquire tokens without blocking (returns True/False).
+
+        Consistent with the other limiters and the RateLimiter contract. For
+        the previous wait-until-available behavior use acquire_blocking().
+        """
         async with self._lock:
-            while True:
+            await self._refill()
+            if self.tokens >= tokens:
+                self.tokens -= tokens
+                return True
+            return False
+
+    async def acquire_blocking(self, tokens: int = 1) -> bool:
+        """Acquire tokens, sleeping until enough have refilled. Always True."""
+        while True:
+            # Hold the lock only while inspecting/decrementing tokens, never
+            # across the sleep — otherwise all acquirers (and update_rate) are
+            # serialized behind one waiter.
+            async with self._lock:
                 await self._refill()
                 if self.tokens >= tokens:
                     self.tokens -= tokens
                     return True
                 wait_time = (tokens - self.tokens) / self.refill_rate
-                await asyncio.sleep(wait_time)
+            await asyncio.sleep(wait_time)
+
+    async def update_rate(self, refill_rate: float, capacity: Optional[float] = None) -> None:
+        """Adjust the refill rate (and optionally capacity) in place.
+
+        Mutates this limiter instead of being replaced, so concurrent acquirers
+        keep using a single, consistent object with preserved token state.
+        """
+        if refill_rate <= 0:
+            raise ValueError("refill_rate must be > 0")
+        async with self._lock:
+            await self._refill()
+            self.refill_rate = refill_rate
+            if capacity is not None and capacity > 0:
+                self.capacity = capacity
+                self.tokens = min(self.tokens, capacity)
 
     def get_status(self) -> RateLimitStatus:
         """Get current status without locking."""
@@ -166,6 +207,8 @@ class LeakyBucketLimiter(RateLimiter):
             queue_size: Maximum queue depth
             name: Limiter identifier
         """
+        if leak_rate <= 0:
+            raise ValueError("leak_rate must be > 0")
         self.leak_rate = leak_rate
         self.queue_size = queue_size
         self.name = name
@@ -192,7 +235,10 @@ class LeakyBucketLimiter(RateLimiter):
             if len(self.queue) + tokens <= self.queue_size:
                 return RateLimitStatus(
                     allowed=True,
-                    remaining_requests=self.queue_size - len(self.queue),
+                    # Subtract the requested tokens so "remaining" means capacity
+                    # left AFTER this request, matching TokenBucket and
+                    # SlidingWindow. The guard above keeps this non-negative.
+                    remaining_requests=self.queue_size - len(self.queue) - tokens,
                     current_rate=self.leak_rate
                 )
             else:
@@ -244,6 +290,10 @@ class SlidingWindowLimiter(RateLimiter):
             window_seconds: Window duration in seconds
             name: Limiter identifier
         """
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be > 0")
+        if max_requests <= 0:
+            raise ValueError("max_requests must be > 0")
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.name = name
@@ -254,7 +304,11 @@ class SlidingWindowLimiter(RateLimiter):
         """Remove requests outside current window."""
         now = time.time()
         cutoff = now - self.window_seconds
-        self.requests = [r for r in self.requests if r > cutoff]
+        # 旧実装は r > cutoff（開区間）で、cutoff と等しいタイムスタンプを持つ
+        # リクエストを破棄していた。ウィンドウ境界に同時にリクエストが集中すると
+        # max_requests 件が丸ごと消え、直後に同数を再許可する二重消費が起きた。
+        # 修正: r >= cutoff（閉区間）で境界上のリクエストを保持する。
+        self.requests = [r for r in self.requests if r >= cutoff]
 
     async def check_rate_limit(self, tokens: int = 1) -> RateLimitStatus:
         """Check if within sliding window."""
@@ -324,7 +378,13 @@ class GCRALimiter(RateLimiter):
             emission_interval: Time between allowed cells (1/rate)
             capacity: Burst tolerance (how many cells early acceptable)
             name: Limiter identifier
+
+        Raises:
+            ValueError: emission_interval が 0 以下の場合（レート計算で 1/interval
+                を用いるため、ゼロ除算を防ぐ）。
         """
+        if emission_interval <= 0:
+            raise ValueError("emission_interval must be > 0")
         self.emission_interval = emission_interval
         self.capacity = capacity
         self.name = name
@@ -357,7 +417,13 @@ class GCRALimiter(RateLimiter):
                 )
 
     async def acquire(self, tokens: int = 1) -> bool:
-        """Acquire tokens using GCRA, blocking if needed."""
+        """Acquire tokens using GCRA, sleeping outside the lock if needed.
+
+        The TAT slot is reserved inside the lock so concurrent acquirers see
+        a correctly sequenced timeline.  The sleep itself happens after the
+        lock is released so other coroutines are not serialized behind this
+        one's wait time.
+        """
         async with self._lock:
             now = time.time()
             new_tat = max(self.tat, now) + (tokens * self.emission_interval)
@@ -367,9 +433,12 @@ class GCRALimiter(RateLimiter):
                 return True
 
             wait_time = new_tat - now - (self.capacity * self.emission_interval)
-            await asyncio.sleep(wait_time)
+            # Reserve the slot before releasing the lock.
             self.tat = new_tat
-            return True
+        # Sleep outside the lock so concurrent acquirers can reserve their own
+        # slots immediately rather than queuing behind this wait.
+        await asyncio.sleep(wait_time)
+        return True
 
     def get_status(self) -> RateLimitStatus:
         """Get current GCRA status."""
@@ -443,13 +512,13 @@ class AdaptiveRateLimiter:
             await self._update_rate(new_rate)
 
     async def _update_rate(self, new_rate: float) -> None:
-        """Update limiter with new rate."""
+        """Update limiter with new rate (in place, keeping the same object)."""
         if new_rate != self.current_rate:
             self.current_rate = new_rate
-            self.limiter = TokenBucketLimiter(
-                capacity=new_rate * 2,
-                refill_rate=new_rate
-            )
+            # Mutate the existing limiter rather than replacing it, so in-flight
+            # acquire() calls keep operating on a single consistent object and
+            # token state is not silently reset.
+            await self.limiter.update_rate(new_rate, capacity=new_rate * 2)
             logger.info(f"Rate adjusted to {new_rate:.2f} req/s")
 
     async def acquire(self, tokens: int = 1) -> bool:

@@ -7,7 +7,7 @@ import asyncio
 import signal
 import logging
 import sys
-from typing import Callable, Optional, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
@@ -61,25 +61,52 @@ class GracefulShutdownManager:
         self.cleanup_handlers.append((name, handler))
         self.logger.debug(f"Registered cleanup handler: {name}")
 
+    def unregister_cleanup(self, name: str) -> bool:
+        """登録済みクリーンアップハンドラを名前で解除する。
+
+        コンテキストマネージャ等が正常終了時に自前でクリーンアップした場合、
+        シャットダウン時の二重実行を防ぐために登録を取り消す。
+
+        Returns:
+            解除できたら True、該当ハンドラが無ければ False
+        """
+        for i, (n, _) in enumerate(self.cleanup_handlers):
+            if n == name:
+                del self.cleanup_handlers[i]
+                self.logger.debug(f"Unregistered cleanup handler: {name}")
+                return True
+        return False
+
     def register_task(self, task: asyncio.Task) -> None:
         """実行中のタスクを登録"""
         self.active_tasks.append(task)
 
     def unregister_task(self, task: asyncio.Task) -> None:
         """タスク完了時に登録解除"""
-        self.active_tasks.discard(task)
+        try:
+            self.active_tasks.remove(task)
+        except ValueError:
+            pass
 
     async def _run_cleanup(self) -> None:
         """すべてのクリーンアップハンドラを実行"""
         self.logger.info("Running cleanup handlers...")
 
-        for name, handler in self.cleanup_handlers:
+        # Snapshot the handler list before iterating.  Without this, an async
+        # handler that calls register_cleanup/unregister_cleanup would mutate
+        # self.cleanup_handlers mid-iteration, causing handlers to be skipped
+        # (unregister shifts list indices) or unexpectedly executed (register
+        # appends an element the iterator then picks up).
+        handlers = list(self.cleanup_handlers)
+        n = len(handlers)
+        if n == 0:
+            return
+        timeout_per = self.shutdown_timeout / n
+
+        for name, handler in handlers:
             try:
                 if asyncio.iscoroutinefunction(handler):
-                    await asyncio.wait_for(
-                        handler(),
-                        timeout=self.shutdown_timeout / len(self.cleanup_handlers)
-                    )
+                    await asyncio.wait_for(handler(), timeout=timeout_per)
                 else:
                     handler()
 
@@ -164,8 +191,8 @@ class SignalHandler:
     def register_handlers(self) -> None:
         """システムシグナルハンドラを登録"""
         if sys.platform != 'win32':
-            # Unix/Linux
-            loop = asyncio.get_event_loop()
+            # Unix/Linux — must be called from within a running event loop
+            loop = asyncio.get_running_loop()
 
             loop.add_signal_handler(
                 signal.SIGTERM,
@@ -345,7 +372,13 @@ class AsyncContextResource:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """クリーンアップ"""
-        if self.resource:
+        # 正常終了時はここでクリーンアップするので、シャットダウンマネージャに
+        # 登録したハンドラを解除して二重クリーンアップ (二重 close 等) を防ぐ。
+        if self.shutdown_manager:
+            self.shutdown_manager.unregister_cleanup(self.name)
+        # `is not None` で判定する。falsy だが有効なリソース (0・空コレクション等)
+        # を truthiness で誤ってスキップしてリークさせないため。
+        if self.resource is not None:
             if asyncio.iscoroutinefunction(self.cleanup_func):
                 await self.cleanup_func(self.resource)
             else:

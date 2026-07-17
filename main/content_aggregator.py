@@ -3,16 +3,15 @@ Unified Content Aggregator
 YouTube・論文・Web統合コンテンツ収集システム
 """
 
+import copy
 import json
-import time
 import math
-from typing import Dict, List, Optional, Any, Union, Set
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from enum import Enum
-import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 from youtube_integrator import YouTubeIntegrator, YouTubeVideo
 from paper_integrator import PaperIntegrator, AcademicPaper
@@ -82,6 +81,23 @@ class AggregationResult:
         }
 
 
+def _to_naive(dt: Optional[datetime]) -> Optional[datetime]:
+    """published_date を「tz を持たない UTC 基準」の datetime に正規化する。
+
+    各ソースで awareness が食い違う:
+      - YouTube Data API: ``fromisoformat('...+00:00')`` → aware (UTC)
+      - yt-dlp / 論文 / Web: ``fromtimestamp`` 等 → naive (ローカル)
+    aware と naive を混在させたまま ``datetime.now() - published`` を引くと
+    ``TypeError: can't subtract offset-naive and offset-aware datetimes`` に
+    なり、関連度スコアリングで例外→YouTube 結果が丸ごと欠落していた。さらに
+    ``min(dates)`` / ``max(dates)`` でも同型の TypeError が起きる。ここで一律
+    naive(UTC) に揃えて比較・減算を安全にする。
+    """
+    if dt is not None and dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 class ContentAggregator:
     """
     統合コンテンツ収集管理クラス
@@ -105,9 +121,9 @@ class ContentAggregator:
         self.cache_manager = CacheManager()
 
         # 各インテグレーター初期化
-        self.youtube = YouTubeIntegrator(api_key=youtube_api_key, cache_dir=str(cache_dir / "youtube"))
-        self.paper = PaperIntegrator(cache_dir=str(cache_dir / "papers"))
-        self.web = WebIntegrator(cache_dir=str(cache_dir / "web"))
+        self.youtube = YouTubeIntegrator(api_key=youtube_api_key, cache_dir=str(self.cache_dir / "youtube"))
+        self.paper = PaperIntegrator(cache_dir=str(self.cache_dir / "papers"))
+        self.web = WebIntegrator(cache_dir=str(self.cache_dir / "web"))
 
         self.logger.info("Content Aggregator initialized with all integrators")
 
@@ -121,7 +137,7 @@ class ContentAggregator:
             url=f"https://www.youtube.com/watch?v={video.video_id}",
             source='youtube',
             authors=[video.channel_title],
-            published_date=video.published_at,
+            published_date=_to_naive(video.published_at),
             keywords=video.tags,
             content_data=video.to_dict()
         )
@@ -136,7 +152,7 @@ class ContentAggregator:
             url=paper.url,
             source=paper.source,
             authors=paper.authors,
-            published_date=paper.published_date,
+            published_date=_to_naive(paper.published_date),
             keywords=paper.keywords,
             content_data=paper.to_dict()
         )
@@ -151,7 +167,7 @@ class ContentAggregator:
             url=page.url,
             source='web',
             authors=[page.author] if page.author else [],
-            published_date=page.published_date,
+            published_date=_to_naive(page.published_date),
             keywords=page.keywords,
             content_data=page.to_dict()
         )
@@ -203,13 +219,13 @@ class ContentAggregator:
         popularity_score = 0.0
         if content.content_type == ContentType.VIDEO:
             # YouTube: view_count で評価
-            views = content.content_data.get('view_count', 0)
+            views = content.content_data.get('view_count') or 0
             # 対数スケール: 100万ビュー = 20点
             popularity_score = min(20, math.log10(max(1, views) + 1) / 6 * 20)
 
         elif content.content_type == ContentType.PAPER:
             # 論文: 引用数で評価
-            citations = content.content_data.get('citations', 0)
+            citations = content.content_data.get('citations') or 0
             # 対数スケール: 100引用 = 20点
             popularity_score = min(20, math.log10(max(1, citations) + 1) / 2 * 20)
 
@@ -220,10 +236,16 @@ class ContentAggregator:
         # 3. 鮮度スコア (0-10)
         freshness_score = 0.0
         if boost_recent and content.published_date:
-            age_days = (datetime.now() - content.published_date).days
-            # 1年以内: 10点、1年-2年: 5点、2年以上: 0点
+            # 未来日付（予約投稿・時計ずれ）は age が負になり、freshness が上限 10 を
+            # 超えて将来コンテンツを不当に優遇してしまう。0 でクランプして「今」扱い。
+            age_days = max(0, (datetime.now() - content.published_date).days)
+            # 鮮度スコアは 2 つの線形区間で構成し、365 日境界で連続になるよう設計:
+            #   0–365 日:   10→5  (5 + 5*(1 - age/365))
+            #   365–730 日:  5→0  (5 * (1 - (age-365)/365))
+            # 旧実装は第 1 区間が 10→0 だったため、364 日コンテンツ(≈0) が
+            # 366 日コンテンツ(≈5) より低くスコアされ単調減少が壊れていた。
             if age_days <= 365:
-                freshness_score = 10 * (1 - age_days / 365)
+                freshness_score = 5 + 5 * (1 - age_days / 365)
             elif age_days <= 730:
                 freshness_score = 5 * (1 - (age_days - 365) / 365)
 
@@ -273,7 +295,7 @@ class ContentAggregator:
     def search_all_sources(
         self,
         query: str,
-        sources: List[str] = ['youtube', 'arxiv', 'scholar', 'web'],
+        sources: Optional[List[str]] = None,
         max_results_per_source: int = 10,
         search_params: Optional[Dict[str, Any]] = None,
         parallel: bool = True
@@ -295,6 +317,9 @@ class ContentAggregator:
         Returns:
             AggregationResult object
         """
+        # ミュータブルなデフォルト引数を避け None センチネルで毎回新規リストを使う。
+        if sources is None:
+            sources = ['youtube', 'arxiv', 'scholar', 'web']
         start_time = datetime.now()
         all_contents: List[UnifiedContent] = []
         search_params = search_params or {}
@@ -338,21 +363,37 @@ class ContentAggregator:
                             metadata[f'{source}_count'] = 0
                             continue
 
-                        # ソースに応じた変換
+                        # ソースに応じた変換。
+                        # 以前は変換ループ内で1件でも例外（不正な
+                        # content_data 等）が起きると外側の except に
+                        # 飛び、それまでに all_contents へ追加済みの
+                        # 項目はそのまま残るのに metadata[..._count] は
+                        # 0 と誤って報告していた（total_results には
+                        # 漏れた項目が数えられるのに、メタデータ上は
+                        # 0件・エラー扱いという矛盾した集計結果になる）。
+                        # 1件ごとに try/except し、悪い項目だけスキップして
+                        # 残りは処理を続け、実際に追加できた件数を
+                        # 正確に報告する。
                         count = 0
                         if source == 'youtube':
                             for video in items:
-                                unified = self._convert_youtube_to_unified(video)
-                                unified.relevance_score = self.calculate_relevance_score(unified, query)
-                                all_contents.append(unified)
-                                count += 1
+                                try:
+                                    unified = self._convert_youtube_to_unified(video)
+                                    unified.relevance_score = self.calculate_relevance_score(unified, query)
+                                    all_contents.append(unified)
+                                    count += 1
+                                except Exception as item_exc:
+                                    self.logger.warning(f"Skipping malformed youtube item: {item_exc}")
 
                         elif source in ['arxiv', 'scholar']:
                             for paper in items:
-                                unified = self._convert_paper_to_unified(paper)
-                                unified.relevance_score = self.calculate_relevance_score(unified, query)
-                                all_contents.append(unified)
-                                count += 1
+                                try:
+                                    unified = self._convert_paper_to_unified(paper)
+                                    unified.relevance_score = self.calculate_relevance_score(unified, query)
+                                    all_contents.append(unified)
+                                    count += 1
+                                except Exception as item_exc:
+                                    self.logger.warning(f"Skipping malformed {source} item: {item_exc}")
 
                         metadata[f'{source}_count'] = count
                         self.logger.info(f"{source}: found {count} results")
@@ -419,7 +460,7 @@ class ContentAggregator:
 
         result = AggregationResult(
             query=query,
-            sources=[s for s in sources if s != 'web'],
+            sources=list(sources),
             total_results=len(all_contents),
             contents=all_contents,
             aggregation_time=datetime.now(),
@@ -435,19 +476,21 @@ class ContentAggregator:
 
     def get_trending_content(
         self,
-        sources: List[str] = ['youtube'],
+        sources: Optional[List[str]] = None,
         max_results: int = 20
     ) -> AggregationResult:
         """
         トレンドコンテンツを取得
 
         Args:
-            sources: 取得対象ソース
+            sources: 取得対象ソース（省略時は ['youtube']）
             max_results: 最大結果数
 
         Returns:
             AggregationResult object
         """
+        if sources is None:
+            sources = ['youtube']
         all_contents: List[UnifiedContent] = []
         metadata = {'sources': sources}
 
@@ -504,7 +547,7 @@ class ContentAggregator:
     def create_knowledge_base(
         self,
         topic: str,
-        sources: List[str] = ['youtube', 'arxiv', 'scholar'],
+        sources: Optional[List[str]] = None,
         max_items: int = 50,
         include_transcripts: bool = False,
         include_full_text: bool = False
@@ -514,7 +557,7 @@ class ContentAggregator:
 
         Args:
             topic: トピック
-            sources: データソース
+            sources: データソース（省略時は ['youtube', 'arxiv', 'scholar']）
             max_items: 最大アイテム数
             include_transcripts: YouTube字幕を含める
             include_full_text: 論文全文を含める
@@ -522,18 +565,24 @@ class ContentAggregator:
         Returns:
             Knowledge base dict
         """
+        if sources is None:
+            sources = ['youtube', 'arxiv', 'scholar']
         self.logger.info(f"Creating knowledge base for topic: {topic}")
 
         # 検索実行
+        import math
+        n_sources = len(sources) if sources else 1
         result = self.search_all_sources(
             query=topic,
             sources=sources,
-            max_results_per_source=max_items // len(sources)
+            max_results_per_source=math.ceil(max_items / n_sources)
         )
 
-        # 追加データ取得
+        # 追加データ取得 (content_data を変更するので元の UnifiedContent を汚染しないようコピー)
         enriched_contents = []
-        for content in result.contents[:max_items]:
+        for orig in result.contents[:max_items]:
+            content = copy.copy(orig)
+            content.content_data = dict(orig.content_data)
             # YouTube字幕
             if include_transcripts and content.content_type == ContentType.VIDEO:
                 video_id = content.content_id
@@ -543,7 +592,10 @@ class ContentAggregator:
 
             # 論文全文
             if include_full_text and content.content_type == ContentType.PAPER:
-                paper = AcademicPaper(**content.content_data)
+                data = dict(content.content_data)
+                if isinstance(data.get('published_date'), str):
+                    data['published_date'] = datetime.fromisoformat(data['published_date'])
+                paper = AcademicPaper(**data)
                 enriched_paper = self.paper.get_paper_with_full_text(paper)
                 content.content_data = enriched_paper.to_dict()
 

@@ -4,9 +4,9 @@ API リクエスト・スクレイピング・外部サービス呼び出し用
 """
 
 import logging
+import threading
 from typing import Callable, Optional, Type, Tuple, Any
 from functools import wraps
-from datetime import datetime
 import time
 
 try:
@@ -22,7 +22,6 @@ try:
         before_sleep_log,
         after_log,
         RetryError,
-        Attempt,
     )
     TENACITY_AVAILABLE = True
 except ImportError:
@@ -378,6 +377,11 @@ class RetryMetrics:
             self.failed_calls += 1
 
 
+# Module-level aggregate used by retry_with_metrics()/get_retry_metrics() when no
+# explicit RetryMetrics instance is supplied.
+_global_retry_metrics = RetryMetrics()
+
+
 def retry_with_metrics(
     config: RetryConfiguration,
     metrics: Optional[RetryMetrics] = None
@@ -390,31 +394,47 @@ def retry_with_metrics(
             return func
         return no_retry_decorator
 
-    metrics = metrics or RetryMetrics()
+    metrics = metrics or _global_retry_metrics
 
     def decorator(func: Callable) -> Callable:
         logger = logging.getLogger(func.__module__)
+        # threading.local so concurrent calls each track their own attempt count.
+        _local = threading.local()
 
+        def _before(retry_state: Any) -> None:
+            _local.attempt = retry_state.attempt_number
+
+        # Inner: wrapped by tenacity for retry logic.
         @retry(
             stop=config.get_stop_strategy(),
             wait=config.get_wait_strategy(),
             retry=retry_if_exception_type(Exception),
-            reraise=True
+            reraise=True,
+            before=_before,
         )
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def _retried(*args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
+
+        # Outer: calls _retried so that RetryError / original exception
+        # is catchable here for logging and metrics (inside _retried the
+        # except-RetryError block was unreachable because tenacity raises
+        # RetryError outside the wrapper body, not inside it).
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             start_time = time.time()
+            _local.attempt = 0
             try:
-                result = func(*args, **kwargs)
-                metrics.record_attempt(func.__name__, 1, True)
+                result = _retried(*args, **kwargs)
+                metrics.record_attempt(func.__name__, _local.attempt, True)
                 return result
-            except RetryError as e:
+            except Exception as e:
                 elapsed = time.time() - start_time
                 logger.error(
                     f"{func.__name__} failed after "
-                    f"{e.last_attempt.attempt_number} attempts in {elapsed:.2f}s: {e.last_exception}"
+                    f"{_local.attempt} attempts in {elapsed:.2f}s: {e}"
                 )
-                metrics.record_attempt(func.__name__, e.last_attempt.attempt_number, False)
+                metrics.record_attempt(func.__name__, _local.attempt, False)
                 raise
 
         return wrapper
@@ -427,13 +447,14 @@ def get_retry_metrics() -> dict:
     すべてのリトライメトリクスを取得
 
     Returns:
-        メトリクス辞書
+        メトリクス辞書(retry_with_metrics がデフォルトで使う集約インスタンスの値)
     """
+    m = _global_retry_metrics
     return {
-        'total_calls': RetryMetrics.total_calls if TENACITY_AVAILABLE else 0,
-        'total_retries': RetryMetrics.total_retries if TENACITY_AVAILABLE else 0,
-        'successful': RetryMetrics.successful_calls if TENACITY_AVAILABLE else 0,
-        'failed': RetryMetrics.failed_calls if TENACITY_AVAILABLE else 0,
+        'total_calls': m.total_calls,
+        'total_retries': m.total_retries,
+        'successful': m.successful_calls,
+        'failed': m.failed_calls,
     }
 
 

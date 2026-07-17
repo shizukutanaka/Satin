@@ -1,8 +1,16 @@
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, PhotoImage
-from PIL import Image, ImageTk
 import json
+import tempfile
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, PhotoImage
+except ImportError:
+    tk = filedialog = messagebox = PhotoImage = None  # type: ignore
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = ImageTk = None  # type: ignore
 
 SUPPORTED_EXTS = [".vrm", ".fbx", ".glb", ".gltf"]
 HISTORY_FILE = "avatar_history.json"
@@ -16,8 +24,11 @@ class AvatarLoaderApp:
         tk.Label(root, text="アバターファイルを選択:").pack(padx=10, pady=5)
         entry = tk.Entry(root, textvariable=self.avatar_path, width=50)
         entry.pack(padx=10, pady=5)
-        entry.drop_target_register('DND_Files')
-        entry.dnd_bind('<<Drop>>', self.on_drop)
+        try:
+            entry.drop_target_register('DND_Files')
+            entry.dnd_bind('<<Drop>>', self.on_drop)
+        except AttributeError:
+            pass  # tkinterdnd2 not available; drag-and-drop silently disabled
         tk.Button(root, text="ファイル選択", command=self.browse).pack(padx=10, pady=5)
         tk.Button(root, text="読み込み", command=self.load_avatar).pack(padx=10, pady=10)
         self.status = tk.Label(root, text="", fg="blue")
@@ -80,7 +91,10 @@ class AvatarLoaderApp:
         if os.path.exists(HISTORY_FILE):
             try:
                 with open(HISTORY_FILE, encoding='utf-8') as f:
-                    self.history = json.load(f)
+                    data = json.load(f)
+                # 破損ファイルが list 以外（dict/str 等）でも後続の
+                # add_history().insert() が壊れないよう list のみ採用する
+                self.history = [str(p) for p in data] if isinstance(data, list) else []
             except Exception:
                 self.history = []
         self.update_history_list()
@@ -90,8 +104,20 @@ class AvatarLoaderApp:
             self.history.remove(path)
         self.history.insert(0, path)
         self.history = self.history[:5]
-        with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-            json.dump(self.history, f, ensure_ascii=False)
+        _dir = os.path.dirname(os.path.abspath(HISTORY_FILE)) or "."
+        fd, tmp = tempfile.mkstemp(dir=_dir, suffix=".tmp")
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, HISTORY_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
         self.update_history_list()
 
     def update_history_list(self):
@@ -107,6 +133,9 @@ class AvatarLoaderApp:
             self.show_thumbnail(path)
 
 if __name__ == "__main__":
+    if tk is None:
+        print("tkinter が未インストールです。pip install tk でインストールしてください。")
+        raise SystemExit(1)
     try:
         import tkinterdnd2 as tkdnd
         tk.Tk = tkdnd.TkinterDnD.Tk

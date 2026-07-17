@@ -2,13 +2,13 @@
 非同期統合モジュール - High-Performance Async Integration
 asyncio + httpx による高速並列処理実装
 """
+# Defer annotation evaluation so httpx.* type hints don't require httpx at import
+# time (httpx is an optional dependency guarded by the try/except below).
+from __future__ import annotations
 
 import asyncio
 import time
-from typing import Dict, List, Optional, Any, Tuple, Set
-from datetime import datetime, timedelta
-from dataclasses import dataclass
-from enum import Enum
+from typing import Dict, List, Optional, Any, Tuple
 import logging
 
 try:
@@ -83,9 +83,9 @@ class TokenBucketRateLimiter:
         self.lock = asyncio.Lock()
 
     async def acquire(self, tokens: int = 1) -> None:
-        """トークン取得（利可能になるまで待機）"""
-        async with self.lock:
-            while True:
+        """トークン取得（利用可能になるまで待機）"""
+        while True:
+            async with self.lock:
                 # トークン補充
                 now = time.time()
                 elapsed = now - self.last_refill
@@ -102,9 +102,12 @@ class TokenBucketRateLimiter:
                     self.tokens -= tokens
                     return
 
-                # 待機
+                # 必要な待機時間を計算（ロック内で算出）
                 wait_time = (tokens - self.tokens) / self.rate_per_second
-                await asyncio.sleep(wait_time)
+
+            # ロックを解放してから待機する。ロックを保持したまま sleep すると
+            # 他のコルーチンが補充・取得できず、レート制限が完全に直列化してしまう。
+            await asyncio.sleep(wait_time)
 
 
 class AsyncHTTPClient:
@@ -318,7 +321,7 @@ class AsyncAggregationService:
         # 結果を集約
         task_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for idx, (source_name, result) in enumerate(zip(
+        for _idx, (source_name, result) in enumerate(zip(
             [source_map[i] for i in range(len(task_results))],
             task_results
         )):

@@ -1,30 +1,41 @@
-import json
 import argparse
 from collections import Counter, defaultdict
 from datetime import datetime
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+except ImportError:
+    plt = mdates = None  # type: ignore
 import os
 
+from fsutil import load_jsonl_dicts
+
+
 def load_events(logfile):
-    events = []
-    with open(logfile, encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            events.append(json.loads(line))
-    return events
+    # 空行・壊れた行・dict 以外（null 等）の行はスキップする共通ローダを使用。
+    return load_jsonl_dicts(logfile)
 
 def event_stats(events):
-    event_types = [ev['event_type'] for ev in events]
+    event_types = [ev.get('event_type', '') for ev in events]
     counts = Counter(event_types)
-    times = [datetime.fromtimestamp(ev['timestamp']) for ev in events]
+    times = []
+    for ev in events:
+        ts = ev.get('timestamp')
+        if ts is None:
+            continue
+        try:
+            times.append(datetime.fromtimestamp(ts))
+        except (OSError, OverflowError, ValueError, TypeError):
+            pass
     by_hour = defaultdict(int)
     for t in times:
         by_hour[t.hour] += 1
     return counts, by_hour, times
 
 def plot_stats(counts, by_hour, times, outdir):
+    if plt is None:
+        print("matplotlib がインストールされていません。グラフ出力をスキップします。")
+        return
     os.makedirs(outdir, exist_ok=True)
     # イベント種別ごと発生回数
     plt.figure(figsize=(6,4))

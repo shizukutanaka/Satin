@@ -1,9 +1,12 @@
-import os
 import importlib
-from typing import Dict, Any, List, Type
+import importlib.util  # submodule must be imported explicitly; `import importlib`
+                       # alone does not expose importlib.util (AttributeError)
+import json
+from typing import Dict, Any
 from pathlib import Path
-from .error_handling import PluginError
-from .logging_manager import Logger
+from error_handling import PluginError
+from logging_manager import LoggingManager as Logger
+from plugin_base import PluginBase
 
 class PluginManager:
     """Manage and load plugins"""
@@ -20,19 +23,31 @@ class PluginManager:
         try:
             if not self.plugin_directory.exists():
                 raise PluginError(f"Plugin directory not found: {self.plugin_directory}")
-                
+
             # Load plugin configuration
             self._load_plugin_config()
-            
-            # Load each plugin
+
+            # Load each plugin; isolate failures so one bad plugin
+            # doesn't prevent the rest from loading.
+            failed = []
             for plugin_file in self.plugin_directory.glob("*.py"):
-                self._load_plugin(plugin_file)
-                
+                try:
+                    self._load_plugin(plugin_file)
+                except PluginError as exc:
+                    self.logger.error(f"Skipping plugin {plugin_file.stem}: {exc}")
+                    failed.append(plugin_file.stem)
+
+            if failed:
+                self.logger.warning(
+                    f"{len(failed)} plugin(s) failed to load: {failed}"
+                )
             self.logger.info(f"Loaded {len(self.plugins)} plugins")
-            
+
+        except PluginError:
+            raise
         except Exception as e:
             self.logger.error(f"Error loading plugins: {str(e)}")
-            raise PluginError(f"Failed to load plugins: {str(e)}")
+            raise PluginError(f"Failed to load plugins: {str(e)}") from e
     
     def _load_plugin_config(self) -> None:
         """Load plugin configuration"""
@@ -40,20 +55,21 @@ class PluginManager:
             config_file = self.plugin_directory / "config.json"
             if config_file.exists():
                 with open(config_file, 'r', encoding='utf-8') as f:
-                    self.plugin_config = json.load(f)
+                    data = json.load(f)
+                    self.plugin_config = data if isinstance(data, dict) else {}
             else:
                 self.logger.warning("No plugin configuration found")
                 self.plugin_config = {}
                 
         except Exception as e:
             self.logger.error(f"Error loading plugin config: {str(e)}")
-            raise PluginError(f"Failed to load plugin configuration: {str(e)}")
+            raise PluginError(f"Failed to load plugin configuration: {str(e)}") from e
     
     def _load_plugin(self, plugin_file: Path) -> None:
         """Load a single plugin"""
+        plugin_name = plugin_file.stem
         try:
             # Get plugin name from filename
-            plugin_name = plugin_file.stem
             
             # Skip __init__.py
             if plugin_name == "__init__":
@@ -61,13 +77,20 @@ class PluginManager:
                 
             # Import plugin module
             spec = importlib.util.spec_from_file_location(plugin_name, plugin_file)
+            if spec is None:
+                raise ImportError(f"Cannot create module spec from {plugin_file}")
+            if spec.loader is None:
+                raise ImportError(f"Cannot create loader for module spec from {plugin_file}")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             
-            # Find plugin classes
+            # Find plugin classes — skip abstract bases and non-concrete types
             plugin_class = None
-            for name, obj in module.__dict__.items():
-                if isinstance(obj, type) and issubclass(obj, PluginBase):
+            for _name, obj in module.__dict__.items():
+                if (isinstance(obj, type)
+                        and obj is not PluginBase
+                        and issubclass(obj, PluginBase)
+                        and not getattr(obj, '__abstractmethods__', None)):
                     plugin_class = obj
                     break
             
@@ -75,18 +98,25 @@ class PluginManager:
                 # Create plugin instance
                 plugin = plugin_class()
                 self.plugins[plugin_name] = plugin
-                
+
                 # Configure plugin if needed
                 plugin_config = self.plugin_config.get(plugin_name, {})
                 plugin.configure(plugin_config)
-                
+
+                # start() is a mandatory (@abstractmethod) part of PluginBase's
+                # lifecycle, paired with stop() which reload_plugin() already
+                # calls. Without this, whatever a plugin does in start() (e.g.
+                # open a connection, spawn a worker thread) never ran unless
+                # the plugin itself invoked it from __init__/configure.
+                plugin.start()
+
                 self.logger.info(f"Loaded plugin: {plugin_name}")
             else:
                 self.logger.warning(f"No plugin class found in {plugin_name}")
                 
         except Exception as e:
             self.logger.error(f"Error loading plugin {plugin_name}: {str(e)}")
-            raise PluginError(f"Failed to load plugin {plugin_name}: {str(e)}")
+            raise PluginError(f"Failed to load plugin {plugin_name}: {str(e)}") from e
     
     def get_plugin(self, name: str) -> Any:
         """Get a plugin by name"""
@@ -103,24 +133,46 @@ class PluginManager:
         try:
             if name not in self.plugins:
                 raise PluginError(f"Plugin not found: {name}")
-                
-            plugin = self.plugins[name]
+
+            old_plugin = self.plugins[name]
+            try:
+                old_plugin.stop()
+            except Exception as exc:
+                self.logger.warning(f"stop() raised during reload of {name}: {exc}")
+
+            # Drop the stopped instance before attempting the reload. If
+            # _load_plugin() below fails (malformed file, missing class,
+            # configure()/start() error), self.plugins no longer holds this
+            # already-torn-down instance under `name` — get_plugin(name) will
+            # correctly raise "not found" instead of silently handing back a
+            # dead, stopped plugin with no indication it's unusable.
+            del self.plugins[name]
+
             plugin_file = self.plugin_directory / f"{name}.py"
             self._load_plugin(plugin_file)
-            
+
             self.logger.info(f"Reloaded plugin: {name}")
-            
+
         except Exception as e:
             self.logger.error(f"Error reloading plugin {name}: {str(e)}")
-            raise PluginError(f"Failed to reload plugin {name}: {str(e)}")
-    
+            raise PluginError(f"Failed to reload plugin {name}: {str(e)}") from e
+
     def reload_all_plugins(self) -> None:
         """Reload all plugins"""
         try:
+            # Unlike reload_plugin(), this used to clear() the dict directly
+            # without calling stop() on any outgoing instance — any plugin
+            # holding a thread/socket/file handle in its running state leaked
+            # on every reload_all_plugins() call.
+            for plugin_name, plugin in list(self.plugins.items()):
+                try:
+                    plugin.stop()
+                except Exception as exc:
+                    self.logger.warning(f"stop() raised during reload_all for {plugin_name}: {exc}")
             self.plugins.clear()
             self.load_plugins()
             self.logger.info("Reloaded all plugins")
-            
+
         except Exception as e:
             self.logger.error(f"Error reloading all plugins: {str(e)}")
-            raise PluginError(f"Failed to reload all plugins: {str(e)}")
+            raise PluginError(f"Failed to reload all plugins: {str(e)}") from e

@@ -8,14 +8,13 @@
 - ログ検索機能
 - ログ分析機能
 """
-import os
 import logging
 import logging.handlers
 import gzip
 import shutil
-import json
+import threading
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict
 from pathlib import Path
 from config_manager import get_config_manager
 
@@ -23,6 +22,18 @@ logger = logging.getLogger(__name__)
 
 class LoggingManager:
     """ログ管理クラス"""
+
+    @staticmethod
+    def get_logger(name: str) -> logging.Logger:
+        """
+        名前付きロガーを返す (整合インターフェース)。
+
+        async_integrator / content_aggregator / web_integrator / youtube_integrator が
+        `LoggingManager.get_logger("...")` を呼ぶが、従来このメソッドが存在せず
+        AttributeError で初期化に失敗していた。標準の logging.getLogger を返す。
+        """
+        return logging.getLogger(name)
+
     def __init__(self):
         """初期化"""
         self.config = get_config_manager()
@@ -40,37 +51,50 @@ class LoggingManager:
                 "critical": logging.CRITICAL
             }
             
-            self.current_level = self.settings.get("log_level", "info")
-            self.max_bytes = self.settings.get("max_bytes", 10485760)  # 10MB
-            self.backup_count = self.settings.get("backup_count", 10)
+            self.current_level = self.settings.get("log_level") or "info"
+            self.max_bytes = int(self.settings.get("max_bytes") or 10485760)  # 10MB
+            self.backup_count = int(self.settings.get("backup_count") or 10)
             
             # ログフォーマッターの設定
             formatter = logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             )
-            
-            # ローテーティングファイルハンドラーの設定
-            file_handler = logging.handlers.RotatingFileHandler(
-                self.log_dir / "satin.log",
-                maxBytes=self.max_bytes,
-                backupCount=self.backup_count,
-                encoding='utf-8'
-            )
-            file_handler.setFormatter(formatter)
-            
-            # コンソールハンドラーの設定
-            console_handler = logging.StreamHandler()
-            console_handler.setFormatter(formatter)
-            
-            # ルートロガーの設定
+
+            # Satin の RotatingFileHandler / StreamHandler を一意に識別するための
+            # マーカー名。LoggingManager() が（テスト・プラグイン経由等で）複数回
+            # インスタンス化されると、ルートロガーに同一ハンドラが二重・三重に
+            # 追加され、ログが多重出力されるうえ Windows では同じファイルへの
+            # ハンドルが複数開いた状態でローテーションが PermissionError になる
+            # (Qiita 既知の落とし穴)。マーカー名で既存ハンドラを検出して退避する。
+            _FILE_NAME = "satin.rotating_file"
+            _CONSOLE_NAME = "satin.console"
+
             root_logger = logging.getLogger()
             root_logger.setLevel(self.log_levels[self.current_level])
-            root_logger.addHandler(file_handler)
-            root_logger.addHandler(console_handler)
+            existing_names = {h.name for h in root_logger.handlers}
+
+            if _FILE_NAME not in existing_names:
+                file_handler = logging.handlers.RotatingFileHandler(
+                    self.log_dir / "satin.log",
+                    maxBytes=self.max_bytes,
+                    backupCount=self.backup_count,
+                    encoding='utf-8'
+                )
+                file_handler.name = _FILE_NAME
+                file_handler.setFormatter(formatter)
+                root_logger.addHandler(file_handler)
+
+            if _CONSOLE_NAME not in existing_names:
+                console_handler = logging.StreamHandler()
+                console_handler.name = _CONSOLE_NAME
+                console_handler.setFormatter(formatter)
+                root_logger.addHandler(console_handler)
             
             # ログファイル圧縮スレッドの開始
-            self.compression_thread = threading.Thread(target=self._compress_old_logs)
-            self.compression_thread.daemon = True
+            self._compression_stop = threading.Event()
+            self.compression_thread = threading.Thread(
+                target=self._compress_old_logs, name="log-compression", daemon=True
+            )
             self.compression_thread.start()
     
     def set_log_level(self, level: str) -> None:
@@ -81,9 +105,16 @@ class LoggingManager:
             root_logger.setLevel(self.log_levels[level])
             logger.info(f"ログレベルを {level} に変更しました")
     
+    def stop(self, wait: bool = True) -> None:
+        """圧縮スレッドを停止する。"""
+        if hasattr(self, '_compression_stop'):
+            self._compression_stop.set()
+        if wait and hasattr(self, 'compression_thread') and self.compression_thread.is_alive():
+            self.compression_thread.join(timeout=5)
+
     def _compress_old_logs(self) -> None:
         """古いログファイルの圧縮"""
-        while True:
+        while not self._compression_stop.is_set():
             try:
                 # .log.1 以降のファイルを検索
                 for file in sorted(self.log_dir.glob("*.log.*")):
@@ -95,12 +126,12 @@ class LoggingManager:
                         # 元のファイルを削除
                         file.unlink()
                         logger.info(f"ログファイルを圧縮しました: {file}")
-                
-                # 30分間隔で実行
-                time.sleep(1800)
+
+                # 30分間隔で実行（stop()で即時起床）
+                self._compression_stop.wait(1800)
             except Exception as e:
                 logger.error(f"ログファイルの圧縮中にエラーが発生しました: {e}")
-                time.sleep(1800)
+                self._compression_stop.wait(1800)
     
     def search_logs(self, keyword: str, start_date: str = None, end_date: str = None) -> List[Dict]:
         """
@@ -131,8 +162,9 @@ class LoggingManager:
                         with open(file, 'rt', encoding='utf-8') as f:
                             self._search_file(f, keyword, start_dt, end_dt, results)
                 except Exception as e:
-                    logger.error(f"ログファイルの検索中にエラーが発生しました: {e}")
-            
+                    # ログ機構自身の不調をデバッグ可能にするため exc_info を残す。
+                    logger.error(f"ログファイルの検索中にエラーが発生しました: {e}", exc_info=True)
+
             return results
         except Exception as e:
             logger.error(f"ログ検索中にエラーが発生しました: {e}")
@@ -185,67 +217,75 @@ class LoggingManager:
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d %H:%M:%S") if start_date else None
             end_dt = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S") if end_date else None
-            
+
+            # Accumulators shared across all files so every file's errors are
+            # counted, not just the last file (the previous per-call local dicts
+            # caused only the last file's data to survive in top_errors).
+            error_counts: Dict[str, int] = {}
+            performance_counts: Dict[str, int] = {}
+
             # ログファイルの分析
             for file in sorted(self.log_dir.glob("*.log*")):
                 try:
                     # 圧縮ファイルの場合は解凍して分析
                     if file.suffix.endswith(".gz"):
                         with gzip.open(file, 'rt', encoding='utf-8') as f:
-                            self._analyze_file(f, start_dt, end_dt, analysis)
+                            self._analyze_file(f, start_dt, end_dt, analysis, error_counts, performance_counts)
                     else:
                         with open(file, 'rt', encoding='utf-8') as f:
-                            self._analyze_file(f, start_dt, end_dt, analysis)
+                            self._analyze_file(f, start_dt, end_dt, analysis, error_counts, performance_counts)
                 except Exception as e:
-                    logger.error(f"ログファイルの分析中にエラーが発生しました: {e}")
-            
+                    # ログ機構自身の不調をデバッグ可能にするため exc_info を残す。
+                    logger.error(f"ログファイルの分析中にエラーが発生しました: {e}", exc_info=True)
+
+            # Compute top-5 after all files are processed so results aggregate
+            # across the full set of log files.
+            analysis["top_errors"] = sorted(
+                error_counts.items(), key=lambda x: x[1], reverse=True
+            )[:5]
+            analysis["performance_issues"] = sorted(
+                performance_counts.items(), key=lambda x: x[1], reverse=True
+            )[:5]
+
             return analysis
         except Exception as e:
             logger.error(f"ログ分析中にエラーが発生しました: {e}")
             return analysis
-    
-    def _analyze_file(self, file_obj, start_dt: datetime, end_dt: datetime, analysis: Dict):
+
+    def _analyze_file(
+        self,
+        file_obj,
+        start_dt: datetime,
+        end_dt: datetime,
+        analysis: Dict,
+        error_counts: Dict,
+        performance_counts: Dict,
+    ):
         """ファイル内の分析実行"""
-        error_counts = {}
-        performance_issues = {}
-        
         for line in file_obj:
             try:
                 # 日時を抽出
                 timestamp = line.split(' - ')[0]
                 log_dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-                
+
                 # 日付範囲のチェック
                 if (start_dt and log_dt < start_dt) or (end_dt and log_dt > end_dt):
                     continue
-                
+
                 # ログレベルのカウント
                 level = line.split(' - ')[2]
-                analysis[f"{level.lower()}_count"] += 1
+                count_key = f"{level.lower()}_count"
+                analysis[count_key] = analysis.get(count_key, 0) + 1
                 analysis["total_logs"] += 1
-                
+
                 # エラーの分析
                 if level == "ERROR":
                     error_msg = line.split(' - ')[3].strip()
                     error_counts[error_msg] = error_counts.get(error_msg, 0) + 1
-                
+
                 # パフォーマンス問題の検出
                 if "performance" in line.lower():
                     perf_msg = line.split(' - ')[3].strip()
-                    performance_issues[perf_msg] = performance_issues.get(perf_msg, 0) + 1
+                    performance_counts[perf_msg] = performance_counts.get(perf_msg, 0) + 1
             except Exception:
                 continue
-        
-        # エラーの上位5件を設定
-        analysis["top_errors"] = sorted(
-            error_counts.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:5]
-        
-        # パフォーマンス問題の上位5件を設定
-        analysis["performance_issues"] = sorted(
-            performance_issues.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:5]

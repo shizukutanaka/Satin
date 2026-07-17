@@ -12,15 +12,17 @@ Implements:
 - Async-aware profiling support
 """
 
+import collections
 import cProfile
 import pstats
 import io
 import functools
 import time
+import threading
 import tracemalloc
 import gc
 import asyncio
-from typing import Callable, Any, Dict, List, Optional, TypeVar, Union
+from typing import Callable, Any, Dict, List, Optional, TypeVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime
@@ -152,7 +154,7 @@ class PerformanceProfiler:
 
         # Get top 5 functions by cumulative time
         operations = []
-        for name, (cc, nc, tt, ct, callers) in ps.stats.items():
+        for name, (_cc, nc, tt, ct, _callers) in ps.stats.items():
             operations.append({
                 'name': str(name),
                 'calls': nc,
@@ -222,7 +224,7 @@ class PerformanceProfiler:
             ]
         }
 
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2)
 
         logger.info(f"Profiling report exported to {filepath}")
@@ -311,7 +313,7 @@ class MemoryProfiler:
             ]
         }
 
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2, default=str)
 
         logger.info(f"Memory report exported to {filepath}")
@@ -384,7 +386,8 @@ class PerformanceMonitor:
             window_size: Number of samples to keep in sliding window
         """
         self.window_size = window_size
-        self.metrics: Dict[str, List[float]] = {}
+        self.metrics: Dict[str, collections.deque] = {}
+        self._lock = threading.Lock()
 
     def record_operation(self, operation_name: str, duration_ms: float) -> None:
         """
@@ -394,37 +397,58 @@ class PerformanceMonitor:
             operation_name: Name of operation
             duration_ms: Duration in milliseconds
         """
-        if operation_name not in self.metrics:
-            self.metrics[operation_name] = []
-
-        self.metrics[operation_name].append(duration_ms)
-
-        if len(self.metrics[operation_name]) > self.window_size:
-            self.metrics[operation_name].pop(0)
+        with self._lock:
+            if operation_name not in self.metrics:
+                self.metrics[operation_name] = collections.deque(maxlen=self.window_size)
+            self.metrics[operation_name].append(duration_ms)
 
     def get_statistics(self, operation_name: str) -> Dict[str, float]:
         """
         Get statistics for operation.
 
         Returns:
-            Dictionary with mean, median, min, max, p95, p99
+            Dictionary with count, mean, median, min, max, p95, p99, stdev.
+            When there are no samples, every key is present with 0.0 (and
+            count 0) so callers never hit a KeyError.
         """
-        if operation_name not in self.metrics or not self.metrics[operation_name]:
-            return {}
+        import statistics
 
-        values = sorted(self.metrics[operation_name])
+        with self._lock:
+            values = sorted(self.metrics.get(operation_name) or [])
         n = len(values)
+
+        if n == 0:
+            return {
+                'count': 0,
+                'mean_ms': 0.0, 'median_ms': 0.0,
+                'min_ms': 0.0, 'max_ms': 0.0,
+                'p95_ms': 0.0, 'p99_ms': 0.0,
+                'stdev_ms': 0.0,
+            }
 
         return {
             'count': n,
             'mean_ms': sum(values) / n,
-            'median_ms': values[n // 2],
+            'median_ms': statistics.median(values),
             'min_ms': values[0],
             'max_ms': values[-1],
-            'p95_ms': values[int(n * 0.95)],
-            'p99_ms': values[int(n * 0.99)] if n > 100 else values[-1],
+            'p95_ms': self._percentile(values, 95.0),
+            'p99_ms': self._percentile(values, 99.0),
             'stdev_ms': self._calculate_stdev(values)
         }
+
+    @staticmethod
+    def _percentile(values: List[float], pct: float) -> float:
+        """Linear-interpolation percentile over an already-sorted list."""
+        if not values:
+            return 0.0
+        if len(values) == 1:
+            return values[0]
+        rank = (pct / 100.0) * (len(values) - 1)
+        lo = int(rank)
+        hi = min(lo + 1, len(values) - 1)
+        frac = rank - lo
+        return values[lo] + (values[hi] - values[lo]) * frac
 
     @staticmethod
     def _calculate_stdev(values: List[float]) -> float:
@@ -450,10 +474,8 @@ class PerformanceMonitor:
         Returns:
             True if recent performance degraded beyond threshold
         """
-        if operation_name not in self.metrics:
-            return False
-
-        metrics = self.metrics[operation_name]
+        with self._lock:
+            metrics = list(self.metrics.get(operation_name) or [])
         if len(metrics) < 20:
             return False
 
