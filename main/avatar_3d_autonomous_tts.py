@@ -1317,12 +1317,20 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
 class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):
         super().__init__()
+        _persona = None
         try:
             from persona import get_persona as _gp
-            _title_name = _gp().name
+            _persona = _gp()
+            _title_name = _persona.name
         except Exception:
             _title_name = "Satin"
-        self.setWindowTitle(f"{_title_name} — 3D コンパニオン")
+        # GUI クローム（ボタン・プレースホルダ・タイトル）の言語。会話応答と同じく
+        # persona.lang に従う。従来はチェーム文言が日本語ハードコードで、英語ユーザーに
+        # 「自律モードON」等が日本語のまま出ていた（多言語対応の看板に反していた）。
+        self._lang = getattr(_persona, "lang", "ja") if _persona is not None else "ja"
+        is_en = self._lang.startswith("en")
+        self.setWindowTitle(f"{_title_name} — "
+                            + ("3D Companion" if is_en else "3D コンパニオン"))
         self.tts_queue = queue.Queue()
         self.tts_thread = TTSThread(self.tts_queue)
         self.tts_thread.start()
@@ -1336,7 +1344,7 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         except Exception as e:
             logger.debug("起動時のアバターモデル読み込みに失敗: %s", e)
         self.setCentralWidget(self.viewer)
-        self.autonomous_btn = QPushButton('自律モードON', self)
+        self.autonomous_btn = QPushButton(self._autonomous_label(False), self)
         self.autonomous_btn.setGeometry(10, 10, 120, 30)
         self.autonomous_btn.clicked.connect(self.toggle_autonomous)
         self.talk_label = QLabel('', self)
@@ -1344,21 +1352,29 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         self.talk_label.setStyleSheet('font-size:18px; color:#222; background:#eee;')
         self.comment_input = QLineEdit(self)
         self.comment_input.setGeometry(10, 50, 400, 30)
-        self.comment_input.setPlaceholderText('コメントを入力してEnterで読み上げ')
+        self.comment_input.setPlaceholderText(
+            "Type a comment and press Enter to speak" if is_en
+            else "コメントを入力してEnterで読み上げ")
         self.comment_input.returnPressed.connect(self.handle_comment)
         # テキスト更新タイマー
         self.text_timer = QTimer(self)
         self.text_timer.timeout.connect(self.update_talk_text)
         self.text_timer.start(100)
 
+    def _autonomous_label(self, is_on: bool) -> str:
+        """自律モードボタンのラベル（言語に応じて）。"""
+        if self._lang.startswith("en"):
+            return "Autonomous OFF" if is_on else "Autonomous ON"
+        return "自律モードOFF" if is_on else "自律モードON"
+
     def toggle_autonomous(self):
         if not self.viewer.is_autonomous:
             self.viewer.start_autonomous()
-            self.autonomous_btn.setText('自律モードOFF')
+            self.autonomous_btn.setText(self._autonomous_label(True))
             self._start_break_reminder()
         else:
             self.viewer.stop_autonomous()
-            self.autonomous_btn.setText('自律モードON')
+            self.autonomous_btn.setText(self._autonomous_label(False))
             self.talk_label.setText('')
             self._stop_break_reminder()
 

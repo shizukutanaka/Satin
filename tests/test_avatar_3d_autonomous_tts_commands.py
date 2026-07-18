@@ -527,6 +527,38 @@ class ForgetAllGuiTests(unittest.TestCase):
         self.assertIn("消すデータはありません", v.comment_text)
 
 
+class MainWindowChromeI18nTests(unittest.TestCase):
+    """The main GUI's chrome (autonomous-toggle button, etc.) must honor the
+    persona language. Regression: labels like '自律モードON' and the input
+    placeholder were hardcoded Japanese, so an English user saw Japanese
+    controls despite the product's advertised multi-language support."""
+
+    def _window(self, lang):
+        w = object.__new__(_mod.MainWindow)
+        w._lang = lang
+        return w
+
+    def test_autonomous_label_english(self):
+        w = self._window("en")
+        self.assertEqual(w._autonomous_label(False), "Autonomous ON")
+        self.assertEqual(w._autonomous_label(True), "Autonomous OFF")
+
+    def test_autonomous_label_japanese(self):
+        w = self._window("ja")
+        self.assertEqual(w._autonomous_label(False), "自律モードON")
+        self.assertEqual(w._autonomous_label(True), "自律モードOFF")
+
+    def test_autonomous_label_defaults_to_japanese_for_unknown(self):
+        w = self._window("fr")
+        self.assertEqual(w._autonomous_label(False), "自律モードON")
+
+    def test_english_label_has_no_japanese(self):
+        w = self._window("en")
+        for is_on in (False, True):
+            label = w._autonomous_label(is_on)
+            self.assertTrue(label.isascii(), f"English label not ASCII: {label!r}")
+
+
 class EraseAllUserDataTests(unittest.TestCase):
     """_erase_all_user_data must wipe every personal store best-effort, so a
     privacy-first 'delete all my data' actually removes the conversation log,

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Main GUI chrome was Japanese-only**: the autonomous-mode toggle button
+  (`自律モードON/OFF`), the comment input placeholder, and the window title
+  suffix were hardcoded Japanese regardless of language, so an English user
+  saw Japanese controls despite the advertised multi-language support. They
+  now follow `persona.lang` like the rest of the GUI.
+
 ### Added
 - **`/forget-all` — one-shot complete data erasure** (privacy): erases the
   profile, the entire conversation history (and archives), affinity, and the
