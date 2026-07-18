@@ -542,6 +542,12 @@ def _personal_data_paths() -> "list[tuple[str, str]]":
         items.append(("ユーザープロファイル", _default_profile_path()))
     except Exception:
         pass
+    # アバター選択履歴（どのアバターを読み込んだか）
+    try:
+        import avatar_model_store
+        items.append(("アバター選択履歴", avatar_model_store.history_path()))
+    except Exception:
+        pass
     return items
 
 

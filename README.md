@@ -270,7 +270,10 @@ remembered facts; two-step confirm), `/mood` (current affinity),
 also ends the session cleanly. The loop accepts injectable input/output
 functions, so it is fully unit-testable. The 3D GUI accepts the same slash
 commands typed as comments (`/gift`, `/callme`, `/birthday`, `/like`,
-`/forget`, `/whoami`, `/forget-me`, `/mood`, `/reset-mood`, `/stats`, `/help`).
+`/forget`, `/whoami`, `/forget-me`, `/forget-all` (erase everything —
+profile, conversation history, affinity, and avatar selection; two-step
+confirm), `/mood`, `/reset-mood`, `/clear-log`, `/history`, `/search`,
+`/recap`, `/feeling`, `/avatar`, `/stats`, `/help`).
 
 #### The avatar remembers who you are
 

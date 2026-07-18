@@ -931,6 +931,13 @@ class PersonalDataPathsTests(unittest.TestCase):
         self.assertTrue(any("好感度の履歴" in d for d in descs))
         self.assertTrue(any("ユーザープロファイル" in d for d in descs))
 
+    def test_includes_avatar_history(self):
+        # data purge must also clear the avatar selection history, matching the
+        # GUI's /forget-all (else CLI erasure leaves that trace behind).
+        items = manage_satin._personal_data_paths()
+        descs = [d for d, _ in items]
+        self.assertTrue(any("アバター選択履歴" in d for d in descs))
+
 
 # --------------------------------------------------------------------------- #
 # _mood_level_arrow — regression for alphabetic comparison bug

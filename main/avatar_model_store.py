@@ -107,6 +107,23 @@ def save_selection(path: str) -> List[str]:
     return history
 
 
+def clear() -> bool:
+    """アバター選択履歴を削除する（canonical + 旧 cwd 相対の両方）。
+
+    「全データ消去」でユーザーの選択痕跡も消すために使う。1 つでも削除したら
+    True。どちらも存在しなければ False。
+    """
+    removed = False
+    for path in (history_path(), _legacy_cwd_path()):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                removed = True
+        except OSError:
+            pass
+    return removed
+
+
 def resolve_selected_avatar() -> Optional[str]:
     """描画に使える「現在のアバター」のパスを返す。無ければ None。
 

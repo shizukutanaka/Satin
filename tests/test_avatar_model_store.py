@@ -149,5 +149,23 @@ class ResolveSelectedAvatarTests(_StoreTestBase):
         self.assertEqual(store.resolve_selected_avatar(), upper)
 
 
+class ClearTests(_StoreTestBase):
+    def test_removes_canonical_history(self):
+        store.save_selection("/a.glb")
+        self.assertTrue(os.path.exists(self._hist))
+        self.assertTrue(store.clear())
+        self.assertFalse(os.path.exists(self._hist))
+        self.assertEqual(store.load_history(), [])
+
+    def test_removes_legacy_history_too(self):
+        with open(self._legacy, "w", encoding="utf-8") as f:
+            json.dump(["/legacy.glb"], f)
+        self.assertTrue(store.clear())
+        self.assertFalse(os.path.exists(self._legacy))
+
+    def test_returns_false_when_nothing_to_remove(self):
+        self.assertFalse(store.clear())
+
+
 if __name__ == "__main__":
     unittest.main()
