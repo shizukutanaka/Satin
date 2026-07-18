@@ -56,6 +56,41 @@ class NoOpWhenPyttsx3AbsentTests(unittest.TestCase):
         importlib.reload(_tts_mod)
 
 
+class InitFailureTests(unittest.TestCase):
+    """pyttsx3.init() raises on systems without a speech driver/voices
+    (headless Linux without espeak, Windows without SAPI voices). Regression:
+    the unguarded init() propagated out of TTSThread.__init__ →
+    MainWindow.__init__, crashing the entire 3D GUI at launch even though TTS
+    is an optional feature. It must degrade to a silent no-op (engine=None)."""
+
+    def tearDown(self):
+        import importlib
+        importlib.reload(_tts_mod)
+
+    def test_init_failure_degrades_to_silent_noop(self):
+        mock_pyttsx3 = mock.MagicMock()
+        mock_pyttsx3.init.side_effect = RuntimeError("no TTS driver available")
+        with mock.patch.object(_opt, "pyttsx3", mock_pyttsx3):
+            import importlib
+            importlib.reload(_tts_mod)
+            from tts_thread import TTSThread
+            t = TTSThread(queue.Queue())  # must NOT raise
+        self.assertIsNone(t.engine)
+
+    def test_thread_runs_and_exits_cleanly_after_init_failure(self):
+        mock_pyttsx3 = mock.MagicMock()
+        mock_pyttsx3.init.side_effect = RuntimeError("no TTS driver available")
+        with mock.patch.object(_opt, "pyttsx3", mock_pyttsx3):
+            import importlib
+            importlib.reload(_tts_mod)
+            from tts_thread import TTSThread
+            t = TTSThread(queue.Queue())
+            t.start()
+            t.tts_queue.put("hello")  # no engine → ignored, no crash
+            t.join(timeout=2.0)
+            self.assertFalse(t.is_alive())
+
+
 class IsSpeakingTests(unittest.TestCase):
     def test_is_speaking_false_initially(self):
         """Before any speech, is_speaking must be False."""
