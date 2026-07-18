@@ -472,6 +472,115 @@ class NewCommandDispatchTests(unittest.TestCase):
         with mock.patch.object(_mod, "_avatar_model_store", None):
             self.assertTrue(v._handle_slash_command_gui("avatar", "ja", None))
 
+    def test_forget_all_dispatches(self):
+        v = _fake_viewer(_forget_all_pending=False)
+        self.assertTrue(v._handle_slash_command_gui("forget-all", "ja", None))
+
+    def test_forget_all_aliases_dispatch(self):
+        for alias in ("forgetall", "delete-all", "erase-all"):
+            v = _fake_viewer(_forget_all_pending=False)
+            self.assertTrue(v._handle_slash_command_gui(alias, "ja", None))
+
+    def test_forget_all_matched_before_forget(self):
+        # "forget-all" must not be swallowed by the "forget " prefix branch.
+        v = _fake_viewer(_forget_all_pending=False)
+        with mock.patch.object(v, "_cmd_forget_all_gui") as fa, \
+             mock.patch.object(v, "_cmd_forget_gui") as fg:
+            v._handle_slash_command_gui("forget-all", "ja", None)
+        fa.assert_called_once()
+        fg.assert_not_called()
+
+
+class ForgetAllGuiTests(unittest.TestCase):
+    def test_first_call_only_asks_confirmation(self):
+        v = _fake_viewer(_forget_all_pending=False)
+        with mock.patch.object(_mod, "_erase_all_user_data") as erase:
+            v._cmd_forget_all_gui("ja")
+        self.assertTrue(v._forget_all_pending)
+        erase.assert_not_called()
+        self.assertIn("/forget-all", v.comment_text)
+
+    def test_second_call_erases(self):
+        v = _fake_viewer(_forget_all_pending=True)
+        with mock.patch.object(_mod, "_erase_all_user_data",
+                               return_value={"profile": True, "conversation": True,
+                                             "mood": True, "avatar": True}) as erase:
+            v._cmd_forget_all_gui("ja")
+        erase.assert_called_once()
+        self.assertFalse(v._forget_all_pending)
+        self.assertIn("全部消した", v.comment_text)
+
+    def test_second_call_english(self):
+        v = _fake_viewer(_forget_all_pending=True)
+        with mock.patch.object(_mod, "_erase_all_user_data",
+                               return_value={"profile": True, "conversation": False,
+                                             "mood": False, "avatar": False}):
+            v._cmd_forget_all_gui("en")
+        self.assertIn("erased everything", v.comment_text.lower())
+
+    def test_nothing_to_erase_message(self):
+        v = _fake_viewer(_forget_all_pending=True)
+        with mock.patch.object(_mod, "_erase_all_user_data",
+                               return_value={"profile": False, "conversation": False,
+                                             "mood": False, "avatar": False}):
+            v._cmd_forget_all_gui("ja")
+        self.assertIn("消すデータはありません", v.comment_text)
+
+
+class EraseAllUserDataTests(unittest.TestCase):
+    """_erase_all_user_data must wipe every personal store best-effort, so a
+    privacy-first 'delete all my data' actually removes the conversation log,
+    mood, profile, and avatar history — not just the profile (which is all
+    /forget-me clears)."""
+
+    def test_erases_all_available_stores(self):
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        logpath = os.path.join(tmp, "avatar_event_log.jsonl")
+        with open(logpath, "w", encoding="utf-8") as f:
+            f.write('{"event_type":"user_comment","details":{"text":"secret"}}\n')
+        mood_hist = os.path.join(tmp, "mood_history.jsonl")
+        with open(mood_hist, "w", encoding="utf-8") as f:
+            f.write("{}\n")
+
+        prof = mock.Mock()
+        conv_log = mock.Mock()
+        conv_log.logfile = logpath
+        tracker = mock.Mock()
+        tracker.affinity = 80
+        avatar_store = mock.Mock()
+
+        with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"), \
+             mock.patch.object(_mod, "get_conversation_log", return_value=conv_log), \
+             mock.patch.object(_mod, "get_mood_tracker", return_value=tracker), \
+             mock.patch.object(_mod, "_default_mood_path", return_value="/tmp/m.json"), \
+             mock.patch.object(_mod, "_default_mood_history_path", return_value=mood_hist), \
+             mock.patch.object(_mod, "_avatar_model_store", avatar_store):
+            report = _mod._erase_all_user_data()
+
+        self.assertEqual(report, {"profile": True, "conversation": True,
+                                  "mood": True, "avatar": True})
+        prof.clear.assert_called_once()
+        # conversation log truncated (the secret is gone)
+        self.assertEqual(os.path.getsize(logpath), 0)
+        # mood reset to neutral + history file removed
+        from mood import AFFINITY_START
+        self.assertEqual(tracker.affinity, AFFINITY_START)
+        self.assertFalse(os.path.exists(mood_hist))
+        avatar_store.clear.assert_called_once()
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_missing_stores_reported_false_not_crash(self):
+        with mock.patch.object(_mod, "_get_user_profile_gui", None), \
+             mock.patch.object(_mod, "get_conversation_log", None), \
+             mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod, "_avatar_model_store", None):
+            report = _mod._erase_all_user_data()
+        self.assertEqual(report, {"profile": False, "conversation": False,
+                                  "mood": False, "avatar": False})
+
 
 class LoadAvatarModelTests(unittest.TestCase):
     """AutonomousAvatarViewer.load_avatar_model wires the --avatar-loader

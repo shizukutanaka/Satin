@@ -127,6 +127,90 @@ except Exception:  # pragma: no cover - defensive
 _FOLLOW_UP_EVERY = 4
 
 
+def _erase_all_user_data():
+    """ユーザーの個人データを可能な限りすべて消去し、消したものの要約を返す。
+
+    プライバシー優先の製品として「私に関するデータを全部消して」を一括で叶える。
+    各ストアは独立してガードし、一部が失敗しても残りは消す（best-effort）。
+    消去対象:
+      - プロフィール（呼び名・誕生日・趣味・覚えた事実）: config/user_profile.json
+      - 会話履歴: avatar_event_log.jsonl + gzip アーカイブ
+      - 好感度: config/mood.json をニュートラルへ + config/mood_history.jsonl 削除
+      - アバター選択履歴: config/avatar_history.json
+    （daily_mood は日付から決定的に導かれ永続状態を持たないため対象外。）
+
+    戻り値は {"profile": bool, "conversation": bool, "mood": bool,
+              "avatar": bool} で、各項目を実際に消去できたかを表す。
+    """
+    import os as _os
+    report = {"profile": False, "conversation": False, "mood": False, "avatar": False}
+
+    # 1) プロフィール
+    if _get_user_profile_gui is not None:
+        try:
+            prof = _get_user_profile_gui()
+            if prof is not None:
+                prof.clear()
+                if _default_profile_path_gui is not None:
+                    prof.save(_default_profile_path_gui())
+                report["profile"] = True
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("全消去: プロフィール消去に失敗: %s", e)
+
+    # 2) 会話履歴（ライブ + アーカイブ）
+    if get_conversation_log is not None:
+        try:
+            from conversation_log import _find_archives
+            conv_log = get_conversation_log()
+            path = conv_log.logfile
+            if _os.path.exists(path):
+                open(path, "w", encoding="utf-8").close()
+            for gz in _find_archives(path):
+                try:
+                    _os.remove(gz)
+                except OSError:
+                    pass
+            report["conversation"] = True
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("全消去: 会話履歴消去に失敗: %s", e)
+
+    # 3) 好感度（ニュートラルへ + 履歴ファイル削除）
+    if get_mood_tracker is not None:
+        try:
+            from mood import AFFINITY_START
+            tracker = get_mood_tracker()
+            tracker.affinity = AFFINITY_START
+            tracker.interactions = 0
+            tracker._last_interaction_time = 0.0
+            tracker._first_interaction_time = 0.0
+            tracker._last_anniversary_days = 0
+            tracker._last_login_date = ""
+            tracker._login_streak = 0
+            tracker._confession_done = False
+            if _default_mood_path is not None:
+                tracker.save(_default_mood_path())
+            if _default_mood_history_path is not None:
+                hist = _default_mood_history_path()
+                if _os.path.exists(hist):
+                    try:
+                        _os.remove(hist)
+                    except OSError:
+                        pass
+            report["mood"] = True
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("全消去: 好感度消去に失敗: %s", e)
+
+    # 4) アバター選択履歴
+    if _avatar_model_store is not None:
+        try:
+            _avatar_model_store.clear()
+            report["avatar"] = True
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("全消去: アバター履歴消去に失敗: %s", e)
+
+    return report
+
+
 def _load_model_vertices(path):
     """アバターファイル path の正規化済み頂点配列 (N, 3) を返す。失敗時 None。
 
@@ -199,6 +283,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self.pending_fact_key = None  # 一問一答: 回答待ちの質問キー
         self._clear_log_pending = False  # /clear-log の二段階確認フラグ
         self._reset_mood_pending = False  # /reset-mood の二段階確認フラグ
+        self._forget_all_pending = False  # /forget-all の二段階確認フラグ
         # --avatar-loader で選んだアバターモデルの頂点（無ければ球体を描画）
         self.avatar_model_vertices = None
         self.avatar_model_path = None
@@ -434,7 +519,10 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if cmd_l == "like" or cmd_l.startswith("like "):
             self._cmd_like_gui(cmd_text[4:].strip(), lang)
             return True
-        # /forget-me / /forget-fact は /forget より具体的なので先に判定する
+        # /forget-all / /forget-me / /forget-fact は /forget より具体的なので先に判定する
+        if cmd_l in ("forget-all", "forgetall", "delete-all", "erase-all"):
+            self._cmd_forget_all_gui(lang)
+            return True
         if cmd_l == "forget-me" or cmd_l.startswith("forget-me ") or cmd_l == "forgetme":
             self._cmd_forget_me_gui(lang)
             return True
@@ -490,13 +578,13 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if lang == "en":
             reply = ("Commands: /gift <item>, /callme <name>, /birthday MM-DD, "
                      "/like <thing>, /forget <thing>, /forget-fact <text>, "
-                     "/whoami, /forget-me, /mood, /reset-mood, /stats, "
+                     "/whoami, /forget-me, /forget-all, /mood, /reset-mood, /stats, "
                      "/export-log [path], /clear-log, /history, /search <keyword>, "
                      "/recap, /feeling, /avatar, /help")
         else:
             reply = ("コマンド: /gift <プレゼント>、/callme <名前>、/birthday MM-DD、"
                      "/like <好きなもの>、/forget <好きなもの>、/forget-fact <内容>、"
-                     "/whoami、/forget-me、/mood、/reset-mood、/stats、"
+                     "/whoami、/forget-me、/forget-all、/mood、/reset-mood、/stats、"
                      "/export-log [パス]、/clear-log、/history、/search <キーワード>、"
                      "/recap、/feeling、/avatar、/help")
         self._speak_reply(reply)
@@ -723,10 +811,11 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self._speak_reply(reply)
 
     def _cmd_forget_me_gui(self, lang: str) -> None:
-        """GUI の /forget-me コマンドを処理する（個人情報を全消去）。
+        """GUI の /forget-me コマンドを処理する（プロフィールの個人情報を消去）。
 
-        呼び名・誕生日・趣味・会話で覚えた事実をすべて消す（プライバシー配慮）。
-        好感度（関係の深さ）はここでは消さない（/reset-mood が担当）。
+        呼び名・誕生日・趣味・会話で覚えた事実（プロフィール）を消す。会話履歴は
+        /clear-log、好感度は /reset-mood が担当。会話履歴・好感度も含めて**全部**
+        消したい場合は /forget-all を使う。
         """
         if _get_user_profile_gui is None:
             self._speak_reply("(プロファイルは利用できません)" if lang != "en"
@@ -748,6 +837,46 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
             logger.debug("/forget-me に失敗（GUI）: %s", e)
             reply = ("(Couldn't erase your data)" if lang == "en"
                      else "(個人情報の消去に失敗しました)")
+        self._speak_reply(reply)
+
+    def _cmd_forget_all_gui(self, lang: str) -> None:
+        """GUI の /forget-all コマンド: 全個人データを一括消去（二段階確認）。
+
+        /forget-me はプロフィールのみ、/clear-log は会話履歴のみ、/reset-mood は
+        好感度のみを消す。プライバシー優先の製品として「私に関するデータを全部
+        消して」を 1 コマンドで叶えるのがこれ（プロフィール＋会話履歴＋好感度＋
+        アバター履歴を一括）。破壊的なので /clear-log 等と同じ二段階確認を行う。
+        """
+        is_en = lang.startswith("en")
+        if not getattr(self, "_forget_all_pending", False):
+            reply = ("This erases EVERYTHING I know about you — profile, the "
+                     "entire conversation history (and archives), our affinity, "
+                     "and your avatar selection. Say /forget-all again to confirm."
+                     if is_en else
+                     "あなたに関するデータを全部消します — プロフィール・会話履歴"
+                     "（アーカイブ含む）・好感度・アバター選択。本当によければ、"
+                     "もう一度 /forget-all と言ってください。")
+            self._forget_all_pending = True
+            self._speak_reply(reply)
+            return
+        self._forget_all_pending = False
+        try:
+            report = _erase_all_user_data()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("/forget-all に失敗（GUI）: %s", e)
+            self._speak_reply("(Failed to erase your data)" if is_en
+                              else "(データの消去に失敗しました)")
+            return
+        erased = sum(1 for v in report.values() if v)
+        if erased == 0:
+            self._speak_reply("(Nothing to erase)" if is_en
+                              else "(消すデータはありませんでした)")
+            return
+        reply = ("Done — I've erased everything personal: profile, conversation "
+                 "history, affinity, and avatar selection. We can start fresh."
+                 if is_en else
+                 "全部消したよ — プロフィール・会話履歴・好感度・アバター選択。"
+                 "また一から始めよう。")
         self._speak_reply(reply)
 
     def _cmd_mood_gui(self, lang: str) -> None:

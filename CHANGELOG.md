@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`/forget-all` — one-shot complete data erasure** (privacy): erases the
+  profile, the entire conversation history (and archives), affinity, and the
+  avatar selection in a single confirmed command. Previously a full erase
+  required `/forget-me` + `/clear-log` + `/reset-mood` separately, and the
+  avatar history was never clearable — so "delete everything about me" was not
+  actually achievable. Two-step confirmation like `/clear-log`.
 - **Avatar model rendering in the main GUI**: the model chosen via
   `--avatar-loader` is now actually displayed by the main 3D companion window
   (wireframe of the mesh vertices). New `avatar_model_store.py` persists the
