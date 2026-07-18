@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **TTS init failure crashed the whole GUI**: `pyttsx3.init()` was called
+  unguarded, so on a system with pyttsx3 installed but no working speech driver
+  or voices (headless Linux without espeak, Windows without SAPI voices) the
+  exception propagated out of `TTSThread.__init__` → `MainWindow.__init__` and
+  the 3D GUI failed to launch — even though TTS is optional. It now degrades to
+  a silent no-op. Same guard applied to `tts_with_virtual_audio` (and its
+  import-time `sd.query_devices()`).
 - **Main GUI chrome was Japanese-only**: the autonomous-mode toggle button
   (`自律モードON/OFF`), the comment input placeholder, and the window title
   suffix were hardcoded Japanese regardless of language, so an English user

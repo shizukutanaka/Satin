@@ -124,5 +124,37 @@ class SourceStructureTests(unittest.TestCase):
                         "Close the temp handle BEFORE handing the path to pyttsx3")
 
 
+class InitEngineFailureTests(unittest.TestCase):
+    """_init_tts_engine must degrade to None when pyttsx3.init() raises
+    (no speech driver/voices) instead of propagating and crashing the caller —
+    same optional-TTS robustness contract as tts_thread."""
+
+    def test_init_failure_returns_none(self):
+        from unittest import mock
+        import optional_deps as _opt
+        import importlib
+        import tts_with_virtual_audio as tva
+        mock_pyttsx3 = mock.MagicMock()
+        mock_pyttsx3.init.side_effect = RuntimeError("no TTS driver")
+        with mock.patch.object(_opt, "pyttsx3", mock_pyttsx3):
+            importlib.reload(tva)
+            try:
+                self.assertIsNone(tva._init_tts_engine())  # must not raise
+            finally:
+                importlib.reload(tva)
+
+    def test_init_returns_none_when_pyttsx3_absent(self):
+        from unittest import mock
+        import optional_deps as _opt
+        import importlib
+        import tts_with_virtual_audio as tva
+        with mock.patch.object(_opt, "pyttsx3", None):
+            importlib.reload(tva)
+            try:
+                self.assertIsNone(tva._init_tts_engine())
+            finally:
+                importlib.reload(tva)
+
+
 if __name__ == "__main__":
     unittest.main()

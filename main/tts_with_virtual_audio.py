@@ -3,19 +3,43 @@ import queue
 import threading
 import tempfile
 import os
+import logging
 
 from optional_deps import (  # noqa: E402
     np, sd, pyttsx3,
     QApplication, QMainWindow, QLineEdit, QLabel, QComboBox,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _init_tts_engine():
+    """pyttsx3 エンジンを初期化する。未導入・初期化失敗時は None（無音）。
+
+    音声ドライバ/ボイスの無い環境では pyttsx3.init() が例外を投げるため、
+    その失敗でアプリを巻き込まないよう握りつぶして無音動作にする。
+    """
+    if pyttsx3 is None:
+        return None
+    try:
+        return pyttsx3.init()
+    except Exception as e:  # pragma: no cover - environment-specific
+        logger.warning("TTS エンジンの初期化に失敗しました（無音で継続）: %s", e)
+        return None
 try:
     from pydub import AudioSegment
 except ImportError:
     AudioSegment = None  # type: ignore
 
-# 仮想オーディオデバイス一覧取得 (sounddevice が使えない場合は空リスト)
+# 仮想オーディオデバイス一覧取得 (sounddevice が使えない場合は空リスト)。
+# sd があっても query_devices() は音声サブシステムが無い/壊れている環境で
+# 例外を投げうるため、import 時にモジュールごと落ちないよう握りつぶす。
 if sd is not None:
-    AUDIO_DEVICES = sd.query_devices()
+    try:
+        AUDIO_DEVICES = sd.query_devices()
+    except Exception as e:  # pragma: no cover - environment-specific
+        logger.warning("オーディオデバイスの列挙に失敗しました: %s", e)
+        AUDIO_DEVICES = []
     OUTPUT_DEVICES = [d for d in AUDIO_DEVICES if d['max_output_channels'] > 0]
 else:
     AUDIO_DEVICES = []
@@ -31,7 +55,7 @@ class TTSWorker(threading.Thread):
         self.tts_queue = tts_queue
         self.device_idx_getter = device_idx_getter
         self.daemon = True
-        self.engine = pyttsx3.init() if pyttsx3 is not None else None
+        self.engine = _init_tts_engine()
         self.running = True
 
     def run(self):
