@@ -9,6 +9,10 @@ versioning, backups, plugins) underpins it.
 
 See [`SPECIFICATION.md`](SPECIFICATION.md) for the full specification,
 architecture, and a strengths / weaknesses / improvements analysis.
+Contributors and AI agents should also read
+[`AGENT_WORKORDERS.md`](AGENT_WORKORDERS.md) — a strengths/weaknesses inventory
+and ready-to-execute work-order cards (with the repo's design boundaries and
+contribution conventions).
 
 ## Features
 
