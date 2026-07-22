@@ -1414,7 +1414,25 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
             self.comment_input.clear()
 
     def closeEvent(self, event):
-        self.tts_thread.running = False
+        # タイマーを止めてから破棄する。止めないとウィンドウ破棄後にも
+        # update_talk_text / update_autonomous が発火し、破棄済みウィジェットへ
+        # アクセスしてクラッシュしうる。
+        for _timer_attr, _owner in (("text_timer", self),
+                                    ("timer", getattr(self, "viewer", None))):
+            _timer = getattr(_owner, _timer_attr, None) if _owner is not None else None
+            if _timer is not None:
+                try:
+                    _timer.stop()
+                except Exception as e:  # pragma: no cover - defensive
+                    logger.debug("タイマー停止に失敗（%s）: %s", _timer_attr, e)
+        # TTS スレッドを止めて終了を待つ（daemon なので最悪プロセス終了で回収
+        # されるが、join で読み上げ中の中断を穏当にする）。
+        if getattr(self, "tts_thread", None) is not None:
+            try:
+                self.tts_thread.stop()
+                self.tts_thread.join(timeout=2.0)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.debug("TTS スレッド停止に失敗: %s", e)
         self._stop_break_reminder()
         # ウィンドウを閉じるときに好感度を保存する（会話中に保存済みでも上書きで最新を維持）
         if get_mood_tracker is not None and _default_mood_path is not None:

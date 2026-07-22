@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Single-instance guard** (`single_instance.py`): the main GUI now refuses to
+  start a second copy while one is already running (a PID lockfile at
+  `config/satin.lock`), preventing two instances from concurrently writing —
+  and corrupting — `mood.json`, the conversation log, and the profile. A stale
+  lock from a crashed process is auto-reclaimed. Headless modes
+  (`--chat`/`--dashboard`/`--manage`/`--validate`) are unaffected.
+
 ### Fixed
+- **GUI shutdown was incomplete** (`closeEvent`): the TTS thread is now stopped
+  and joined, and both refresh timers are stopped, so a timer can no longer
+  fire against a destroyed widget on exit; a partially-constructed window also
+  closes without raising.
 - **TTS init failure crashed the whole GUI**: `pyttsx3.init()` was called
   unguarded, so on a system with pyttsx3 installed but no working speech driver
   or voices (headless Linux without espeak, Windows without SAPI voices) the
