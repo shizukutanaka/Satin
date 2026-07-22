@@ -109,6 +109,24 @@ def _launch_avatar_gui() -> None:
     だった（商用品質監査で発見）。ファイル選択ダイアログは --avatar-loader
     で引き続き利用できる。
     """
+    # 多重起動ガード: 本体 GUI は mood.json / 会話ログ / プロフィールを継続的に
+    # 書き込むため、2 つ同時起動すると状態が破損しうる。既に起動中なら拒否する。
+    # ガード機構自体の失敗ではアプリを止めない（起動を優先）。
+    _lock = None
+    try:
+        from single_instance import SingleInstance
+        _lock = SingleInstance()
+        if not _lock.acquire():
+            print("[INFO] Satin は既に起動しています。", file=sys.stderr)
+            sys.exit(0)
+        import atexit
+        atexit.register(_lock.release)
+    except SystemExit:
+        raise
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"[WARN] 多重起動ガードを初期化できませんでした（起動は継続）: {e}",
+              file=sys.stderr)
+
     try:
         from PyQt5.QtWidgets import QApplication
         from avatar_3d_autonomous_tts import MainWindow
@@ -118,6 +136,8 @@ def _launch_avatar_gui() -> None:
         sys.exit(app.exec_())
     except ImportError as e:
         print(f"[ERROR] 3D アバター GUI 起動失敗: {e}", file=sys.stderr)
+        if _lock is not None:
+            _lock.release()
         sys.exit(1)
 
 

@@ -149,6 +149,12 @@ class LaunchDispatchTests(unittest.TestCase):
 
 
 class LaunchAvatarGuiTests(unittest.TestCase):
+    def _fake_lock(self, acquired=True):
+        import single_instance
+        fake = mock.Mock()
+        fake.acquire.return_value = acquired
+        return mock.patch.object(single_instance, "SingleInstance", return_value=fake), fake
+
     def test_import_failure_prints_error_and_exits(self):
         import builtins
         real_import = builtins.__import__
@@ -158,10 +164,44 @@ class LaunchAvatarGuiTests(unittest.TestCase):
                 raise ImportError("simulated: missing GUI dependency")
             return real_import(name, *args, **kwargs)
 
-        with mock.patch.object(builtins, "__import__", side_effect=fake_import):
+        patch_lock, fake = self._fake_lock(acquired=True)
+        with patch_lock, mock.patch.object(builtins, "__import__", side_effect=fake_import):
             with self.assertRaises(SystemExit) as cm:
                 satin_launcher._launch_avatar_gui()
             self.assertEqual(cm.exception.code, 1)
+        # the lock must be released when the GUI fails to import
+        fake.release.assert_called()
+
+    def test_already_running_exits_without_launching(self):
+        """When the single-instance lock is held by a live instance, the GUI
+        must not launch a second copy — it exits cleanly (code 0)."""
+        patch_lock, fake = self._fake_lock(acquired=False)
+        with patch_lock, mock.patch.object(satin_launcher, "sys") as _sys:
+            _sys.exit.side_effect = SystemExit
+            _sys.argv = ["satin_launcher"]
+            with self.assertRaises(SystemExit):
+                satin_launcher._launch_avatar_gui()
+            _sys.exit.assert_any_call(0)
+
+    def test_guard_failure_does_not_block_launch(self):
+        """If the guard mechanism itself errors, launch proceeds anyway."""
+        import single_instance
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            # GUI deps still missing so we exit(1) after the guard is bypassed;
+            # the point is that a guard error doesn't stop us reaching launch.
+            if name in ("PyQt5.QtWidgets", "avatar_3d_autonomous_tts"):
+                raise ImportError("no GUI")
+            return real_import(name, *args, **kwargs)
+
+        with mock.patch.object(single_instance, "SingleInstance",
+                               side_effect=RuntimeError("guard boom")), \
+             mock.patch.object(builtins, "__import__", side_effect=fake_import):
+            with self.assertRaises(SystemExit) as cm:
+                satin_launcher._launch_avatar_gui()
+            self.assertEqual(cm.exception.code, 1)  # reached launch, failed on GUI import
 
 
 class LaunchValidateTests(unittest.TestCase):

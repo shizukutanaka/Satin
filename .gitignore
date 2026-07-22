@@ -30,3 +30,7 @@ main/config/mood_history.jsonl
 # ユーザープロファイル(名前・好み: ランタイム生成の個人データ)
 config/user_profile.json
 main/config/user_profile.json
+
+# 多重起動ガードの PID ロック（ランタイム生成）
+config/satin.lock
+main/config/satin.lock
