@@ -559,6 +559,69 @@ class MainWindowChromeI18nTests(unittest.TestCase):
             self.assertTrue(label.isascii(), f"English label not ASCII: {label!r}")
 
 
+class MainWindowCloseEventTests(unittest.TestCase):
+    """closeEvent must fully tear down: stop+join the TTS thread and stop both
+    QTimers. Regression (W-02): it previously only set tts_thread.running=False
+    (no join) and left text_timer/viewer.timer running, so a timer could fire
+    after the widget was destroyed and access a dead widget."""
+
+    def _window(self):
+        w = object.__new__(_mod.MainWindow)
+        w.tts_thread = mock.Mock()
+        w.text_timer = mock.Mock()
+        w.viewer = mock.Mock()
+        w.viewer.timer = mock.Mock()
+        w.break_reminder = None
+        return w
+
+    def _close(self, w):
+        event = mock.Mock()
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod, "_default_mood_path", None):
+            w.closeEvent(event)
+        return event
+
+    def test_tts_thread_stopped_and_joined(self):
+        w = self._window()
+        self._close(w)
+        w.tts_thread.stop.assert_called_once()
+        w.tts_thread.join.assert_called_once()
+
+    def test_both_timers_stopped(self):
+        w = self._window()
+        self._close(w)
+        w.text_timer.stop.assert_called_once()
+        w.viewer.timer.stop.assert_called_once()
+
+    def test_event_accepted(self):
+        w = self._window()
+        event = self._close(w)
+        event.accept.assert_called_once()
+
+    def test_survives_missing_attributes(self):
+        # A partially-constructed window (Qt init failed midway) must still
+        # close without raising.
+        w = object.__new__(_mod.MainWindow)
+        w.tts_thread = None
+        w.viewer = None
+        w.break_reminder = None
+        # no text_timer attribute at all
+        event = mock.Mock()
+        with mock.patch.object(_mod, "get_mood_tracker", None), \
+             mock.patch.object(_mod, "_default_mood_path", None):
+            w.closeEvent(event)  # must not raise
+        event.accept.assert_called_once()
+
+    def test_mood_saved_on_close(self):
+        w = self._window()
+        tracker = mock.Mock()
+        event = mock.Mock()
+        with mock.patch.object(_mod, "get_mood_tracker", return_value=tracker), \
+             mock.patch.object(_mod, "_default_mood_path", return_value="/tmp/m.json"):
+            w.closeEvent(event)
+        tracker.save.assert_called_once_with("/tmp/m.json")
+
+
 class EraseAllUserDataTests(unittest.TestCase):
     """_erase_all_user_data must wipe every personal store best-effort, so a
     privacy-first 'delete all my data' actually removes the conversation log,
