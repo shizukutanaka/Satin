@@ -122,6 +122,15 @@ try:
 except Exception:  # pragma: no cover - defensive
     maybe_start_break_reminder = None
 
+try:
+    from first_run import (  # noqa: E402
+        is_first_run as _is_first_run,
+        welcome_message as _welcome_message,
+    )
+except Exception:  # pragma: no cover - defensive
+    _is_first_run = None
+    _welcome_message = None
+
 
 # N 回のコメントごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
 _FOLLOW_UP_EVERY = 4
@@ -1352,14 +1361,46 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         self.talk_label.setStyleSheet('font-size:18px; color:#222; background:#eee;')
         self.comment_input = QLineEdit(self)
         self.comment_input.setGeometry(10, 50, 400, 30)
+        # プレースホルダは新規ユーザーが最初に読む唯一の手がかり。「読み上げ」だけ
+        # だと TTS ツールに見えるので、会話できることと /help の存在を示す。
         self.comment_input.setPlaceholderText(
-            "Type a comment and press Enter to speak" if is_en
-            else "コメントを入力してEnterで読み上げ")
+            "Talk to me and press Enter  —  type /help for commands" if is_en
+            else "話しかけて Enter  —  「/help」で使えることの一覧")
         self.comment_input.returnPressed.connect(self.handle_comment)
         # テキスト更新タイマー
         self.text_timer = QTimer(self)
         self.text_timer.timeout.connect(self.update_talk_text)
         self.text_timer.start(100)
+        # 初回起動なら「できること」を最初に伝える（2 回目以降は出さない）
+        self._maybe_show_welcome()
+
+    def _maybe_show_welcome(self) -> bool:
+        """初回起動なら歓迎＋できることの案内を表示する。表示したら True。
+
+        第一原理: 製品の価値（覚えてくれる・関係が育つ）が初回接触時に一切
+        見えず「読み上げツール」と誤解されうる問題への対処。過去の利用痕跡
+        （交流回数・呼び名・会話履歴）が 1 つでもあれば表示しない。
+        """
+        if _is_first_run is None or _welcome_message is None:
+            return False
+        try:
+            interactions = 0
+            if get_mood_tracker is not None:
+                interactions = getattr(get_mood_tracker(), "interactions", 0)
+            has_name = False
+            if _get_user_profile_gui is not None:
+                prof = _get_user_profile_gui()
+                has_name = bool(getattr(prof, "name", "")) if prof is not None else False
+            has_history = False
+            if get_conversation_log is not None:
+                has_history = bool(get_conversation_log().recent(1))
+            if not _is_first_run(interactions, has_name, has_history):
+                return False
+            self.viewer._speak_reply(_welcome_message(self._lang))
+            return True
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("初回オンボーディングの表示に失敗: %s", e)
+            return False
 
     def _autonomous_label(self, is_on: bool) -> str:
         """自律モードボタンのラベル（言語に応じて）。"""

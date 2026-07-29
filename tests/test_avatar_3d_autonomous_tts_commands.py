@@ -559,6 +559,81 @@ class MainWindowChromeI18nTests(unittest.TestCase):
             self.assertTrue(label.isascii(), f"English label not ASCII: {label!r}")
 
 
+class MainWindowWelcomeTests(unittest.TestCase):
+    """First-launch onboarding must fire exactly once, for genuinely new
+    users only. Without it the product's core value (memory, affinity,
+    slash commands) is invisible at first contact."""
+
+    def _window(self, lang="ja"):
+        w = object.__new__(_mod.MainWindow)
+        w._lang = lang
+        w.viewer = mock.Mock()
+        return w
+
+    def _patches(self, interactions=0, name="", history=None):
+        tracker = mock.Mock()
+        tracker.interactions = interactions
+        prof = mock.Mock()
+        prof.name = name
+        conv = mock.Mock()
+        conv.recent.return_value = history or []
+        return (
+            mock.patch.object(_mod, "get_mood_tracker", return_value=tracker),
+            mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof),
+            mock.patch.object(_mod, "get_conversation_log", return_value=conv),
+        )
+
+    def test_shows_welcome_for_new_user(self):
+        w = self._window()
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3:
+            self.assertTrue(w._maybe_show_welcome())
+        w.viewer._speak_reply.assert_called_once()
+        msg = w.viewer._speak_reply.call_args[0][0]
+        self.assertIn("/help", msg)
+
+    def test_silent_for_returning_user_with_interactions(self):
+        w = self._window()
+        p1, p2, p3 = self._patches(interactions=7)
+        with p1, p2, p3:
+            self.assertFalse(w._maybe_show_welcome())
+        w.viewer._speak_reply.assert_not_called()
+
+    def test_silent_when_profile_name_known(self):
+        w = self._window()
+        p1, p2, p3 = self._patches(name="さくら")
+        with p1, p2, p3:
+            self.assertFalse(w._maybe_show_welcome())
+        w.viewer._speak_reply.assert_not_called()
+
+    def test_silent_when_history_exists(self):
+        w = self._window()
+        p1, p2, p3 = self._patches(history=[{"event_type": "user_comment"}])
+        with p1, p2, p3:
+            self.assertFalse(w._maybe_show_welcome())
+        w.viewer._speak_reply.assert_not_called()
+
+    def test_english_welcome_for_en_lang(self):
+        w = self._window(lang="en")
+        p1, p2, p3 = self._patches()
+        with p1, p2, p3:
+            w._maybe_show_welcome()
+        msg = w.viewer._speak_reply.call_args[0][0]
+        self.assertIn("Nice to meet you", msg)
+
+    def test_survives_unavailable_modules(self):
+        w = self._window()
+        with mock.patch.object(_mod, "_is_first_run", None), \
+             mock.patch.object(_mod, "_welcome_message", None):
+            self.assertFalse(w._maybe_show_welcome())  # must not raise
+
+    def test_survives_broken_stores(self):
+        w = self._window()
+        with mock.patch.object(_mod, "get_mood_tracker",
+                               side_effect=RuntimeError("mood broken")):
+            self.assertFalse(w._maybe_show_welcome())  # must not raise
+
+
 class MainWindowCloseEventTests(unittest.TestCase):
     """closeEvent must fully tear down: stop+join the TTS thread and stop both
     QTimers. Regression (W-02): it previously only set tts_thread.running=False
