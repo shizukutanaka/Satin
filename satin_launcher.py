@@ -193,6 +193,13 @@ def main() -> None:
         prog="satin_launcher",
         description="Satin ランチャー",
     )
+    try:
+        from version import __version__ as _satin_version
+    except Exception:  # pragma: no cover - defensive
+        _satin_version = "unknown"
+    parser.add_argument("--version", action="version",
+                        version=f"Satin {_satin_version}",
+                        help="バージョンを表示して終了")
     parser.add_argument("--chat",      action="store_true", help="ヘッドレスでアバターと会話する CLI を起動")
     parser.add_argument("--dashboard", action="store_true", help="Flask ダッシュボードを起動")
     parser.add_argument("--manage",    action="store_true", help="CLI 管理バッチツールを起動")
