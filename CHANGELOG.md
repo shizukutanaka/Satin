@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **First-launch onboarding** (`first_run.py`): on a genuinely first run (no
+  interactions, no remembered name, no conversation history) the avatar now
+  introduces itself and lists what it can do (`/help`, `/callme`, `/like`,
+  autonomous mode). Previously a new user saw a silent static avatar, a
+  jargon button, and a placeholder implying text-to-speech — so the product's
+  core value (memory, affinity, commands) was invisible at first contact. The
+  input placeholder now points at conversation and `/help` too.
+- **Version single-source** (`version.py`) and a `--version` flag on
+  `satin_launcher.py`, with a test guarding drift against
+  `config/config.json`.
 - **Single-instance guard** (`single_instance.py`): the main GUI now refuses to
   start a second copy while one is already running (a PID lockfile at
   `config/satin.lock`), preventing two instances from concurrently writing —
