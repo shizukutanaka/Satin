@@ -360,6 +360,26 @@ game stops there. Detection is keyword-based and offline like everything else,
 with common intensifier idioms (「死ぬほど眠い」, "dying to see it") excluded — and
 it is a safety net, not a clinical risk assessment.
 
+#### Venting doesn't cost you the relationship
+
+Affinity measures how you treat the avatar; the wellbeing check-in measures how
+*you* are doing. Both used to read the same polarity signal, so telling Satin
+「今日は最悪な一日だった」 cost 9.6 affinity points — and since low affinity moves
+replies toward the distant register (「…そう。」), the avatar got colder exactly
+when you were having a hard time. `sentiment_target.py` fixes the target
+attribution: a negative message only costs affinity if it is aimed at the
+avatar. Self-criticism and venting are free.
+
+```text
+You: 自分が嫌い            → affinity unchanged   (about you)
+You: 今日は最悪な一日だった  → affinity unchanged   (about your day)
+You: あなたなんて嫌い       → affinity down        (about the avatar)
+```
+
+Only the *penalty* is cancelled, never a gain, and only when the target is
+explicit — a bare 「つまらない」 behaves as before. The sentiment classifier
+itself is untouched, so the wellbeing check-in still notices you're down.
+
 #### Safety: you are always told this is an AI
 
 The affinity system, the confession event and lines like 「大好きだよ」 simulate an

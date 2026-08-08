@@ -78,6 +78,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **Opening up to Satin used to make it like you less** (`sentiment_target.py`,
+  research item A10): affinity and wellbeing both read the same document-level
+  polarity, so self-criticism and venting were scored as if aimed at the
+  avatar. 「自分が嫌い」, "I hate myself" and 「今日は最悪な一日だった」 all lowered
+  affinity — the last one by 9.6 points, nearly a tenth of the whole scale —
+  and because low affinity shifts replies toward the distant/reserved registers
+  (「…そう。」「…うん。」), the avatar grew colder precisely when the user was
+  struggling. A large enough drop even triggered the hurt-feelings reaction at
+  someone insulting themselves. Affinity now cancels the *penalty* (never a
+  gain) when the target is explicitly readable as the user or their
+  circumstances and no second-person marker is present; insults, rejections and
+  untargeted negatives behave exactly as before. `classify_sentiment` is
+  untouched, so wellbeing check-ins and change-point detection still see that
+  the user is down. Document-level polarity is not a proxy for target-level
+  polarity: the entity-level sentiment survey (arXiv:2304.14241) finds the two
+  agree only 47.7% of the time.
 - **Deprecated Pydantic v1 config form** (`schema_validators.py`): the six
   models declared their JSON-schema examples with the class-based
   `class Config:`, deprecated in Pydantic v2 and removed in v3. Since

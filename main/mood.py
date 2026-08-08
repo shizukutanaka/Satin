@@ -36,6 +36,14 @@ from typing import Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 try:
+    # 感情の向き先判定（無くても従来どおり動く optional 依存）
+    from sentiment_target import (
+        suppresses_affinity_penalty as _suppresses_affinity_penalty,
+    )
+except Exception:  # pragma: no cover - defensive fallback
+    _suppresses_affinity_penalty = None  # type: ignore[assignment]
+
+try:
     from fsutil import restrict_to_owner as _restrict_to_owner
     from fsutil import load_jsonl_dicts
     from fsutil import atomic_write_text as _atomic_write_text
@@ -446,6 +454,19 @@ class MoodTracker:
 
         delta = pos_hits * self.positive_delta - neg_hits * self.negative_delta
         delta = max(-_MAX_DELTA_PER_MESSAGE, min(_MAX_DELTA_PER_MESSAGE, delta))
+
+        # 向き先の補正: 好感度は「ユーザーがわたしをどう扱ったか」であって
+        # 「ユーザーが今どんな気分か」ではない。「自分が嫌い」「今日は最悪な
+        # 一日だった」のような自己批判・愚痴まで減点すると、弱音を吐いた人ほど
+        # アバターが冷たくなる（好感度が下がると distant/reserved の応答に寄る）。
+        # 減点側だけを、向き先が明示的に自分/状況だと読めるときに限って打ち消す。
+        # 加点側と classify_sentiment（user_wellbeing が使う）は変更しない。
+        if delta < 0 and _suppresses_affinity_penalty is not None:
+            try:
+                if _suppresses_affinity_penalty(text):
+                    delta = 0.0
+            except Exception:  # pragma: no cover - defensive
+                pass
 
         with self._lock:
             if delta > 0:
