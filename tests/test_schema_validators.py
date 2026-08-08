@@ -212,5 +212,40 @@ class ArxivCategoryRegexTests(unittest.TestCase):
         self.assertFalse(bool(p.match("")), "Empty string must not match")
 
 
+class ModelConfigTests(unittest.TestCase):
+    """The models declare their JSON-schema examples via `model_config =
+    ConfigDict(...)`. Pydantic v2 deprecated the class-based `class Config:`
+    form and removes it in v3, and setup/requirements.txt pins only
+    `pydantic>=2.0` — so the old form was a live forward-compatibility break.
+    These tests assert the examples still reach the generated schema.
+    """
+
+    def setUp(self):
+        import schema_validators as sv
+        if not sv._PYDANTIC_AVAILABLE:
+            self.skipTest("pydantic not installed")
+        self.sv = sv
+
+    def test_example_reaches_the_generated_json_schema(self):
+        schema = self.sv.YouTubeSearchRequest.model_json_schema()
+        self.assertIn("example", schema)
+        self.assertEqual(schema["example"]["query"], "Python asyncio tutorial")
+
+    def test_every_model_with_an_example_still_exposes_it(self):
+        for name in ("YouTubeSearchRequest", "WebScrapingRequest",
+                     "ArxivSearchRequest", "SearchResult", "CacheEntry",
+                     "HealthCheckResponse"):
+            model = getattr(self.sv, name)
+            self.assertIn("example", model.model_json_schema(), name)
+
+    def test_no_class_based_config_remains(self):
+        """Guard against a re-introduction of the deprecated form."""
+        import os
+        path = os.path.join(_MAIN, "schema_validators.py")
+        with open(path, encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertNotIn("class Config:", source)
+
+
 if __name__ == "__main__":
     unittest.main()

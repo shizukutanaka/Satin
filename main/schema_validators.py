@@ -13,7 +13,9 @@ Implements:
 """
 
 try:
-    from pydantic import BaseModel, Field, validator, field_validator, ValidationInfo
+    from pydantic import (
+        BaseModel, ConfigDict, Field, validator, field_validator, ValidationInfo,
+    )
     from pydantic.functional_validators import AfterValidator
     _PYDANTIC_AVAILABLE = True
 except ImportError:
@@ -27,6 +29,7 @@ except ImportError:
         @classmethod
         def model_json_schema(cls): return {}
 
+    def ConfigDict(**kw): return dict(**kw)  # type: ignore[misc]
     def Field(default=None, **kw): return default  # type: ignore[misc]
     def validator(*a, **kw): return lambda f: f  # type: ignore[misc]
     def field_validator(*a, **kw): return lambda f: f  # type: ignore[misc]
@@ -182,15 +185,14 @@ class YouTubeSearchRequest(BaseModel):
                 raise ValueError("published_before must be after published_after")
         return v
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "Python asyncio tutorial",
-                "max_results": 10,
-                "order": "relevance",
-                "language": "en"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "query": "Python asyncio tutorial",
+            "max_results": 10,
+            "order": "relevance",
+            "language": "en"
         }
+    })
 
 
 class WebScrapingRequest(BaseModel):
@@ -253,14 +255,13 @@ class WebScrapingRequest(BaseModel):
                 raise ValueError("Headers must be string key-value pairs")
         return v
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "url": "https://example.com/article",
-                "timeout_seconds": 30,
-                "verify_robots_txt": True
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "url": "https://example.com/article",
+            "timeout_seconds": 30,
+            "verify_robots_txt": True
         }
+    })
 
 
 class ArxivSearchRequest(BaseModel):
@@ -307,14 +308,13 @@ class ArxivSearchRequest(BaseModel):
                     raise ValueError(f"Invalid arxiv category format: {cat}")
         return v
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "query": "deep learning optimization",
-                "max_results": 10,
-                "categories": ["cs.LG", "stat.ML"]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "query": "deep learning optimization",
+            "max_results": 10,
+            "categories": ["cs.LG", "stat.ML"]
         }
+    })
 
 
 class SearchResult(BaseModel):
@@ -361,16 +361,15 @@ class SearchResult(BaseModel):
             raise ValueError("Metadata contains forbidden keys")
         return v
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "title": "Advanced Python Programming",
-                "url": "https://example.com/article",
-                "content_type": "article",
-                "source": "web_search",
-                "relevance_score": 95.0
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "title": "Advanced Python Programming",
+            "url": "https://example.com/article",
+            "content_type": "article",
+            "source": "web_search",
+            "relevance_score": 95.0
         }
+    })
 
 
 class RateLimitConfig(BaseModel):
@@ -478,16 +477,15 @@ class CacheEntry(BaseModel):
         """Check if entry is expired."""
         return datetime.now() >= self.expires_at
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "key": "youtube_search_results_python",
-                "content_type": "video",
-                "created_at": "2025-01-01T00:00:00Z",
-                "expires_at": "2025-01-08T00:00:00Z",
-                "ttl_seconds": 604800
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "key": "youtube_search_results_python",
+            "content_type": "video",
+            "created_at": "2025-01-01T00:00:00Z",
+            "expires_at": "2025-01-08T00:00:00Z",
+            "ttl_seconds": 604800
         }
+    })
 
 
 class HealthCheckResponse(BaseModel):
@@ -512,15 +510,14 @@ class HealthCheckResponse(BaseModel):
         description="Additional details"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "UP",
-                "services": {
-                    "youtube": "UP",
-                    "web_scraper": "DEGRADED",
-                    "arxiv": "UP"
-                },
-                "response_time_ms": 45.2
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "status": "UP",
+            "services": {
+                "youtube": "UP",
+                "web_scraper": "DEGRADED",
+                "arxiv": "UP"
+            },
+            "response_time_ms": 45.2
         }
+    })

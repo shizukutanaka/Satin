@@ -66,6 +66,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **Deprecated Pydantic v1 config form** (`schema_validators.py`): the six
+  models declared their JSON-schema examples with the class-based
+  `class Config:`, deprecated in Pydantic v2 and removed in v3. Since
+  `setup/requirements.txt` pins only `pydantic>=2.0`, a v3 release would have
+  broken the module. Migrated to `model_config = ConfigDict(...)`, with a test
+  asserting the examples still reach the generated schema and that the old form
+  does not come back.
+- **Property-based schema tests reported false failures on a partial install**
+  (`tests/test_property_based_schemas.py`): every test there asserts validation
+  that only exists when both `hypothesis` and `pydantic` are present. Without
+  hypothesis the stub `@given` left the generated parameters in the signature
+  and pytest reported 19 "fixture not found" errors; without pydantic the
+  models degrade to a no-op stub that accepts anything, so the assertions
+  failed as if the product were broken. The module now skips cleanly in either
+  case.
+
 - **GUI shutdown was incomplete** (`closeEvent`): the TTS thread is now stopped
   and joined, and both refresh timers are stopped, so a timer can no longer
   fire against a destroyed widget on exit; a partially-constructed window also

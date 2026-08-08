@@ -43,6 +43,10 @@ try:
     import pytest
 except ImportError:
     class pytest:  # type: ignore[no-redef]
+        class mark:  # pytestmark below needs this to exist even without pytest
+            @staticmethod
+            def skipif(cond, reason=""): return None
+
         @staticmethod
         def raises(exc, *a, **kw):
             import contextlib
@@ -61,11 +65,27 @@ try:
         ContentType, APIProvider, HTTPMethod,
         YouTubeSearchRequest, WebScrapingRequest, ArxivSearchRequest,
         SearchResult, RateLimitConfig, APIErrorInfo, CacheEntry,
+        _PYDANTIC_AVAILABLE,
     )
 except ImportError:
     ContentType = APIProvider = HTTPMethod = None  # type: ignore
     YouTubeSearchRequest = WebScrapingRequest = ArxivSearchRequest = None  # type: ignore
     SearchResult = RateLimitConfig = APIErrorInfo = CacheEntry = None  # type: ignore
+    _PYDANTIC_AVAILABLE = False
+
+# Every test here asserts validation semantics that only exist when BOTH
+# optional deps from setup/requirements.txt are installed:
+#   - hypothesis provides @given; without it the stub above leaves the extra
+#     parameters in place and pytest reports them as missing fixtures
+#     ("fixture 'req' not found") — 19 confusing errors, not a passing suite.
+#   - pydantic provides the field validators; without it schema_validators
+#     falls back to a no-op BaseModel that accepts anything, so assertions like
+#     "an out-of-range relevance_score raises" fail for the wrong reason.
+# Skip cleanly instead of reporting either as a product defect.
+pytestmark = pytest.mark.skipif(
+    not (_HYPOTHESIS_AVAILABLE and _PYDANTIC_AVAILABLE),
+    reason="needs hypothesis and pydantic (see setup/requirements.txt)",
+)
 
 
 # Custom Hypothesis Strategies
