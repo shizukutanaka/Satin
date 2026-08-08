@@ -29,6 +29,7 @@
 | A8 | ✅ 実装済 | **危機表明（自傷・自殺念慮）への応答** — 従来は「死にたい」も汎用フォールバックで受け流し、しかも好感度に算入していた。共感 → AI である旨 → **具体名の相談先**の 3 要素だけを短く返し、好感度・会話回数・プロフィール記憶・聞き返し質問を全てバイパスする（危機をゲーム化しない） | `crisis_support.py`（新規）, `avatar_3d_autonomous_tts.speak_comment`, `persona_cli.run_chat` | [メンタルヘルスbot 29種の評価, Sci Rep 2025](https://www.nature.com/articles/s41598-025-17242-4)（適切な応答 0 件・具体名の提示は 41%）, [Sentio 2026/IASEAI](https://sentio.org/ai-research/llm-responses-to-suicide-risk-iaseai-study)（リスク開示が深まるほどボットが引く）, [2026 State Chatbot Laws (NY S 3008 等)](https://www.orrick.com/en/Insights/2026/04/2026-State-Chatbot-Laws-Key-Provisions-and-Regulatory-Trends) |
 | A9 | ✅ 実装済 | **AI であることの開示（セッション開始時 + 3 時間ごと）** — 好感度・告白イベント・「大好きだよ」という演出の外側で、「わたしは AI であって人間ではない／人間のような感情を実際に持っているわけではない」を定期的に必ず伝える。年齢を訊かない設計上、未成年判定ができないので**全ユーザーに適用・無効化スイッチなし** | `ai_disclosure.py`（新規）, `avatar_3d_autonomous_tts.MainWindow` / `AutonomousAvatarViewer`, `persona_cli.run_chat` | [NY AI Companion Models 法（2025-11-05 施行）](https://www.manatt.com/insights/newsletters/client-alert/new-york-s-safeguards-for-ai-companions-are-now-in-effect)（開始時 + 3 時間ごとの通知を義務化）, [CA SB 243（2026-01-01 施行）](https://www.skadden.com/insights/publications/2025/10/new-california-companion-chatbot-law), [FPF によるチャットボット法制の整理](https://fpf.org/blog/understanding-the-new-wave-of-chatbot-legislation-california-sb-243-and-beyond/) |
 | A10 | ✅ 実装済 | **好感度の向き先補正** — 「自分が嫌い」「今日は最悪な一日だった」まで減点していた（＝弱音を吐くほどアバターが冷たくなる）。向き先が自分/状況だと明示的に読めるときだけ**減点のみ**を打ち消す。加点と `classify_sentiment`（A5 が使う）は不変 | `sentiment_target.py`（新規）, `mood.MoodTracker.register` | [Entity-Level Sentiment Analysis サーベイ arXiv:2304.14241](https://arxiv.org/abs/2304.14241)（エンティティ極性と文書極性の一致は **47.7%**）, [ABSA 系統的レビュー](https://link.springer.com/article/10.1007/s10462-024-10906-z), WRIME は書き手感情のコーパスであって宛先への態度ではない（A2 の再解釈） |
+| A11 | ✅ 実装済 | **会話ログの保存期間（storage limitation）** — 既存のローテーションは 5 MB × 5 世代の**サイズ**上限＝ディスク衛生であって保存期間ではなく、時々話すユーザーは何年前の打ち明け話も永久保持していた。消す手段も全消去のみ。`settings.conversation_retention_days` で日数を指定すると起動時に自動適用（**既定 0 = 無期限で従来どおり**・時刻不明の行は消さない・0600 のまま原子的書き戻し）。`manage_satin log prune --days N --dry-run` も追加 | `log_retention.py`（新規）, `satin_launcher.main`, `manage_satin log prune`, `config/config.json` | GDPR 第 5 条 1 項 (e)「記憶域の制限」, [NIST Privacy Framework](https://www.nist.gov/privacy-framework)（CT.DM / PR.DS の保持最小化）, Privacy by Design |
 
 ## Tier B（ローカル ML オプション・要オプトイン）
 
@@ -50,7 +51,7 @@
 
 A1（安全）→ A2（感情精度）→ A5（変化点）→ A6（概日）→ A4（BM25 記憶）→ A3（感情強度辞書）
 → A7（別れぎわの操作的表現）→ A8（危機表明への応答）→ A9（AI 開示）
-→ A10（好感度の向き先補正）→ B/C は方針確定後。
-（**Tier A（A1–A10）はすべて実装済み**。以降は Tier B（ローカル ML）/ Tier C（ローカル LLM）で、
+→ A10（好感度の向き先補正）→ A11（保存期間）→ B/C は方針確定後。
+（**Tier A（A1–A11）はすべて実装済み**。以降は Tier B（ローカル ML）/ Tier C（ローカル LLM）で、
 no-LLM 設計境界に関わるためユーザーの方針判断が必要。
 各項目は 1機能=1コミット、実装→回帰テスト（fix を revert すると落ちる確認）→push で実施した。）

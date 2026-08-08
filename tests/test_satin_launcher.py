@@ -328,5 +328,66 @@ class HeadlessModesDoNotNeedTkinterTests(unittest.TestCase):
             m.assert_called_once()
 
 
+class LogRetentionWiringTests(unittest.TestCase):
+    """The conversation-log retention window is applied once, at startup.
+
+    Every entry point goes through main(), so this is the single call site —
+    the GUI, --chat and --dashboard all inherit it. --validate is exempt: it
+    exists to inspect configuration, and must not delete data as a side effect.
+    """
+
+    def _run(self, argv):
+        with mock.patch.object(satin_launcher, "_check_deps"), \
+             mock.patch.object(satin_launcher, "_check_config"), \
+             mock.patch.object(satin_launcher, "_apply_log_retention") as m, \
+             mock.patch.object(satin_launcher, "_launch_avatar_gui"), \
+             mock.patch.object(satin_launcher, "_launch_chat"), \
+             mock.patch.object(satin_launcher, "_launch_validate"):
+            with mock.patch("sys.argv", argv):
+                try:
+                    satin_launcher.main()
+                except SystemExit:
+                    pass
+            return m
+
+    def test_applied_on_default_gui_launch(self):
+        self._run(["satin_launcher"]).assert_called_once()
+
+    def test_applied_on_chat_launch(self):
+        self._run(["satin_launcher", "--chat"]).assert_called_once()
+
+    def test_not_applied_on_validate(self):
+        self._run(["satin_launcher", "--validate"]).assert_not_called()
+
+    def test_helper_is_silent_when_nothing_was_pruned(self):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with mock.patch("log_retention.apply_retention_if_configured",
+                        return_value={"pruned": False, "days": 0, "removed": 0,
+                                      "archives_removed": 0, "kept": 0}):
+            with contextlib.redirect_stdout(buf):
+                satin_launcher._apply_log_retention()
+        self.assertEqual(buf.getvalue(), "")
+
+    def test_helper_reports_what_it_removed(self):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with mock.patch("log_retention.apply_retention_if_configured",
+                        return_value={"pruned": True, "days": 90, "removed": 12,
+                                      "archives_removed": 2, "kept": 5}):
+            with contextlib.redirect_stdout(buf):
+                satin_launcher._apply_log_retention()
+        out = buf.getvalue()
+        self.assertIn("90", out)
+        self.assertIn("12", out)
+
+    def test_helper_never_blocks_startup(self):
+        with mock.patch("log_retention.apply_retention_if_configured",
+                        side_effect=RuntimeError("boom")):
+            satin_launcher._apply_log_retention()  # must not raise
+
+
 if __name__ == "__main__":
     unittest.main()

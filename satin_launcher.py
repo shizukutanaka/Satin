@@ -185,6 +185,22 @@ def _launch_validate() -> None:
         raise SystemExit(1)
 
 
+def _apply_log_retention() -> None:
+    """設定された会話ログの保存期間を適用する（全モード共通の唯一の呼び出し点）。
+
+    既定は無期限（`settings.conversation_retention_days` 未設定）なので、明示的に
+    設定したユーザーだけが対象。失敗しても起動は止めない。
+    """
+    try:
+        from log_retention import apply_retention_if_configured
+        result = apply_retention_if_configured()
+    except Exception:  # pragma: no cover - defensive: 起動を止めない
+        return
+    if result.get("pruned"):
+        print(f"[INFO] 会話ログの保存期間 {result['days']} 日を適用: "
+              f"{result['removed']} 件 / アーカイブ {result['archives_removed']} 個を削除")
+
+
 # --------------------------------------------------------------------------- #
 # エントリポイント
 # --------------------------------------------------------------------------- #
@@ -220,6 +236,11 @@ def main() -> None:
         _check_deps(verbose=True)
 
     _check_config()
+
+    # 会話ログの保存期間を適用する（config に設定があるときだけ動く。既定は無期限）。
+    # --validate は「設定を確かめるだけ」のモードなので副作用を持たせない。
+    if not args.validate:
+        _apply_log_retention()
 
     if args.validate:
         _launch_validate()

@@ -484,6 +484,30 @@ and asks for confirmation first; use `--dry-run` to preview without deleting, or
 `config/mood_config.json` and `config/persona.json` are preferences, not memories,
 so they are left untouched.)
 
+#### Privacy: how long conversations are kept
+
+Deleting everything is a blunt instrument — you may well want to keep the
+relationship and drop the old raw text. The log is rotated at 5 MB × 5
+generations, but that is a size cap for disk hygiene, not a retention policy: if
+you chat occasionally, everything you have ever said stays forever. Set a window
+in `config/config.json` and Satin prunes anything older on every launch:
+
+```jsonc
+{ "settings": { "conversation_retention_days": 90 } }   // 0 = keep forever (default)
+```
+
+```bash
+python main/manage_satin.py log prune --days 90 --dry-run   # count first
+python main/manage_satin.py log prune --days 90             # then prune
+```
+
+The default is **0 — keep forever, exactly as before**; upgrading never deletes
+anything you didn't ask it to. Lines whose timestamp can't be read are never
+treated as old, the live log is rewritten atomically and stays owner-only
+(0600), and a rotated `.gz` archive is removed only when its rotation stamp is
+older than the cutoff. This is the storage-limitation half of privacy (GDPR
+Art. 5(1)(e)) that local-only storage alone doesn't give you.
+
 ### Web dashboard
 
 The Flask dashboard (`python main/dashboard.py`, port 5003) surfaces the event

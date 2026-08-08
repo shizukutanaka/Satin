@@ -309,6 +309,54 @@ def cmd_log_clear(log_path: str | None = None) -> None:
         sys.exit(1)
 
 
+def cmd_log_prune(days: int | None = None, dry_run: bool = False,
+                  log_path: str | None = None) -> int:
+    """指定日数より古い会話イベントを削除する（保存期間の適用）。
+
+    days 省略時は `config/config.json` の `settings.conversation_retention_days`
+    を使う。設定も無ければ「無期限」なので何もせずに終える。
+    """
+    try:
+        from log_retention import (
+            configured_retention_days, cutoff_timestamp, prune_conversation_log,
+        )
+    except ImportError:
+        print("[ERROR] log_retention モジュールが見つかりません。")
+        return 1
+
+    retention = configured_retention_days() if days is None else int(days)
+    if retention <= 0:
+        print("保存期間が設定されていません（無期限）。"
+              "`--days N` を指定するか、config の settings."
+              "conversation_retention_days を設定してください。")
+        return 0
+
+    path = log_path or _get_conversation_log().logfile
+    if dry_run:
+        cutoff = cutoff_timestamp(retention)
+        old = 0
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    if not line.strip():
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    ts = obj.get("timestamp") if isinstance(obj, dict) else None
+                    if isinstance(ts, (int, float)) and ts < cutoff:
+                        old += 1
+        print(f"[DRY-RUN] 保存期間 {retention} 日: {old} 件が削除対象です（{path}）。")
+        return 0
+
+    result = prune_conversation_log(logfile=path, days=retention)
+    print(f"保存期間 {retention} 日を適用しました: "
+          f"{result['removed']} 件を削除、{result['kept']} 件を保持"
+          f"（アーカイブ {result['archives_removed']} 個を削除）。")
+    return 0
+
+
 def cmd_log_export(dest: str) -> None:
     try:
         log = _get_conversation_log()
@@ -745,6 +793,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_log_search.add_argument("query", help="検索クエリ")
     p_log_search.add_argument("-n", "--limit", type=int, default=0,
                               help="最大表示件数（0 = 全件、デフォルト: 0）")
+    p_log_prune = log_sub.add_parser(
+        "prune", help="指定日数より古い会話ログを削除（保存期間の適用）")
+    p_log_prune.add_argument(
+        "--days", type=int, default=None,
+        help="保存日数（省略時: config の settings.conversation_retention_days）")
+    p_log_prune.add_argument("--dry-run", action="store_true",
+                             help="削除件数を表示するだけで実際には消さない")
 
     # backup
     p_bk = sub.add_parser("backup", help="バックアップの管理")
@@ -815,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
 
     elif args.command == "log":
         if not args.log_cmd:
-            print("使用方法: manage_satin log {show,clear,export,csv,search}")
+            print("使用方法: manage_satin log {show,clear,export,csv,search,prune}")
             return 1
         if args.log_cmd == "show":
             cmd_log_show(args.n)
@@ -827,6 +882,8 @@ def main(argv: list[str] | None = None) -> int:
             cmd_log_csv(args.file)
         elif args.log_cmd == "search":
             cmd_log_search(args.query, args.limit)
+        elif args.log_cmd == "prune":
+            return cmd_log_prune(args.days, args.dry_run)
         return 0
 
     elif args.command == "backup":

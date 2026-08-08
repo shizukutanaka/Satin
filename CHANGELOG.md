@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Conversation-log retention window** (`log_retention.py`, research item A11):
+  Satin's privacy story was complete except along the time axis. The log is
+  rotated at 5 MB × 5 generations, but that is a *size* cap — disk hygiene, not
+  storage limitation — so an occasional user kept every disclosure they had
+  ever made, indefinitely, with only all-or-nothing controls (`/clear-log`,
+  `/forget-all`, `data purge`) to remove any of it. Setting
+  `settings.conversation_retention_days` in `config/config.json` now prunes
+  anything older at startup, from every entry point. `manage_satin log prune
+  --days N` runs it on demand, with `--dry-run` to see the count first.
+  The **default is 0 — keep forever, exactly as before**: upgrading must never
+  silently delete someone's history. A line whose timestamp cannot be read is
+  never treated as old, the live log is rewritten atomically and stays 0600,
+  and a `.gz` archive is deleted only when its rotation stamp predates the
+  cutoff. Grounded in GDPR Art. 5(1)(e) storage limitation and the retention
+  half of data minimisation (NIST Privacy Framework CT.DM / PR.DS).
 - **AI disclosure** (`ai_disclosure.py`, research item A9): Satin now states
   that it is an AI program and not a human — at the start of every session and
   again after every three hours of continuing interaction, in both the 3D GUI

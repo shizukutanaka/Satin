@@ -27,7 +27,7 @@ TTS で音声合成しながら 3D アバターを動かす。関係性（好感
 | **標準ライブラリ中心** | コア機能は Python 標準ライブラリのみで動作。GUI/TTS/カメラ等は任意依存。 |
 | **グレースフルデグラデーション** | 任意依存が無い／設定が壊れていても、機能を縮退させて起動を継続する。 |
 | **ヘッドレス対応** | GUI・GPU・ディスプレイ無し（SSH／CI／サーバ）でも CLI で全機能利用可。 |
-| **プライバシーローカル主義** | 会話・好感度・プロフィールは全てローカル保存。`data purge` で完全消去可能。 |
+| **プライバシーローカル主義** | 会話・好感度・プロフィールは全てローカル保存。`data purge` で完全消去可能。`conversation_retention_days` で保存期間の上限も設定可（既定 0 = 無期限）。 |
 | **原子的書き込み** | 設定・状態ファイルは `.tmp` + `os.replace()` で破損を防ぐ。 |
 
 ### 1.2 動作要件 (Requirements)
@@ -157,8 +157,8 @@ satin_launcher.py
 
 ### 3.7 管理 CLI (`manage_satin.py`)
 
-`validate` / `mood` / `log` / `backup` / `persona` / `summary` / `data purge`
-の各サブコマンド。GUI 不要のサーバ運用・スクリプト向け。
+`validate` / `mood` / `log`（`show`/`clear`/`export`/`csv`/`search`/`prune`） /
+`backup` / `persona` / `summary` / `data purge` の各サブコマンド。GUI 不要のサーバ運用・スクリプト向け。
 
 ### 3.8 外部統合 (任意)
 
