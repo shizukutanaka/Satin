@@ -37,7 +37,12 @@ import re as _re
 import threading
 import unicodedata as _ud
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
+
+try:  # 別れぎわの操作的表現ガードレール（無くても従来どおり動く optional 依存）
+    import farewell_integrity as _farewell_integrity
+except Exception:  # pragma: no cover - defensive fallback
+    _farewell_integrity = None  # type: ignore[assignment]
 
 
 def _kw_match(kw_norm: str, text_norm: str) -> bool:
@@ -524,6 +529,17 @@ class Persona:
         self._last_matched_rule_key = rule_key
         return self._pick(pick_key, replies)
 
+    @staticmethod
+    def _farewell_safe(options: Sequence[str], lang_key: str) -> List[str]:
+        """別れの応答候補から引き止め文句を除いたリストを返す。
+
+        `farewell_integrity` が使えないときや、除外後も 1 件以上残るときの
+        挙動は従来どおり。全滅したときだけフックの無い既定文へ差し替える。
+        """
+        if _farewell_integrity is None:
+            return list(options)
+        return _farewell_integrity.sanitize_replies(options, lang=lang_key)
+
     def respond(
         self,
         text: str,
@@ -546,6 +562,12 @@ class Persona:
         キーワード一致のみの完全な無状態応答よりも「さっきの話を覚えている」
         という軽い文脈手がかりを与える（conversation_log を読み返す本格的な
         複数ターン記憶の代替ではない、1 ターン先読みの軽量版）。
+
+        text が別れの挨拶だった場合は、選ばれうる候補から**引き止め文句**
+        （`farewell_integrity` の 6 戦術）を除外する。候補が全滅したときは
+        フックの無い温かい別れの言葉へ差し替える。`config/persona.json` は
+        ユーザーが自由に編集できるため、出荷時の文面監査だけでなく実行時にも
+        守る（研究 A7 / arXiv:2508.19258）。
         """
         if not text or not str(text).strip():
             return ""
@@ -556,6 +578,16 @@ class Persona:
         fallback = list(block.get("fallback") or [])
         topic_repeat_fallback = list(block.get("topic_repeat_fallback") or [])
         lang_key = lang or self.lang
+
+        # 別れの挨拶かどうかを先に判定しておく（以降の候補フィルタで使う）。
+        is_farewell = bool(
+            _farewell_integrity is not None
+            and _farewell_integrity.is_farewell(text, lang=lang_key)
+        )
+        if is_farewell:
+            # 別れの文脈では「さっきも言ってたね？」系の話題継続を使わない
+            # （別れの意思を無視する ignore_exit そのものになるため）。
+            topic_repeat_fallback = []
 
         # 好感度レベル専用ルールを先に評価
         level_fallback: list = []
@@ -576,6 +608,8 @@ class Persona:
                     kw_norm = _ud.normalize("NFC", str(kw).strip().lower())
                     if _kw_match(kw_norm, norm):
                         replies = list(rule.get("replies") or [])
+                        if is_farewell and replies:
+                            replies = self._farewell_safe(replies, lang_key)
                         if replies:
                             return self._respond_matched(
                                 f"level:{level}:{lang_key}:{idx}",
@@ -591,6 +625,8 @@ class Persona:
                 kw_norm = _ud.normalize("NFC", str(kw).strip().lower())
                 if _kw_match(kw_norm, norm):
                     replies = list(rule.get("replies") or [])
+                    if is_farewell and replies:
+                        replies = self._farewell_safe(replies, lang_key)
                     if replies:
                         # ルールごとに直前重複を避ける（キーはルール順インデックス）
                         return self._respond_matched(
@@ -602,12 +638,21 @@ class Persona:
         # どのルールにも一致しなかった＝話題が変わった（または最初から不一致）
         # ので、話題継続の追跡をリセットする。
         self._last_matched_rule_key = None
-        # レベル専用 fallback → グローバル fallback の順でフォールバック
+        # レベル専用 fallback → グローバル fallback の順でフォールバック。
+        # 「行くね」等キーワードに無い言い回しで別れを告げられた場合、fallback は
+        # 「もっと教えて！」のような会話継続文になりがちで、それはまさに
+        # ignore_exit（別れの意思の無視）になる。別れの文脈では同様に濾す。
         if level_fallback:
+            if is_farewell:
+                level_fallback = self._farewell_safe(level_fallback, lang_key)
             return self._pick(f"respond_affinity:{level}:{lang_key}:fallback",
                               level_fallback)
         if fallback:
+            if is_farewell:
+                fallback = self._farewell_safe(fallback, lang_key)
             return self._pick(f"respond:{lang_key}:fallback", fallback)
+        if is_farewell and _farewell_integrity is not None:
+            return _farewell_integrity.clean_farewell(lang_key)
         return ""
 
     def follow_up_question(

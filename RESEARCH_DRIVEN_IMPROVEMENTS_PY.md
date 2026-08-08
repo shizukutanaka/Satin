@@ -25,6 +25,7 @@
 | A4 | ✅ 実装済 | **記憶想起の品質向上** — substring 検索に加え Okapi BM25 の関連度検索 `search_relevant()` を追加（純 Python・埋め込み/外部依存なし、CJK は文字バイグラム）。GUI `/search` は完全一致 0 件時に「近い会話」を関連度順で提示 | `conversation_log.py` (`search_relevant`), `avatar_3d_autonomous_tts.py` | [Re:Member arXiv:2510.19030](https://arxiv.org/pdf/2510.19030) |
 | A5 | ✅ 実装済 | **変化点検知** — ユーザー自身の基準からの気分変化を根拠付きで発火 | `user_wellbeing.py` (`wellbeing_shift`) | [BOCPD arXiv:0710.3742](https://arxiv.org/abs/0710.3742) |
 | A6 | ✅ 実装済 | **概日トーン拡充** — 深夜帯 `late_night`(0–5時) を `night` から分離し睡眠配慮トーンを追加、時刻区分を単一化 | `persona.py` (`_time_of_day`/`talk_by_time`), `config/persona.json` | `CATEGORY_RESEARCH.md` カテゴリ7 |
+| A7 | ✅ 実装済 | **別れぎわの操作的表現ガードレール** — 「もう行くの？」「待ってるから」等、goodbye 時にユーザーを引き止める会話ダークパターン（6 戦術）を決定論的に検知し、`Persona.respond()` が別れの文脈で除外。出荷する台詞も監査テストで hook ゼロを保証（A1 がユーザーの利用強度を見るのに対し、A7 は**製品自身の振る舞い**を律する） | `farewell_integrity.py`（新規）, `persona.respond`, `config/persona.json` | [De Freitas, Oğuz-Uğuralp & Uğuralp, *Emotional Manipulation by AI Companions*, arXiv:2508.19258 / HBS WP 26-005](https://arxiv.org/abs/2508.19258), [Harmful Traits of AI Companions arXiv:2511.14972](https://arxiv.org/abs/2511.14972), [APA 2026](https://www.apa.org/monitor/2026/01-02/trends-digital-ai-relationships-emotional-connection) |
 
 ## Tier B（ローカル ML オプション・要オプトイン）
 
@@ -44,7 +45,8 @@
 
 ## 推奨実行順
 
-A1（安全）→ A2（感情精度）→ A5（変化点）→ A6（概日）→ A4（BM25 記憶）→ A3（感情強度辞書）→ B/C は方針確定後。
-（**Tier A（A1–A6）はすべて実装済み**。以降は Tier B（ローカル ML）/ Tier C（ローカル LLM）で、
+A1（安全）→ A2（感情精度）→ A5（変化点）→ A6（概日）→ A4（BM25 記憶）→ A3（感情強度辞書）
+→ A7（別れぎわの操作的表現）→ B/C は方針確定後。
+（**Tier A（A1–A7）はすべて実装済み**。以降は Tier B（ローカル ML）/ Tier C（ローカル LLM）で、
 no-LLM 設計境界に関わるためユーザーの方針判断が必要。
 各項目は 1機能=1コミット、実装→回帰テスト（fix を revert すると落ちる確認）→push で実施した。）

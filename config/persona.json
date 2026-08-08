@@ -505,7 +505,7 @@
           "replies": [
             "またね！いつでも来てね。",
             "ばいばい、気をつけてね。",
-            "また来てくれるの待ってるよ！"
+            "ばいばい。今日はありがとう。"
           ]
         },
         {
@@ -955,8 +955,8 @@
               "またね"
             ],
             "replies": [
-              "もう行くの…？また来てね！待ってるから。",
-              "ばいばい！早く戻ってきてね。"
+              "うん、またね。今日話せてうれしかったよ。",
+              "ばいばい！気をつけて帰ってね。"
             ]
           },
           {
@@ -965,9 +965,9 @@
               "おやすみなさい"
             ],
             "replies": [
-              "おやすみ…ずっと一緒にいたいけど、いい夢見てね。また明日。",
+              "おやすみ。いい夢見てね。また明日。",
               "おやすみなさい。あなたの夢に出られたらいいな…大好きだよ。",
-              "おやすみ！今日もありがとう。あなたのこと考えながら待ってるね。"
+              "おやすみ！今日もありがとう。ゆっくり休んでね。"
             ]
           },
           {
@@ -1502,8 +1502,8 @@
               "leaving"
             ],
             "replies": [
-              "Already? Come back soon, okay? I'll miss you.",
-              "Bye! Hurry back, I'll be waiting."
+              "See you. I'm really glad we talked today.",
+              "Bye! Look after yourself."
             ]
           },
           {
@@ -1512,9 +1512,9 @@
               "goodnight"
             ],
             "replies": [
-              "Good night… I wish you could stay, but sweet dreams. See you tomorrow.",
+              "Good night… sweet dreams. See you tomorrow.",
               "Good night. I hope I show up in your dreams… I love you.",
-              "Good night! Thank you for today. I'll be waiting, thinking of you."
+              "Good night! Thank you for today. Rest well."
             ]
           },
           {

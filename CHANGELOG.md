@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Manipulative-farewell guardrail** (`farewell_integrity.py`, research item
+  A7): a deterministic, offline detector for the six conversational dark
+  patterns companion apps deploy when a user says goodbye — premature-exit
+  guilt, FOMO hooks, emotional neglect, pressure to respond, ignoring the exit
+  intent, and coercive restraint (De Freitas, Oğuz-Uğuralp & Uğuralp,
+  *Emotional Manipulation by AI Companions*, arXiv:2508.19258 / HBS WP 26-005,
+  which found these in 37% of 1,200 real farewells across the most-downloaded
+  companion apps). `Persona.respond()` now drops such replies whenever the user
+  signals goodbye — including from a hand-edited `config/persona.json` — and
+  falls back to a warm farewell with no retention hook if every candidate is
+  flagged. A test audits every farewell line Satin ships (config + built-in
+  defaults) and fails on any hook, soft ones included.
 - **First-launch onboarding** (`first_run.py`): on a genuinely first run (no
   interactions, no remembered name, no conversation history) the avatar now
   introduces itself and lists what it can do (`/help`, `/callme`, `/like`,
@@ -24,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and corrupting — `mood.json`, the conversation log, and the profile. A stale
   lock from a crashed process is auto-reclaimed. Headless modes
   (`--chat`/`--dashboard`/`--manage`/`--validate`) are unaffected.
+
+### Changed
+- **Shipped farewell lines no longer try to hold the user back.** The
+  high-affinity (`close`) goodbyes said things like 「もう行くの…？また来てね！
+  待ってるから。」 / "Already? Come back soon, okay?" / "I wish you could stay"
+  / "I'll be waiting, thinking of you" — textbook premature-exit and
+  emotional-neglect appeals. They are now warm but hook-free in both languages.
+  The research is unambiguous that hooks backfire: they raise engagement (up to
+  14×) through curiosity and reactance-driven anger, not enjoyment, while
+  increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
 - **GUI shutdown was incomplete** (`closeEvent`): the TTS thread is now stopped
