@@ -2,6 +2,7 @@ import sys
 import random
 import queue
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,11 @@ try:
 except Exception:  # pragma: no cover - defensive
     _next_unanswered_question_gui = None
     _acknowledge_answer_gui = None
+
+try:
+    import ai_disclosure as _ai_disclosure
+except Exception:  # pragma: no cover - defensive
+    _ai_disclosure = None
 
 try:
     from crisis_support import crisis_reply as _crisis_reply_gui
@@ -518,8 +524,38 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         # 一問一答の回答確認文を前置き（「ちゃんと聞いてる」感を演出）
         if ack_msg:
             reply = (ack_msg + " " + reply).strip() if reply else ack_msg
+        # AI であることの定期開示（前回から 3 時間以上の継続利用で 1 回）。
+        # 演出の外側に置くため、応答の先頭に別行で付ける。
+        reply = self._prepend_ai_disclosure(reply, lang)
         # 表示・TTS 投入は _speak_reply に一本化（{user} 解決もそこで実施）。
         self._speak_reply(reply)
+
+    def _prepend_ai_disclosure(self, reply: str, lang: str) -> str:
+        """3 時間ごとの AI 開示が必要なら reply の先頭へ付けて返す。
+
+        ここが受け持つのは**間隔**のほうだけで、セッション開始時の開示は
+        `MainWindow._show_ai_disclosure` が出したうえで `_last_ai_disclosure_ts`
+        を打つ。よってタイムスタンプが未設定なら「セッションが始まったばかり」と
+        みなし、黙って時計を開始する（開始直後の 1 通目に重ねて出さない）。
+
+        状態はプロセス内メモリのみ。アプリを起動し直せば新しいセッションとして
+        開始時通知が出るので永続化しない（個人データも増やさない）。
+        """
+        if _ai_disclosure is None:
+            return reply
+        try:
+            last = getattr(self, "_last_ai_disclosure_ts", None)
+            if last is None:
+                self._last_ai_disclosure_ts = time.time()
+                return reply
+            if not _ai_disclosure.is_due(last):
+                return reply
+            notice = _ai_disclosure.periodic_notice(lang)
+            self._last_ai_disclosure_ts = time.time()
+            return (notice + "\n" + reply) if reply else notice
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("AI 開示の付与に失敗（応答は継続）: %s", e)
+            return reply
 
     def _speak_reply(self, reply: str) -> None:
         """コメント表示と TTS 投入の共通処理（全コメント応答の唯一の出口）。
@@ -622,6 +658,9 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                      "/whoami、/forget-me、/forget-all、/mood、/reset-mood、/stats、"
                      "/export-log [パス]、/clear-log、/history、/search <キーワード>、"
                      "/recap、/feeling、/avatar、/help")
+        # 「これは何なのか」を確かめに来る場所なので、ここでも AI である旨を示す
+        if _ai_disclosure is not None:
+            reply = reply + "\n" + _ai_disclosure.session_notice(lang)
         self._speak_reply(reply)
 
     def _cmd_gift_gui(self, item: str, lang: str, level) -> None:
@@ -1399,6 +1438,26 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):
         self.text_timer.start(100)
         # 初回起動なら「できること」を最初に伝える（2 回目以降は出さない）
         self._maybe_show_welcome()
+        # AI であることをセッション開始時に必ず伝える（毎回・初回に限らない）
+        self._show_ai_disclosure()
+
+    def _show_ai_disclosure(self) -> bool:
+        """セッション開始時の AI 開示を表示する。表示したら True。
+
+        NY AI Companion Models 法 / CA SB 243 が求める「セッション開始時 +
+        3 時間ごと」の前半。後半（3 時間ごと）は
+        `AutonomousAvatarViewer._prepend_ai_disclosure` が担う。ここで
+        タイムスタンプを打つので、開始直後に重ねて出ることはない。
+        """
+        if _ai_disclosure is None:
+            return False
+        try:
+            self.viewer._speak_reply(_ai_disclosure.session_notice(self._lang))
+            self.viewer._last_ai_disclosure_ts = time.time()
+            return True
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("AI 開示（セッション開始）の表示に失敗: %s", e)
+            return False
 
     def _maybe_show_welcome(self) -> bool:
         """初回起動なら歓迎＋できることの案内を表示する。表示したら True。

@@ -360,6 +360,25 @@ game stops there. Detection is keyword-based and offline like everything else,
 with common intensifier idioms (「死ぬほど眠い」, "dying to see it") excluded — and
 it is a safety net, not a clinical risk assessment.
 
+#### Safety: you are always told this is an AI
+
+The affinity system, the confession event and lines like 「大好きだよ」 simulate an
+emotional relationship, so Satin says plainly what it is (`ai_disclosure.py`):
+**at the start of every session, again after every three hours of continuing
+interaction, and as a standing line in `/help`** — in the 3D GUI and the CLI
+alike.
+
+```text
+Satin: （お知らせ）わたしは AI のコンピュータープログラムで、人間ではありません。
+       人間のような感情を実際に持っているわけでもありません。
+```
+
+That cadence is the one New York's AI Companion Models Law and California
+SB 243 require. Satin never asks for your age, so it cannot tell whether you
+are a minor — the reminder applies to everyone and there is no switch to turn
+it off. The timer lives in memory only: restarting the app starts a new session
+and discloses again, so nothing extra is written to disk.
+
 Satin also refuses to use **manipulative farewells** (`farewell_integrity.py`):
 the six dark patterns companion apps deploy when a user says goodbye —
 premature-exit guilt, FOMO hooks, feigned abandonment, pressure to answer one

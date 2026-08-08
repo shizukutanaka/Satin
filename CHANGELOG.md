@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **AI disclosure** (`ai_disclosure.py`, research item A9): Satin now states
+  that it is an AI program and not a human — at the start of every session and
+  again after every three hours of continuing interaction, in both the 3D GUI
+  and the headless CLI, plus a standing line in `/help`. Nothing in the product
+  said this before, while the affinity system, the confession event and lines
+  like 「大好きだよ」 are precisely the simulated emotional relationship that
+  New York's AI Companion Models Law (in force 2025-11-05) and California
+  SB 243 (in force 2026-01-01) regulate; both mandate a session-start notice
+  and a three-hour reminder. Satin never asks for an age, so it cannot know
+  whether a user is a minor — the reminder therefore applies to everyone and
+  has no off switch. State is in-process only: restarting the app is a new
+  session and re-discloses, so nothing is written to disk.
 - **Crisis response** (`crisis_support.py`, research item A8): a message
   expressing self-harm or suicidal ideation — or the hopelessness that can
   precede it — no longer falls through to the generic dictionary fallback.

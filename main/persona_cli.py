@@ -33,6 +33,7 @@
 """
 from __future__ import annotations
 
+import time as _time
 from typing import Callable, List, Optional
 
 from persona import Persona, get_persona
@@ -104,6 +105,11 @@ except Exception:  # pragma: no cover - defensive
     _gift_catalog_text = None  # type: ignore
     _gift_cooldown_message = None  # type: ignore
     _all_gift_keys = None  # type: ignore
+
+try:
+    import ai_disclosure as _ai_disclosure
+except Exception:  # pragma: no cover - defensive
+    _ai_disclosure = None  # type: ignore
 
 try:
     from crisis_support import crisis_reply as _crisis_reply
@@ -217,7 +223,12 @@ def respond_to(
     return reply
 
 
-def _help_text() -> str:
+def _help_text(lang: str = "ja") -> str:
+    # 「これは何なのか」を確かめに来る場所なので、末尾で AI である旨も示す
+    # （セッション開始時 + 3 時間ごとの開示とは別の、常設の手がかり）。
+    tail = ""
+    if _ai_disclosure is not None:
+        tail = "\n" + _ai_disclosure.session_notice(lang)
     return (
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
         "/export-log [パス] CSV出力 | /clear-log 履歴全消去 | "
@@ -226,6 +237,7 @@ def _help_text() -> str:
         "/forget-fact <内容> 覚えた事実を忘れる | "
         "/gift <プレゼント> 贈る | /whoami 確認 | /forget-me 記憶を全消去 | "
         "/mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /feeling 気分 | /stats 統計 | /name 名前 | /quit 終了"
+        + tail
     )
 
 
@@ -364,7 +376,14 @@ def run_chat(
                     _say(wb)
             except Exception:  # pragma: no cover - defensive
                 pass
-    output_fn(_help_text())
+    output_fn(_help_text(lang))
+
+    # AI であることをセッション開始時に必ず伝える（NY AI Companion Models 法 /
+    # CA SB 243）。以降は 3 時間ごとにリマインドする。greet の有無に関わらず出す。
+    _last_ai_disclosure_ts: Optional[float] = None
+    if _ai_disclosure is not None:
+        _say(_ai_disclosure.session_notice(lang))
+        _last_ai_disclosure_ts = _time.time()
 
     exchanges = 0
     # 一問一答（getting-to-know-you）: アバターが質問を出すと、その答え待ち状態の
@@ -406,7 +425,7 @@ def run_chat(
             _say(farewell)
             break
         if text.lower() == "/help":
-            output_fn(_help_text())
+            output_fn(_help_text(lang))
             continue
         if text.lower() == "/name":
             output_fn(f"{name}")
@@ -659,6 +678,11 @@ def run_chat(
                 question = ""
             if question:
                 reply = (reply + " " + question).strip() if reply else question
+        # AI であることの定期開示（前回から 3 時間以上の継続利用で 1 回）。
+        # 演出の外側に置くため、応答とは別行で先に出す。
+        if _ai_disclosure is not None and _ai_disclosure.is_due(_last_ai_disclosure_ts):
+            _say(_ai_disclosure.periodic_notice(lang))
+            _last_ai_disclosure_ts = _time.time()
         _say(reply)
         # Log the fully-composed reply (hurt override + milestone + ack + follow-up included)
         if conv_log is not None:
