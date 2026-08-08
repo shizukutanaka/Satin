@@ -106,6 +106,11 @@ except Exception:  # pragma: no cover - defensive
     _all_gift_keys = None  # type: ignore
 
 try:
+    from crisis_support import crisis_reply as _crisis_reply
+except Exception:  # pragma: no cover - defensive
+    _crisis_reply = None  # type: ignore
+
+try:
     from daily_summary import summary_greeting as _summary_greeting
 except Exception:  # pragma: no cover - defensive
     _summary_greeting = None  # type: ignore
@@ -510,6 +515,26 @@ def run_chat(
                 _clear_log(conv_log, lang, output_fn)
                 _clear_log_pending = False
             continue
+
+        # ---------- 危機表明（自傷・自殺念慮）----------
+        # スラッシュコマンドの次、他のどの処理よりも先に扱う。ここで打ち切ることで、
+        # 危機の開示が好感度・会話回数・プロフィール記憶・聞き返し質問といった
+        # 「関係を進める」仕掛けに一切流れ込まないようにする（ゲーム化しない）。
+        # GUI 側 (avatar_3d_autonomous_tts.speak_comment) と同じ扱い。
+        if _crisis_reply is not None:
+            try:
+                support = _crisis_reply(text, lang=lang)
+            except Exception:  # pragma: no cover - defensive
+                support = ""
+            if support:
+                pending_fact_key = None  # Q&A の答えとして記録しない
+                _say(support)
+                if conv_log is not None:
+                    try:
+                        conv_log.log_exchange(text, support)
+                    except Exception:  # pragma: no cover - defensive
+                        pass
+                continue
 
         # 一問一答の回答待ちなら、このコマンド以外の発話を答えとして記憶する。
         # 確認文 (ack) を後段の reply に前置する（会話は通常どおり続ける）。

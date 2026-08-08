@@ -26,6 +26,7 @@
 | A5 | ✅ 実装済 | **変化点検知** — ユーザー自身の基準からの気分変化を根拠付きで発火 | `user_wellbeing.py` (`wellbeing_shift`) | [BOCPD arXiv:0710.3742](https://arxiv.org/abs/0710.3742) |
 | A6 | ✅ 実装済 | **概日トーン拡充** — 深夜帯 `late_night`(0–5時) を `night` から分離し睡眠配慮トーンを追加、時刻区分を単一化 | `persona.py` (`_time_of_day`/`talk_by_time`), `config/persona.json` | `CATEGORY_RESEARCH.md` カテゴリ7 |
 | A7 | ✅ 実装済 | **別れぎわの操作的表現ガードレール** — 「もう行くの？」「待ってるから」等、goodbye 時にユーザーを引き止める会話ダークパターン（6 戦術）を決定論的に検知し、`Persona.respond()` が別れの文脈で除外。出荷する台詞も監査テストで hook ゼロを保証（A1 がユーザーの利用強度を見るのに対し、A7 は**製品自身の振る舞い**を律する） | `farewell_integrity.py`（新規）, `persona.respond`, `config/persona.json` | [De Freitas, Oğuz-Uğuralp & Uğuralp, *Emotional Manipulation by AI Companions*, arXiv:2508.19258 / HBS WP 26-005](https://arxiv.org/abs/2508.19258), [Harmful Traits of AI Companions arXiv:2511.14972](https://arxiv.org/abs/2511.14972), [APA 2026](https://www.apa.org/monitor/2026/01-02/trends-digital-ai-relationships-emotional-connection) |
+| A8 | ✅ 実装済 | **危機表明（自傷・自殺念慮）への応答** — 従来は「死にたい」も汎用フォールバックで受け流し、しかも好感度に算入していた。共感 → AI である旨 → **具体名の相談先**の 3 要素だけを短く返し、好感度・会話回数・プロフィール記憶・聞き返し質問を全てバイパスする（危機をゲーム化しない） | `crisis_support.py`（新規）, `avatar_3d_autonomous_tts.speak_comment`, `persona_cli.run_chat` | [メンタルヘルスbot 29種の評価, Sci Rep 2025](https://www.nature.com/articles/s41598-025-17242-4)（適切な応答 0 件・具体名の提示は 41%）, [Sentio 2026/IASEAI](https://sentio.org/ai-research/llm-responses-to-suicide-risk-iaseai-study)（リスク開示が深まるほどボットが引く）, [2026 State Chatbot Laws (NY S 3008 等)](https://www.orrick.com/en/Insights/2026/04/2026-State-Chatbot-Laws-Key-Provisions-and-Regulatory-Trends) |
 
 ## Tier B（ローカル ML オプション・要オプトイン）
 
@@ -46,7 +47,7 @@
 ## 推奨実行順
 
 A1（安全）→ A2（感情精度）→ A5（変化点）→ A6（概日）→ A4（BM25 記憶）→ A3（感情強度辞書）
-→ A7（別れぎわの操作的表現）→ B/C は方針確定後。
-（**Tier A（A1–A7）はすべて実装済み**。以降は Tier B（ローカル ML）/ Tier C（ローカル LLM）で、
+→ A7（別れぎわの操作的表現）→ A8（危機表明への応答）→ B/C は方針確定後。
+（**Tier A（A1–A8）はすべて実装済み**。以降は Tier B（ローカル ML）/ Tier C（ローカル LLM）で、
 no-LLM 設計境界に関わるためユーザーの方針判断が必要。
 各項目は 1機能=1コミット、実装→回帰テスト（fix を revert すると落ちる確認）→push で実施した。）

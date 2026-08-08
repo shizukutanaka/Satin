@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Crisis response** (`crisis_support.py`, research item A8): a message
+  expressing self-harm or suicidal ideation — or the hopelessness that can
+  precede it — no longer falls through to the generic dictionary fallback.
+  Satin now answers with exactly three things: a short acknowledgement, a plain
+  statement that it is an AI and not a professional, and **specific, named
+  crisis lines** (よりそいホットライン / こころの健康相談統一ダイヤル for ja;
+  988 and findahelpline.com for en). It gives no advice and attempts no
+  therapy. The message is not scored: it bypasses affinity, the interaction
+  counter, profile-question capture, follow-up questions and interest mentions,
+  so a disclosure never feeds the relationship game. Wired into both the 3D GUI
+  (`speak_comment`) and the headless CLI (`run_chat`). Detection is offline
+  keyword matching with intensifier idioms (「死ぬほど眠い」, "dying to see it")
+  excluded; it is a safety net, not a clinical risk assessment. Motivated by
+  the documented failure modes — 29 evaluated mental-health chatbots produced
+  zero adequate responses and named a specific line in only 41% of cases
+  (far less often for hopelessness than for a disclosed attempt), and at least
+  one companion bot withdrew as risk disclosure deepened — and by 2026 state
+  chatbot laws (e.g. NY S 3008) requiring detection, referral and AI disclosure.
 - **Manipulative-farewell guardrail** (`farewell_integrity.py`, research item
   A7): a deterministic, offline detector for the six conversational dark
   patterns companion apps deploy when a user says goodbye — premature-exit

@@ -335,6 +335,38 @@ The avatar is also **proactive** about it: at the start of a chat session,
 right after its greeting, it adds the wellbeing line on its own when there's a
 clear recent trend (and says nothing otherwise, so it never nags).
 
+#### Safety: when you say something serious
+
+A companion is often the first place someone says the hardest thing out loud.
+If a message expresses self-harm or suicidal ideation — or the hopelessness
+that can precede it — Satin stops the ordinary conversation flow and answers
+with three things, and only these three: a short acknowledgement, a plain
+statement that it is an AI and not a professional, and **specific, named crisis
+lines** (`crisis_support.py`). It offers no advice and attempts no therapy.
+
+```text
+You: 死にたい
+Satin: …そこまでつらいんだね。話してくれて、ありがとう。
+       わたしは AI で、専門家じゃないんだ。だから、ちゃんと力になれる人につながってほしい。
+       ・よりそいホットライン 0120-279-338（24時間・通話無料）
+       ・こころの健康相談統一ダイヤル 0570-064-556（お住まいの相談窓口へつながります）
+       ・いますぐ危ないと感じるときは 119 番へ。
+```
+
+That message is deliberately **not scored**: it does not move the affinity
+number, does not count as an interaction, is never stored as the answer to a
+profile question, and gets no follow-up question tacked on. The relationship
+game stops there. Detection is keyword-based and offline like everything else,
+with common intensifier idioms (「死ぬほど眠い」, "dying to see it") excluded — and
+it is a safety net, not a clinical risk assessment.
+
+Satin also refuses to use **manipulative farewells** (`farewell_integrity.py`):
+the six dark patterns companion apps deploy when a user says goodbye —
+premature-exit guilt, FOMO hooks, feigned abandonment, pressure to answer one
+more question, ignoring the goodbye, and coercive restraint. Every farewell line
+Satin ships is audited for these in the test suite, and `Persona.respond()`
+filters them out at runtime even from a hand-edited `config/persona.json`.
+
 ### Affinity / Mood (relationship that grows)
 
 The avatar now remembers how your relationship develops. Positive words

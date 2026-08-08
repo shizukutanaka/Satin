@@ -82,6 +82,11 @@ except Exception:  # pragma: no cover - defensive
     _acknowledge_answer_gui = None
 
 try:
+    from crisis_support import crisis_reply as _crisis_reply_gui
+except Exception:  # pragma: no cover - defensive
+    _crisis_reply_gui = None
+
+try:
     from daily_summary import summary_greeting as _summary_greeting_gui
 except Exception:  # pragma: no cover - defensive
     _summary_greeting_gui = None
@@ -364,6 +369,27 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         if isinstance(comment, str) and comment.lstrip().startswith("/"):
             if self._handle_slash_command_gui(comment.lstrip()[1:], lang, level):
                 self.pending_fact_key = None  # コマンドで Q&A フローを中断
+                return
+
+        # ---------- 危機表明（自傷・自殺念慮）----------
+        # 他のどの処理よりも先に扱う。ここで打ち切ることで、危機の開示が
+        # 好感度・会話回数・プロフィール記憶・聞き返し質問といった
+        # 「関係を進める」仕掛けに一切流れ込まないようにする（ゲーム化しない）。
+        # 検知しなければ空文字が返るので通常フローへ進む。
+        if _crisis_reply_gui is not None:
+            try:
+                support = _crisis_reply_gui(comment, lang=lang)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.debug("危機表明の判定に失敗（通常応答へ継続）: %s", e)
+                support = ""
+            if support:
+                self.pending_fact_key = None  # Q&A の答えとして記録しない
+                if get_conversation_log is not None:
+                    try:
+                        get_conversation_log().log_exchange(comment, support)
+                    except Exception as e:
+                        logger.warning("会話履歴の記録に失敗しました: %s", e)
+                self._speak_reply(support)
                 return
 
         # 一問一答の回答待ちなら今回の発話を答えとして記録する（失敗しても会話は続ける）。

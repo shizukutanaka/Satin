@@ -47,7 +47,7 @@
 | # | 長所 | 根拠 |
 |---|------|------|
 | S1 | **no-LLM / オフライン / プライバシー第一**を貫いた決定論的な対話・感情・記憶 | `mood.py` / `conversation_log.py` / `user_wellbeing.py` |
-| S2 | **研究駆動の安全設計**: 感情依存ガードレール・否定/強度対応感情判定・BM25 記憶想起・変化点検知・概日トーン・**別れぎわの引き止め文句ゼロ** | `usage_guardrails.py`, `mood.py`, `conversation_log.search_relevant`, `user_wellbeing.wellbeing_shift`, `persona.py`, `farewell_integrity.py`。詳細は `RESEARCH_DRIVEN_IMPROVEMENTS_PY.md` |
+| S2 | **研究駆動の安全設計**: 感情依存ガードレール・否定/強度対応感情判定・BM25 記憶想起・変化点検知・概日トーン・**別れぎわの引き止め文句ゼロ**・**危機表明への相談先案内** | `usage_guardrails.py`, `mood.py`, `conversation_log.search_relevant`, `user_wellbeing.wellbeing_shift`, `persona.py`, `farewell_integrity.py`, `crisis_support.py`。詳細は `RESEARCH_DRIVEN_IMPROVEMENTS_PY.md` |
 | S3 | **完全なデータ消去経路**（プライバシーの実効性）: GUI `/forget-all` と CLI `data purge` が会話・好感度・プロフィール・アバター履歴を一括消去 | `avatar_3d_autonomous_tts._erase_all_user_data`, `manage_satin.cmd_data_purge` |
 | S4 | **強固なテスト文化**: 2,939 件、revert-verify 規約、conftest によるデータ隔離、optional-import フォールバック様式 | `tests/`, `tests/conftest.py` |
 | S5 | **セキュリティ修正済み**: CSRF・SSRF・CSV 式インジェクション・Zip Slip・原子的書き込み・0600 権限 | `dashboard.py`, `fsutil.py`, `backup_manager.py` ほか（CHANGELOG / SPECIFICATION 参照） |
