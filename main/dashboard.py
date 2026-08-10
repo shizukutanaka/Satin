@@ -162,7 +162,10 @@ def _build_sync_backup(zip_path, config_dir, log_path):
             for root, _dirs, files in os.walk(config_dir):
                 for fname in files:
                     fpath = os.path.join(root, fname)
-                    arc = os.path.join('config', os.path.relpath(fpath, config_dir))
+                    # ZIP 仕様上、パス区切りは常に '/'。Windows の os.sep ('\\')
+                    # をそのまま使うと復元側でディレクトリ構造が壊れる。
+                    rel = os.path.relpath(fpath, config_dir).replace(os.sep, '/')
+                    arc = 'config/' + rel
                     zf.write(fpath, arc)
                     written.append(arc)
         if log_path:
