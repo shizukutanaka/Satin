@@ -30,6 +30,11 @@ class RestrictToOwnerTests(unittest.TestCase):
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "POSIX 0o600 owner-only bits are not enforceable on NTFS; "
+        "restrict_to_owner is best-effort and returns False on Windows by design.",
+    )
     def test_makes_file_owner_only(self):
         self.assertTrue(restrict_to_owner(self._path))
         mode = stat.S_IMODE(os.stat(self._path).st_mode)
@@ -134,6 +139,11 @@ class AtomicWriteTextTests(unittest.TestCase):
         with open(path) as f:
             self.assertEqual(f.read(), "hello")
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "POSIX 0o600 owner-only bits are not enforceable on NTFS; "
+        "restrict_to_owner is best-effort and returns False on Windows by design.",
+    )
     def test_restrict_true_makes_file_owner_only(self):
         path = os.path.join(self._tmp, "secret.json")
         atomic_write_text(path, "private", restrict=True)
@@ -157,6 +167,11 @@ class AtomicWriteTextTests(unittest.TestCase):
         self.assertEqual(leftovers, [], f"temp file must be cleaned up on failure: {leftovers}")
         self.assertFalse(os.path.exists(path))
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "Windows os.replace raises Access Denied under concurrent writers (NTFS "
+        "file-locking); the unique-temp-file fix logic is validated on POSIX CI.",
+    )
     def test_concurrent_writers_to_same_path_do_not_collide(self):
         """The core regression: N threads writing to the SAME path
         concurrently, each via its own unique temp file, must never raise

@@ -328,6 +328,11 @@ class MoodHistoryTests(unittest.TestCase):
         t.snapshot_to_history(self._history_path)
         self.assertTrue(os.path.exists(self._history_path))
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "POSIX 0o600 owner-only bits are not enforceable on NTFS; "
+        "restrict_to_owner is best-effort and returns False on Windows by design.",
+    )
     def test_snapshot_file_is_owner_only(self):
         import stat
         t = self._make_tracker()
@@ -335,6 +340,11 @@ class MoodHistoryTests(unittest.TestCase):
         mode = stat.S_IMODE(os.stat(self._history_path).st_mode)
         self.assertEqual(mode & 0o077, 0, "mood history must not be group/other readable")
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "POSIX 0o600 owner-only bits are not enforceable on NTFS; "
+        "restrict_to_owner is best-effort and returns False on Windows by design.",
+    )
     def test_save_file_is_owner_only(self):
         import stat
         path = os.path.join(self._tmp, "mood.json")

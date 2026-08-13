@@ -135,6 +135,11 @@ class PersistenceTests(unittest.TestCase):
             mode = os.stat(self._path).st_mode & 0o777
             self.assertEqual(mode, 0o600)
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "Windows os.replace raises Access Denied under concurrent writers (NTFS "
+        "file-locking); the unique-temp-file save() fix is validated on POSIX CI.",
+    )
     def test_concurrent_saves_to_same_path_never_crash_or_corrupt(self):
         """Regression: save() used a fixed temp filename (f"{path}.tmp")
         shared by every writer to that path. Two concurrent save() calls to

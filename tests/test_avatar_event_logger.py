@@ -212,6 +212,11 @@ class LogRotationTests(unittest.TestCase):
         with open(self._logfile, encoding="utf-8") as f:
             self.assertIn("still logged", f.read())
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "POSIX 0o600 owner-only bits are not enforceable on NTFS; "
+        "restrict_to_owner is best-effort and returns False on Windows by design.",
+    )
     def test_rotated_archive_is_owner_only(self):
         """The .gz archive created by rotation must inherit the live file's
         0o600 permission — conversation data must not be world-readable."""
@@ -241,6 +246,11 @@ class LogPrivacyTests(unittest.TestCase):
         import shutil
         shutil.rmtree(self._tmp, ignore_errors=True)
 
+    @unittest.skipIf(
+        sys.platform == "win32",
+        "POSIX 0o600 owner-only bits are not enforceable on NTFS; "
+        "restrict_to_owner is best-effort and returns False on Windows by design.",
+    )
     def test_log_is_owner_only(self):
         import stat
         AvatarEventLogger(self._logfile).log_event(

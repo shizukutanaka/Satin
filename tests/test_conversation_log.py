@@ -46,15 +46,20 @@ class DefaultLogfileIsCwdIndependentTests(unittest.TestCase):
 
     def test_default_logfile_independent_of_cwd(self):
         cwd = os.getcwd()
+        import shutil
+
+        d = tempfile.mkdtemp()
         try:
-            with tempfile.TemporaryDirectory() as d:
-                os.chdir(d)
-                # Re-import is unnecessary — DEFAULT_LOGFILE was computed once
-                # at module import from __file__, not from cwd.
-                self.assertTrue(os.path.isabs(DEFAULT_LOGFILE))
-                self.assertNotIn(d, DEFAULT_LOGFILE)
+            os.chdir(d)
+            # Re-import is unnecessary — DEFAULT_LOGFILE was computed once
+            # at module import from __file__, not from cwd.
+            self.assertTrue(os.path.isabs(DEFAULT_LOGFILE))
+            self.assertNotIn(d, DEFAULT_LOGFILE)
         finally:
+            # Restore cwd BEFORE removing the temp dir: on Windows the cwd of a
+            # process cannot be rmdir'd while still current (WinError 32).
             os.chdir(cwd)
+            shutil.rmtree(d, ignore_errors=True)
 
 
 class _TmpLogBase(unittest.TestCase):
