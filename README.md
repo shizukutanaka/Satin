@@ -747,9 +747,8 @@ Satin/
 ├── config/            # Runtime configuration, mood/profile state, plugin configs
 ├── main/              # Application code (dialogue, mood, TTS, GUI, dashboard, i18n, ...)
 │   ├── config/        # Layered config-management subsystem
-│   ├── i18n/          # Internationalization helpers
+│   ├── i18n/          # Internationalization helpers + locales/ja.json, en.json
 │   └── plugin_system/ # Plugin loading/registration
-├── locales/           # ja.json / en.json UI strings
 ├── plugins/           # Sample/user plugins
 ├── examples/          # Standalone usage examples for subsystems
 ├── launch/            # Per-OS launch scripts (call satin_launcher.py)
