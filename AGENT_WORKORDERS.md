@@ -67,7 +67,7 @@
 | 孤児モジュール（`sync_to_cloud.py` 等）の整理 🔸**ロケール 16 ファイルは削除済** | 中 | W-04 |
 | ~~dashboard の多言語対応状況が未検証~~ ✅**検証・実装済** | 中 | W-06 |
 | 型チェック（mypy）未導入 | 中 | W-07 |
-| 3D 描画がワイヤーフレーム止まり（面・法線・シェーディング無し） | 低 | W-08 |
+| ~~3D 描画がワイヤーフレーム止まり（面・法線・シェーディング無し）~~ ✅**実装済** | 低 | W-08 |
 | CI 未有効化・lock ファイル無し（オーナー/方針事項） | — | §4 |
 | Tier B/C（ローカル ML / TTS / LLM）は要方針判断 | — | W-90 |
 
@@ -255,25 +255,31 @@
 - **完了条件**: 中核 5 モジュールが mypy clean、requirements/CI に反映。
 - **触るな**: 大規模な型注釈リファクタ（段階導入が原則）。
 
-### W-08: 3D 描画の強化（面 + 単色シェーディング） — [難易度 L / 優先度 低]
-- **背景**: `avatar_3d_autonomous_tts.paintGL` と `avatar_3d_gltf_viewer` は
-  頂点の `GL_LINE_STRIP`（ワイヤーフレーム）のみ。市販アバターとしては見栄えが弱い。
-- **対象**: `gltf_utils.py`（面インデックス抽出を追加）、
-  `avatar_3d_autonomous_tts.AutonomousAvatarViewer.paintGL`、`_load_model_vertices`。
-- **実装前チェック**: `gltf_utils.load_first_mesh_vertices` の実装と、pygltflib で
-  `primitives[0].indices` から面を取る方法（`autonomous_gltf_avatar.py` に既存の
-  試みあり — ただし `.data` 誤用の未修正バグがあるので流用時は W 実績の
-  `_resolve_buffer_bytes` を使う）を確認。
-- **実装方針**: `load_first_mesh_faces(gltf, np)` を新設（indices アクセサを
-  `_resolve_buffer_bytes` + offset で正しく読む）。法線を面から計算し、
-  `GL_TRIANGLES` + 単色ディフューズで描画。頂点のみ（面なし）モデルは
-  従来のワイヤーフレームにフォールバック。
-- **テスト**: 実 pygltflib で面付き GLB を組み立て → `load_first_mesh_faces` が
-  正しい三角形インデックスを返す往復テスト（`skipUnless(pygltflib)`）。法線計算の
-  純関数テスト。
-- **完了条件**: full suite green、面付きモデルが陰影付きで描画（実 GPU での目視は
-  ヘッドレス CI では不可なので、頂点/面/法線データの正しさをテストで担保）。
-- **触るな**: テクスチャ・スキニング・アニメーション（本カードの範囲外。別途方針判断）。
+### W-08: 3D 描画の強化（面 + 単色シェーディング） — ✅**完了**
+- **実装（済）**: `gltf_utils` に `load_first_mesh_faces` / `load_first_mesh_normals`
+  / `compute_face_normals` / `shade_factor` を追加し、
+  `AutonomousAvatarViewer._paint_solid` が `GL_TRIANGLES` + 面ごとの拡散シェー
+  ディングで描画する。`_load_model_geometry` が (頂点, 面, 面法線) を返し、
+  面なしモデルは従来のワイヤーフレーム、モデル無しは球体へフォールバック。
+  glTF 2.0 仕様準拠: `primitive.mode` 既定 4、5/6 は三角形リストへ展開
+  （strip の交互巻き方向を補正しないと隣り合う面の陰影が反転する）、
+  indices の componentType は 5121/5123/5125、`indices` 無しは 0..count-1 の
+  暗黙連番、NORMAL 非搭載時はフラット法線をクライアント計算。
+  シェーディングは `GL_LIGHTING` ではなく色の乗算で行い、他ウィジェットと共有
+  している GL ステート（光源・マテリアル）を汚さない。
+- **調査で見つかった実バグ 2 件（同コミットで修正）**:
+  1. **`bufferView.byteStride` を無視していた**ため、POSITION と NORMAL を
+     インターリーブした glTF で 2 頂点目以降が法線の値を座標として読まれ、
+     モデルが崩れて描画されていた。仕様は「2 つ以上のアクセサが同じ bufferView
+     を使う場合 byteStride 必須」なので、インターリーブは例外ではなく通常。
+  2. `autonomous_gltf_avatar` の自前インデックス読み出しが 3 通りに壊れていた
+     （本カードが警告していた `.data` 誤用に加え、uint16 決め打ち・byteOffset
+     無視）。共通実装へ寄せて解消。
+- **テスト（済）**: `tests/test_gltf_faces.py`（39 件）。実 pygltflib で GLB を
+  組み立てる往復テスト（インターリーブ・5121/5123/5125・strip/fan・暗黙連番・
+  範囲外インデックス・点/線モード）、法線計算とシェーディング係数の純関数テスト、
+  GL 呼び出しをキャプチャした `_paint_solid` の検証。
+- **触らなかったもの**: テクスチャ・スキニング・アニメーション（範囲外）。
 
 ### W-90: Tier B/C（ローカル ML / 表現力 TTS / ローカル LLM） — [実装するな・要人間承認]
 - **背景**: 小型ローカル埋め込み記憶（A4 上位）、WRIME 学習の感情分類（A2 上位）、

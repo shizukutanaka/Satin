@@ -18,10 +18,21 @@ from gl_widget_base import GLViewportMixin  # noqa: E402
 # 選んだアバターモデル (.glb/.gltf/.vrm) の頂点を読み込んで描画するための
 # 任意依存。未導入・失敗時は従来の球体プレースホルダにフォールバックする。
 try:
-    from gltf_utils import load_first_mesh_vertices, normalize_vertices  # noqa: E402
+    from gltf_utils import (  # noqa: E402
+        load_first_mesh_vertices,
+        load_first_mesh_faces,
+        load_first_mesh_normals,
+        compute_face_normals,
+        normalize_vertices,
+        shade_factor,
+    )
 except Exception:  # pragma: no cover - defensive
     load_first_mesh_vertices = None
+    load_first_mesh_faces = None
+    load_first_mesh_normals = None
+    compute_face_normals = None
     normalize_vertices = None
+    shade_factor = None
 try:
     import avatar_model_store as _avatar_model_store  # noqa: E402
 except Exception:  # pragma: no cover - defensive
@@ -239,13 +250,43 @@ def _load_model_vertices(path):
     フォールバックする（GUI を壊さない）。avatar_3d_gltf_viewer.GLTFModel と
     同じ読み込み経路を共有する。
     """
+    geometry = _load_model_geometry(path)
+    return geometry[0] if geometry else None
+
+
+def _load_model_geometry(path):
+    """アバターファイル path から (頂点, 面, 面法線) を返す。失敗時 None。
+
+    頂点は `normalize_vertices` で正規化済み (N, 3)。面が取れなければ
+    (頂点, None, None) を返し、呼び出し側は従来のワイヤーフレーム描画へ
+    フォールバックする（点群モデル・線分モデル・インデックス破損時）。
+
+    法線は NORMAL 属性ではなく**面ごとのフラット法線**を使う。glTF 仕様は
+    NORMAL 非搭載時にクライアントがフラット法線を計算することを求めており、
+    面単位の単色シェーディングでは頂点法線を補間しないため、面法線のほうが
+    描画と整合する。
+
+    pygltflib / numpy / gltf_utils のいずれかが無い、読み込み・解析に失敗した、
+    頂点が取れない場合は None を返し、呼び出し側は球体プレースホルダへ安全に
+    フォールバックする（GUI を壊さない）。
+    """
     if (pygltflib is None or np is None or load_first_mesh_vertices is None
             or normalize_vertices is None or not path):
         return None
     try:
         gltf = pygltflib.GLTF2().load(path)
-        vertices = load_first_mesh_vertices(gltf, np)
-        return normalize_vertices(vertices, np)
+        vertices = normalize_vertices(load_first_mesh_vertices(gltf, np), np)
+        if vertices is None:
+            return None
+        faces = None
+        normals = None
+        if load_first_mesh_faces is not None and compute_face_normals is not None:
+            faces = load_first_mesh_faces(gltf, np)
+            if faces is not None:
+                normals = compute_face_normals(vertices, faces, np)
+                if normals is None:
+                    faces = None  # 法線が出せない面は描かない
+        return (vertices, faces, normals)
     except Exception as e:  # pragma: no cover - defensive
         logger.info("アバターモデルの読み込みに失敗しました (%s): %s", path, e)
         return None
@@ -306,6 +347,10 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         self._forget_all_pending = False  # /forget-all の二段階確認フラグ
         # --avatar-loader で選んだアバターモデルの頂点（無ければ球体を描画）
         self.avatar_model_vertices = None
+        # 三角形インデックス (M, 3) と面ごとのフラット法線 (M, 3)。
+        # 取れたときは陰影付きのソリッド描画、取れなければ従来のワイヤーフレーム。
+        self.avatar_model_faces = None
+        self.avatar_model_normals = None
         self.avatar_model_path = None
 
     def set_tts_queue(self, tts_queue):
@@ -327,10 +372,13 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 path = None
         if not path:
             return False
-        vertices = _load_model_vertices(path)
-        if vertices is None:
+        geometry = _load_model_geometry(path)
+        if geometry is None:
             return False
+        vertices, faces, normals = geometry
         self.avatar_model_vertices = vertices
+        self.avatar_model_faces = faces
+        self.avatar_model_normals = normals
         self.avatar_model_path = path
         try:
             self.update()
@@ -1377,16 +1425,48 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
         glLoadIdentity()
         glTranslatef(self.position[0], self.position[1], -5.0)
         glColor3f(0.6, 0.8, 1.0)
-        # 読み込み済みアバターモデルがあればワイヤーフレーム描画、無ければ球体。
+        # 面が取れていれば陰影付きソリッド、頂点だけならワイヤーフレーム、
+        # モデルが無ければ球体プレースホルダ。
         vertices = self.avatar_model_vertices
+        faces = self.avatar_model_faces
         if vertices is not None and len(vertices) > 0:
-            glBegin(GL_LINE_STRIP)
-            for v in vertices:
-                glVertex3f(float(v[0]), float(v[1]), float(v[2]))
-            glEnd()
+            if faces is not None and len(faces) > 0:
+                self._paint_solid(vertices, faces, self.avatar_model_normals)
+            else:
+                glBegin(GL_LINE_STRIP)
+                for v in vertices:
+                    glVertex3f(float(v[0]), float(v[1]), float(v[2]))
+                glEnd()
         else:
             quad = gluNewQuadric()
             gluSphere(quad, 1.0, 32, 32)
+
+    #: ソリッド描画のベース色（陰影係数を掛けて面ごとの明るさを作る）
+    SOLID_BASE_COLOR = (0.6, 0.8, 1.0)
+
+    def _paint_solid(self, vertices, faces, normals):
+        """三角形を面ごとの拡散シェーディングで描画する。
+
+        GL_LIGHTING を有効化せず、面法線から求めた係数をベース色に掛けて
+        `glColor3f` で塗る。固定機能ライティングの状態（光源・マテリアル・
+        法線の正規化）を持ち込まずに陰影が付くので、他のウィジェットと共有して
+        いる GL ステートを汚さない。明るさの計算は `gltf_utils.shade_factor` の
+        純関数なので、GPU 無しでも検証できる。
+
+        法線が無い/数が合わない場合はフラット色で描く（陰影だけ諦める）。
+        """
+        base_r, base_g, base_b = self.SOLID_BASE_COLOR
+        use_shading = (shade_factor is not None and normals is not None
+                       and len(normals) == len(faces))
+        glBegin(GL_TRIANGLES)
+        for i, face in enumerate(faces):
+            if use_shading:
+                k = shade_factor(normals[i])
+                glColor3f(base_r * k, base_g * k, base_b * k)
+            for vertex_index in face:
+                v = vertices[int(vertex_index)]
+                glVertex3f(float(v[0]), float(v[1]), float(v[2]))
+        glEnd()
 
 class MainWindow(QMainWindow if QMainWindow is not None else object):
     def __init__(self):

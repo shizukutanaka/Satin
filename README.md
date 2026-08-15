@@ -736,6 +736,13 @@ python satin_launcher.py --validate   # validate config and exit
 python satin_launcher.py --avatar-loader  # pick a .glb/.gltf/.vrm avatar; the main GUI renders it next launch
 ```
 
+The selected model is drawn as a **shaded solid**: `gltf_utils` reads the mesh's
+index buffer, computes flat face normals (as the glTF 2.0 spec requires when the
+model carries no `NORMAL` attribute), and the GUI renders `GL_TRIANGLES` with a
+per-face diffuse term. Models made only of points or line primitives fall back to
+the earlier wireframe drawing, and with no model selected you get the sphere
+placeholder — so an exotic or partly-broken file degrades instead of failing.
+
 To back up your configuration, run `launch/win/backup_satin.bat` (Windows) or
 `launch/mac/backup_satin.sh` (Mac).
 

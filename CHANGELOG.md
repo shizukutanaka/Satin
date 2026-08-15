@@ -7,7 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **The avatar is drawn as a shaded solid, not a wireframe** (work order W-08).
+  `paintGL` ran the raw vertex list through a single `GL_LINE_STRIP`, which
+  connects vertices in file order and produces a scribble rather than a figure —
+  nothing ever read the model's index buffer. `gltf_utils` gained
+  `load_first_mesh_faces`, `load_first_mesh_normals`, `compute_face_normals` and
+  `shade_factor`, and the flagship GUI now renders `GL_TRIANGLES` with per-face
+  diffuse shading. Models with no faces (point/line primitives) keep the old
+  wireframe path, and a missing model still falls back to the sphere
+  placeholder. Following the glTF 2.0 spec: `primitive.mode` defaults to 4
+  (TRIANGLES) with 5/6 expanded from strip/fan (alternating strip winding
+  corrected so neighbouring faces don't shade in opposite directions), index
+  accessors accept componentType 5121/5123/5125, a primitive without `indices`
+  gets the implicit 0..count-1 sequence, and flat normals are computed
+  client-side as the spec requires when `NORMAL` is absent. Shading is applied
+  as a colour multiplier rather than via `GL_LIGHTING`, so no light/material GL
+  state is introduced for the other widgets to inherit.
+
 ### Fixed
+- **Interleaved glTF models were read wrong** (`gltf_utils`): the vertex loader
+  ignored `bufferView.byteStride`, so on any model that packs POSITION and
+  NORMAL into one buffer view it read normal components as coordinates from the
+  second vertex onward — the avatar rendered as a garbled shape. The spec
+  *requires* `byteStride` whenever two accessors share a buffer view, so this is
+  ordinary exporter output, not an exotic case. Verified with a real
+  round-tripped `.glb`.
+- **The demo viewer's index reader was broken three ways**
+  (`autonomous_gltf_avatar`): it read `buffer.data` directly, which is empty for
+  a real GLB (the binary lives in `gltf.binary_blob()`), so faces came out empty
+  every time; it hardcoded `uint16` regardless of `componentType`, corrupting
+  UNSIGNED_BYTE/UNSIGNED_INT models; and it ignored both bufferView and accessor
+  `byteOffset`. It now shares the `gltf_utils` implementation.
 - **Dashboard showed English internals on the Japanese pages, and its last two
   pages were untranslatable** (work order W-06). The verification pass found the
   dashboard was already mostly localized — 37 keys through `i18n.t()`, both

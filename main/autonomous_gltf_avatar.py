@@ -9,7 +9,7 @@ from optional_deps import (  # noqa: E402
     QFileDialog, QPushButton, QLabel, QTimer, pygltflib,
 )
 
-from gltf_utils import load_first_mesh_vertices  # noqa: E402
+from gltf_utils import load_first_mesh_faces, load_first_mesh_vertices  # noqa: E402
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 from gl_widget_base import GLViewportMixin  # noqa: E402
 
@@ -53,15 +53,13 @@ class GLTFModel:
         if vertices is None:
             return
         self.vertices = vertices
-        mesh = gltf.meshes[0]
-        if mesh.primitives[0].indices is not None:
-            idx_accessor = gltf.accessors[mesh.primitives[0].indices]
-            idx_buffer_view = gltf.bufferViews[idx_accessor.bufferView]
-            idx_buffer = gltf.buffers[idx_buffer_view.buffer]
-            idx_data = np.frombuffer(idx_buffer.data, dtype=np.uint16)
-            self.faces = idx_data.reshape(-1, 3)
-        else:
-            self.faces = np.arange(len(self.vertices)).reshape(-1, 3)
+        # 面は gltf_utils の共通実装から取る。ここには以前インデックス読み出しを
+        # 自前で持っていたが 3 つ壊れていた: (1) `buffer.data` を直に読んでいた
+        # ため実物の GLB（バイナリは gltf.binary_blob() 側）では常に空、
+        # (2) componentType を見ず uint16 決め打ちで UNSIGNED_BYTE/INT の
+        # モデルが壊れる、(3) bufferView/accessor の byteOffset を無視していた。
+        faces = load_first_mesh_faces(gltf, np)
+        self.faces = faces if faces is not None else []
         # アニメーション情報の読み込み（超簡易: channel/keyframe情報のみ）
         self.animations = []
         for anim in gltf.animations or []:

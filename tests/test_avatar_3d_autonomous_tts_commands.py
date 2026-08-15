@@ -764,7 +764,8 @@ class LoadAvatarModelTests(unittest.TestCase):
 
     def test_explicit_path_success_sets_state(self):
         v = self._viewer()
-        with mock.patch.object(_mod, "_load_model_vertices", return_value=[[0, 0, 0], [1, 1, 1]]):
+        with mock.patch.object(_mod, "_load_model_geometry",
+                               return_value=([[0, 0, 0], [1, 1, 1]], None, None)):
             ok = v.load_avatar_model("/models/a.glb")
         self.assertTrue(ok)
         self.assertEqual(v.avatar_model_path, "/models/a.glb")
@@ -772,7 +773,7 @@ class LoadAvatarModelTests(unittest.TestCase):
 
     def test_load_failure_leaves_state_unchanged(self):
         v = self._viewer()
-        with mock.patch.object(_mod, "_load_model_vertices", return_value=None):
+        with mock.patch.object(_mod, "_load_model_geometry", return_value=None):
             ok = v.load_avatar_model("/models/broken.glb")
         self.assertFalse(ok)
         self.assertIsNone(v.avatar_model_path)
@@ -783,7 +784,8 @@ class LoadAvatarModelTests(unittest.TestCase):
         fake_store = mock.Mock()
         fake_store.resolve_selected_avatar.return_value = "/models/resolved.vrm"
         with mock.patch.object(_mod, "_avatar_model_store", fake_store), \
-             mock.patch.object(_mod, "_load_model_vertices", return_value=[[0, 0, 0]]):
+             mock.patch.object(_mod, "_load_model_geometry",
+                               return_value=([[0, 0, 0]], None, None)):
             ok = v.load_avatar_model()
         self.assertTrue(ok)
         self.assertEqual(v.avatar_model_path, "/models/resolved.vrm")
@@ -833,7 +835,8 @@ class AvatarCommandGuiTests(unittest.TestCase):
         fake_store = mock.Mock()
         fake_store.resolve_selected_avatar.return_value = "/m/fresh.glb"
         with mock.patch.object(_mod, "_avatar_model_store", fake_store), \
-             mock.patch.object(_mod, "_load_model_vertices", return_value=[[0, 0, 0]]):
+             mock.patch.object(_mod, "_load_model_geometry",
+                               return_value=([[0, 0, 0]], None, None)):
             v._cmd_avatar_gui("ja")
         self.assertIn("fresh.glb", v.comment_text)
 
