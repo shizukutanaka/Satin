@@ -8,11 +8,15 @@ broken by an unconditional `import tkinter` that the active code never used.
 Run: python -m unittest tests.test_i18n -v
 """
 import importlib.util
+import json
 import os
+import re
 import unittest
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 _I18N_PY = os.path.join(_MAIN, "i18n.py")
+_DASHBOARD_PY = os.path.join(_MAIN, "dashboard.py")
+_LOCALES_DIR = os.path.join(_MAIN, "i18n", "locales")
 
 
 def _load_i18n_module():
@@ -20,6 +24,20 @@ def _load_i18n_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _dashboard_keys():
+    """Every key dashboard.py actually looks up via i18n.t('key', ...).
+
+    Derived from the source rather than hardcoded: the previous hand-written
+    list silently went stale (32 entries while the dashboard had grown to 37
+    keys), so a page could ship with a missing translation and the suite would
+    still be green. Reading the source means adding a new i18n.t() call
+    automatically extends the contract these tests enforce.
+    """
+    with open(_DASHBOARD_PY, encoding="utf-8") as fh:
+        source = fh.read()
+    return sorted(set(re.findall(r"""i18n\.t\(\s*['"]([a-z_]+)['"]""", source)))
 
 
 class I18nModuleTests(unittest.TestCase):
@@ -57,18 +75,7 @@ class I18nModuleTests(unittest.TestCase):
 class JaLocaleTests(unittest.TestCase):
     """ja.json must have non-empty translations for all dashboard keys."""
 
-    _DASHBOARD_KEYS = [
-        "title", "event_log", "conversation", "backups", "cloud_sync",
-        "mood", "time", "type", "details", "no_file",
-        "executed_cloud_sync", "manual_cloud_sync", "you", "avatar",
-        "no_conversation", "affinity_score", "affinity_level",
-        "interactions", "last_interaction", "mood_unavailable",
-        "mood_no_interactions_yet", "reset_mood",
-        "mood_history", "mood_no_history", "date", "back_to_mood",
-        "total_messages", "download_conversation",
-        "search", "search_placeholder", "search_results",
-        "stats",
-    ]
+    _DASHBOARD_KEYS = _dashboard_keys()
 
     def setUp(self):
         module = _load_i18n_module()
@@ -102,18 +109,7 @@ class JaLocaleTests(unittest.TestCase):
 class EnLocaleTests(unittest.TestCase):
     """en.json must also have all dashboard keys."""
 
-    _DASHBOARD_KEYS = [
-        "title", "event_log", "conversation", "backups", "cloud_sync",
-        "mood", "time", "type", "details", "no_file",
-        "executed_cloud_sync", "manual_cloud_sync", "you", "avatar",
-        "no_conversation", "affinity_score", "affinity_level",
-        "interactions", "last_interaction", "mood_unavailable",
-        "mood_no_interactions_yet", "reset_mood",
-        "mood_history", "mood_no_history", "date", "back_to_mood",
-        "total_messages", "download_conversation",
-        "search", "search_placeholder", "search_results",
-        "stats",
-    ]
+    _DASHBOARD_KEYS = _dashboard_keys()
 
     def setUp(self):
         module = _load_i18n_module()
@@ -133,6 +129,58 @@ class EnLocaleTests(unittest.TestCase):
         i = module.I18N(lang="zz")  # non-existent lang
         # should fall back to en.json
         self.assertEqual(i.t("you", "fallback"), "You")
+
+
+class LocaleParityTests(unittest.TestCase):
+    """The shipped locales must stay structurally identical.
+
+    Adding a string to one language and forgetting the other is the classic
+    i18n regression, and I18N.t() hides it: a key missing from ja.json falls
+    back to the *English* value rather than raising or showing the key, so a
+    half-translated page looks fine to a Japanese reader until they hit the
+    stray English word. Comparing the key sets catches it at commit time.
+    """
+
+    def _load(self, lang):
+        with open(os.path.join(_LOCALES_DIR, f"{lang}.json"), encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_key_sets_are_identical(self):
+        ja, en = self._load("ja"), self._load("en")
+        self.assertEqual(
+            sorted(ja), sorted(en),
+            f"ja-only: {sorted(set(ja) - set(en))} / en-only: {sorted(set(en) - set(ja))}",
+        )
+
+    def test_nested_groups_match(self):
+        """The nested blocks (common/menu/settings/errors/validation) too."""
+        ja, en = self._load("ja"), self._load("en")
+        for key in sorted(ja):
+            if isinstance(ja[key], dict):
+                self.assertIsInstance(en.get(key), dict, key)
+                self.assertEqual(sorted(ja[key]), sorted(en[key]), key)
+
+    def test_no_value_is_blank(self):
+        for lang in ("ja", "en"):
+            data = self._load(lang)
+            for key, value in data.items():
+                if isinstance(value, str):
+                    self.assertTrue(value.strip(), f"{lang}.json: '{key}' is blank")
+
+    def test_dashboard_keys_are_all_flat_strings(self):
+        """t() is flat-only, so a dashboard key nested under a group would
+        silently resolve to the raw key name on the page."""
+        for lang in ("ja", "en"):
+            data = self._load(lang)
+            for key in _dashboard_keys():
+                self.assertIsInstance(
+                    data.get(key), str, f"{lang}.json: '{key}' is not a flat string")
+
+    def test_name_placeholder_is_preserved_in_both_languages(self):
+        """The persona name moves position between languages, so the label is
+        a template. Losing {name} in one locale drops the avatar's name."""
+        for lang in ("ja", "en"):
+            self.assertIn("{name}", self._load(lang)["avatar_replies_of"])
 
 
 class NullLocaleFileTests(unittest.TestCase):

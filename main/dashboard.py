@@ -8,6 +8,7 @@ try:
     from mood import (
         get_mood_tracker as _get_mood_tracker,
         affinity_label,
+        level_label as _level_label,
         load_mood_history as _load_mood_history,
         _default_mood_history_path as _mood_history_path,
         _default_mood_path as _mood_path,
@@ -16,6 +17,7 @@ try:
 except Exception:
     _get_mood_tracker = None
     affinity_label = None
+    _level_label = None
     _load_mood_history = None
     _mood_history_path = None
     _mood_path = None
@@ -223,6 +225,25 @@ def get_lang():
     if lang in _SUPPORTED_DASHBOARD_LANGS:
         session['lang'] = lang
         return lang
+    # 明示設定（SATIN_LANG）はブラウザの申告より優先する。運用者が言語を
+    # 固定したいときの唯一の手段であり、アプリ本体（persona）とも共有される。
+    explicit = os.environ.get('SATIN_LANG')
+    if explicit:
+        explicit = explicit.lower().split('_')[0].split('-')[0]
+        if explicit in _SUPPORTED_DASHBOARD_LANGS:
+            return explicit
+    # 明示設定が無ければブラウザの Accept-Language を尊重する（RFC 9110 の
+    # プロアクティブ内容折衝）。ダッシュボードはサーバー上で動き、ブラウザは
+    # 別マシンということもあるので、サーバーの OS ロケールより利用者本人の
+    # ブラウザ設定のほうが良い推定になる。best_match は q 値順に評価し、
+    # 一致が無ければ None を返す。werkzeug 同梱なので新規依存は無い。
+    try:
+        negotiated = request.accept_languages.best_match(
+            sorted(_SUPPORTED_DASHBOARD_LANGS))
+    except Exception:  # pragma: no cover - defensive: 壊れたヘッダで 500 にしない
+        negotiated = None
+    if negotiated in _SUPPORTED_DASHBOARD_LANGS:
+        return negotiated
     # detect_language() reads SATIN_LANG/the OS locale, not the HTTP request,
     # so it isn't attacker-controlled per-request — but it also isn't
     # guaranteed to be 'en'/'ja' (e.g. a French system locale), and this
@@ -501,7 +522,7 @@ def conversation(i18n):
                 f'{_html.escape(str(ex["text"]))}</td></tr>'
             )
         content += '</table>'
-    csv_label = 'CSV' if lang.startswith('en') else 'CSV形式'
+    csv_label = i18n.t('csv_format', 'CSV')
     content += (
         f'<p>'
         f'<a href="/conversation/download?lang={_html.escape(lang)}">'
@@ -642,7 +663,7 @@ def mood(i18n):
       </div>
     </td></tr>
 <tr><td><b>{_html.escape(i18n.t("affinity_level", "Level"))}</b></td>
-    <td>{_html.escape(label)} ({_html.escape(level)})</td></tr>
+    <td>{_html.escape(label)}</td></tr>
 <tr><td><b>{_html.escape(i18n.t("interactions", "Interactions"))}</b></td>
     <td>{interactions}</td></tr>
 <tr><td><b>{_html.escape(i18n.t("last_interaction", "Last interaction"))}</b></td>
@@ -778,14 +799,18 @@ def mood_history(i18n):
                 # （手編集・バックアップ復元で壊れた履歴行への防御）。
                 affinity_val = _coerce_affinity(e.get("affinity"))
                 score = int(round(affinity_val))
-                level = _html.escape(str(e.get("level", "")))
+                # 内部キーではなく表示ラベルで描画する（日本語 UI に "friendly"
+                # のような英語識別子が混ざるのを防ぐ）。矢印の向き判定には
+                # 下の _level_rank が生キーを使い続ける。
+                level = _html.escape(_localized_level(str(e.get("level", "")), lang))
                 date = _html.escape(str(e.get("date", "")))
                 colour = f'hsl({int(score * 1.2)}, 70%, 45%)'
                 bar_width = max(1, score * 2)
                 # マイルストーン列: レベル変化があった行に矢印と前後レベルを表示
                 milestone_html = ""
                 if e.get("level_changed"):
-                    prev = _html.escape(str(e.get("prev_level", "?")))
+                    prev = _html.escape(
+                        _localized_level(str(e.get("prev_level", "?")), lang))
                     # Compare level ranks, not raw affinity, to get the correct
                     # direction. Old bug: affinity_val >= 50 showed UP even when
                     # transitioning close→friendly (a decrease in level).
@@ -809,7 +834,7 @@ def mood_history(i18n):
                     f'</tr>'
                 )
             content += '</table>'
-        csv_lbl = 'Download CSV' if is_en else 'CSVダウンロード'
+        csv_lbl = i18n.t('download_csv', 'Download CSV')
         content += (
             f'<p>'
             f'<a href="/mood?lang={_html.escape(lang)}">&larr; {_html.escape(i18n.t("back_to_mood", "Back to Mood"))}</a>'
@@ -823,6 +848,18 @@ def mood_history(i18n):
 
 # Ordered lowest→highest, mirroring mood._LEVELS.
 _LEVEL_ORDER = ["distant", "reserved", "neutral", "friendly", "close"]
+
+
+def _localized_level(level_key: str, lang: str) -> str:
+    """保存済みレベルキーを表示ラベルへ変換する（mood 未導入時はキーのまま）。
+
+    `config/mood_history.jsonl` の level / prev_level は内部キー（"friendly"
+    等の英語識別子）で保存されるため、そのまま描画すると日本語 UI に英語が
+    混ざる。ラベルの定義は mood._LEVELS を単一の真実の源とする。
+    """
+    if _level_label is None:
+        return str(level_key or "")
+    return _level_label(level_key, lang)
 
 
 def _level_rank(name: str) -> int:
@@ -917,13 +954,13 @@ def stats(i18n):
     per_hour = s["per_hour"]
     peak_hour = s["peak_hour"]
 
-    if is_en:
-        content += f'<p>User messages: <b>{total_user}</b> &nbsp; Avatar replies: <b>{total_avatar}</b></p>'
-    else:
-        content += f'<p>ユーザーメッセージ: <b>{total_user}</b> &nbsp; アバター返答: <b>{total_avatar}</b></p>'
+    user_lbl = _html.escape(i18n.t('user_messages', 'User messages'))
+    avatar_lbl = _html.escape(i18n.t('avatar_replies', 'Avatar replies'))
+    content += (f'<p>{user_lbl}: <b>{total_user}</b> &nbsp; '
+                f'{avatar_lbl}: <b>{total_avatar}</b></p>')
 
     if per_day:
-        ph_label = 'Messages per day' if is_en else '日別メッセージ数'
+        ph_label = i18n.t('messages_per_day', 'Messages per day')
         content += f'<h4>{_html.escape(ph_label)}</h4>'
         content += '<table border=0 cellpadding=3 cellspacing=2>'
         max_day = max(per_day.values()) if per_day else 1
@@ -938,26 +975,28 @@ def stats(i18n):
         content += '</table>'
 
     if peak_hour is not None:
-        if is_en:
-            content += f'<p>Peak activity: <b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>'
-        else:
-            content += f'<p>ピーク時間帯: <b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>'
-        hr_label = 'Messages per hour' if is_en else '時間別メッセージ数'
+        peak_lbl = _html.escape(i18n.t('peak_activity', 'Peak activity'))
+        content += (f'<p>{peak_lbl}: '
+                    f'<b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>')
+        hr_label = i18n.t('messages_per_hour', 'Messages per hour')
         content += f'<h4>{_html.escape(hr_label)}</h4>'
         content += '<table border=0 cellpadding=2 cellspacing=2>'
         max_hr = max(per_hour.values()) if any(per_hour.values()) else 1
+        # 時刻軸の単位は英語固定の "h" だった（日本語 UI でも "00h"）。
+        hour_suffix = _html.escape(i18n.t('hour_suffix', 'h'))
         for h in range(24):
             cnt = per_hour.get(h, 0)
             bar = max(0, int(cnt / max_hr * 120)) if max_hr else 0
             content += (
-                f'<tr><td style="text-align:right;padding-right:4px">{h:02d}h</td>'
+                f'<tr><td style="text-align:right;padding-right:4px">'
+                f'{h:02d}{hour_suffix}</td>'
                 f'<td style="text-align:right;padding-right:4px">{cnt}</td>'
                 f'<td><div style="background:#5b9bd5;width:{bar}px;height:8px;display:inline-block"></div></td></tr>'
             )
         content += '</table>'
 
     if not per_day:
-        no_data = 'No conversation data yet.' if is_en else 'まだ会話データがありません。'
+        no_data = i18n.t('no_conversation_data', 'No conversation data yet.')
         content += f'<p>{_html.escape(no_data)}</p>'
 
     return _render_page(content, i18n, lang, switcher)
@@ -976,7 +1015,7 @@ def summary(i18n):
     content = f'<h3>{title}</h3>'
 
     if _daily_summary is None:
-        msg = 'Summary module unavailable.' if is_en else 'サマリー機能が利用できません。'
+        msg = i18n.t('summary_unavailable', 'Summary module unavailable.')
         content += f'<p>{_html.escape(msg)}</p>'
     else:
         s = _daily_summary(
@@ -999,18 +1038,25 @@ def summary(i18n):
                 f'{_html.escape(greeting)}</blockquote>'
             )
 
-        date_lbl = 'Date' if is_en else '日付'
-        user_lbl = 'Your messages' if is_en else 'あなたのメッセージ'
+        date_lbl = i18n.t('date', 'Date')
+        user_lbl = i18n.t('your_messages', 'Your messages')
         _aname = _get_persona_name()
-        avatar_lbl = f'{_aname} replies' if is_en else f'{_aname}の返答'
-        total_lbl = 'Total interactions' if is_en else '合計やりとり'
-        peak_lbl = 'Peak hour' if is_en else 'ピーク時間帯'
-        affinity_lbl = 'Affinity' if is_en else '好感度'
+        # 語順が言語で入れ替わる（"Mimi replies" / "Mimiの返答"）ので、位置を
+        # 翻訳側の {name} プレースホルダに委ねる。翻訳値に波括弧が混ざっても
+        # 例外にならないよう .format ではなく replace を使う。
+        avatar_lbl = i18n.t('avatar_replies_of', '{name} replies').replace(
+            '{name}', _aname)
+        total_lbl = i18n.t('total_interactions', 'Total interactions')
+        peak_lbl = i18n.t('peak_hour', 'Peak hour')
+        affinity_lbl = i18n.t('affinity', 'Affinity')
 
         peak = s['peak_hour']
         peak_str = f'{peak:02d}:00–{peak:02d}:59' if peak is not None else '—'
+        # daily_summary の affinity_level は mood_history の生キー
+        # （"friendly" 等）なので、表示前にラベル化する。
         affinity_str = (
-            f'{s["affinity"]:.1f} ({_html.escape(str(s["affinity_level"]))})'
+            f'{s["affinity"]:.1f} '
+            f'({_html.escape(_localized_level(str(s["affinity_level"]), lang))})'
             if s['affinity'] is not None else '—'
         )
         rows = [

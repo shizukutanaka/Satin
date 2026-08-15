@@ -98,5 +98,20 @@
     "sync_description": "Create a local backup of config files and conversation log.",
     "stats": "Stats",
     "summary": "Summary",
-    "milestone": "Milestone"
+    "milestone": "Milestone",
+    "csv_format": "CSV",
+    "download_csv": "Download CSV",
+    "user_messages": "User messages",
+    "avatar_replies": "Avatar replies",
+    "messages_per_day": "Messages per day",
+    "peak_activity": "Peak activity",
+    "messages_per_hour": "Messages per hour",
+    "hour_suffix": "h",
+    "no_conversation_data": "No conversation data yet.",
+    "summary_unavailable": "Summary module unavailable.",
+    "your_messages": "Your messages",
+    "avatar_replies_of": "{name} replies",
+    "total_interactions": "Total interactions",
+    "peak_hour": "Peak hour",
+    "affinity": "Affinity"
 }

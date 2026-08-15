@@ -372,6 +372,26 @@ def affinity_label(affinity: float, lang: str = "ja") -> str:
     return label
 
 
+def level_label(level_key: str, lang: str = "ja") -> str:
+    """レベルキー（"friendly" 等）の表示ラベルを返す。
+
+    `affinity_label` が好感度の**数値**からラベルを引くのに対し、こちらは
+    保存済みのレベル**キー**から引く。`config/mood_history.jsonl` の
+    ``level`` / ``prev_level`` は内部キー（英語識別子）で保存されるため、
+    ダッシュボードがそれをそのまま描画すると日本語 UI に "friendly" と
+    出てしまう。ラベルの単一の真実の源は `_LEVELS` のまま保つ。
+
+    未知のキー（手編集・将来のレベル追加・空文字）はそのまま返す。表示上の
+    都合で履歴の内容を握りつぶさないため。
+    """
+    idx = 1 if str(lang).lower().startswith("en") else 0
+    key = str(level_key or "")
+    for _lower, level_key_, labels in _LEVELS:
+        if level_key_ == key:
+            return labels[idx]
+    return key
+
+
 class MoodTracker:
     """好感度を管理し、発話から増減・永続化する。"""
 

@@ -7,7 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Dashboard showed English internals on the Japanese pages, and its last two
+  pages were untranslatable** (work order W-06). The verification pass found the
+  dashboard was already mostly localized — 37 keys through `i18n.t()`, both
+  locales complete — so the feared "English user gets a Japanese dashboard" was
+  largely unfounded. Three real problems were not:
+  - `/stats` and `/summary` (plus two CSV link labels) built their text from
+    inline `'English' if is_en else '日本語'` ternaries — 16 pairs living
+    outside the locale files, so a third language was impossible and
+    `f'{name} replies'` vs `f'{name}の返答'` hardcoded per-language word order.
+    All 16 now resolve through 15 new keys in `main/i18n/locales/{ja,en}.json`,
+    with the persona name carried by a `{name}` placeholder so each language
+    positions it itself.
+  - The **raw internal affinity level key** (`friendly`, `neutral`) was rendered
+    straight from `config/mood_history.jsonl` into four places, printing English
+    identifiers in a Japanese UI; the hour axis on `/stats` likewise read `00h`
+    in both languages. New `mood.level_label(level_key, lang)` resolves a stored
+    key to its display label, keeping `_LEVELS` the single source of truth
+    alongside the existing `affinity_label`.
+  - The W-06 work order itself pointed at the wrong directory: `I18N` reads
+    `main/i18n/locales/`, while the root `locales/` it named is unreferenced by
+    any code, so adding keys there would have had no runtime effect at all.
+- **Locale drift had no guard.** `tests/test_i18n.py` checked a hand-written key
+  list that had gone stale (32 entries against 37 in use), and nothing compared
+  the two locales. The key list is now derived from `dashboard.py`'s source, so
+  adding an `i18n.t()` call automatically extends the contract, and new tests
+  assert ja/en key-set and nested-group parity — a key missing from `ja.json`
+  falls back to the *English* value rather than failing loudly, so drift was
+  invisible until a reader hit the stray English word.
+
 ### Added
+- **Accept-Language content negotiation for the dashboard** (RFC 9110 proactive
+  negotiation): with no explicit choice, the display language now follows the
+  browser's `Accept-Language` (q-values respected) before falling back to the
+  server's OS locale. The dashboard runs on a server whose locale may have
+  nothing to do with the person holding the browser. Priority is
+  `?lang` → session → `SATIN_LANG` → `Accept-Language` → OS locale → `en`; an
+  explicit user or operator choice always wins, and the result stays clamped to
+  the `{en, ja}` allowlist that guards against reflected XSS and translation
+  cache growth.
 - **Conversation-log retention window** (`log_retention.py`, research item A11):
   Satin's privacy story was complete except along the time axis. The log is
   rotated at 5 MB × 5 generations, but that is a *size* cap — disk hygiene, not
