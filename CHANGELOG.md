@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Static type checking** (`mypy.ini`, work order W-07). `python -m mypy` with
+  no arguments now checks **52 of the 94 modules in `main/`**; the 42 that
+  don't pass yet are listed as exemptions. The list is deliberately inverted
+  from the obvious design: everything is checked by default and the *exemptions*
+  are enumerated, so the list can only shrink and a newly added module is never
+  silently skipped. Wired into CI alongside a ruff job, with `mypy>=1.8` and
+  `ruff>=0.4` added to `setup/requirements.txt`. `tests/test_mypy_config.py`
+  guards the config itself without invoking mypy — stale exemptions for deleted
+  modules, duplicates, core dialogue/memory/safety modules leaking into the
+  exemption list, and CI passing an explicit file list that would bypass the
+  config.
 - **The avatar is drawn as a shaded solid, not a wireframe** (work order W-08).
   `paintGL` ran the raw vertex list through a single `GL_LINE_STRIP`, which
   connects vertices in file order and produces a scribble rather than a figure —
@@ -24,51 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client-side as the spec requires when `NORMAL` is absent. Shading is applied
   as a colour multiplier rather than via `GL_LIGHTING`, so no light/material GL
   state is introduced for the other widgets to inherit.
-
-### Fixed
-- **Interleaved glTF models were read wrong** (`gltf_utils`): the vertex loader
-  ignored `bufferView.byteStride`, so on any model that packs POSITION and
-  NORMAL into one buffer view it read normal components as coordinates from the
-  second vertex onward — the avatar rendered as a garbled shape. The spec
-  *requires* `byteStride` whenever two accessors share a buffer view, so this is
-  ordinary exporter output, not an exotic case. Verified with a real
-  round-tripped `.glb`.
-- **The demo viewer's index reader was broken three ways**
-  (`autonomous_gltf_avatar`): it read `buffer.data` directly, which is empty for
-  a real GLB (the binary lives in `gltf.binary_blob()`), so faces came out empty
-  every time; it hardcoded `uint16` regardless of `componentType`, corrupting
-  UNSIGNED_BYTE/UNSIGNED_INT models; and it ignored both bufferView and accessor
-  `byteOffset`. It now shares the `gltf_utils` implementation.
-- **Dashboard showed English internals on the Japanese pages, and its last two
-  pages were untranslatable** (work order W-06). The verification pass found the
-  dashboard was already mostly localized — 37 keys through `i18n.t()`, both
-  locales complete — so the feared "English user gets a Japanese dashboard" was
-  largely unfounded. Three real problems were not:
-  - `/stats` and `/summary` (plus two CSV link labels) built their text from
-    inline `'English' if is_en else '日本語'` ternaries — 16 pairs living
-    outside the locale files, so a third language was impossible and
-    `f'{name} replies'` vs `f'{name}の返答'` hardcoded per-language word order.
-    All 16 now resolve through 15 new keys in `main/i18n/locales/{ja,en}.json`,
-    with the persona name carried by a `{name}` placeholder so each language
-    positions it itself.
-  - The **raw internal affinity level key** (`friendly`, `neutral`) was rendered
-    straight from `config/mood_history.jsonl` into four places, printing English
-    identifiers in a Japanese UI; the hour axis on `/stats` likewise read `00h`
-    in both languages. New `mood.level_label(level_key, lang)` resolves a stored
-    key to its display label, keeping `_LEVELS` the single source of truth
-    alongside the existing `affinity_label`.
-  - The W-06 work order itself pointed at the wrong directory: `I18N` reads
-    `main/i18n/locales/`, while the root `locales/` it named is unreferenced by
-    any code, so adding keys there would have had no runtime effect at all.
-- **Locale drift had no guard.** `tests/test_i18n.py` checked a hand-written key
-  list that had gone stale (32 entries against 37 in use), and nothing compared
-  the two locales. The key list is now derived from `dashboard.py`'s source, so
-  adding an `i18n.t()` call automatically extends the contract, and new tests
-  assert ja/en key-set and nested-group parity — a key missing from `ja.json`
-  falls back to the *English* value rather than failing loudly, so drift was
-  invisible until a reader hit the stray English word.
-
-### Added
 - **Accept-Language content negotiation for the dashboard** (RFC 9110 proactive
   negotiation): with no explicit choice, the display language now follows the
   browser's `Accept-Language` (q-values respected) before falling back to the
@@ -151,6 +117,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and corrupting — `mood.json`, the conversation log, and the profile. A stale
   lock from a crashed process is auto-reclaimed. Headless modes
   (`--chat`/`--dashboard`/`--manage`/`--validate`) are unaffected.
+- **`/forget-all` — one-shot complete data erasure** (privacy): erases the
+  profile, the entire conversation history (and archives), affinity, and the
+  avatar selection in a single confirmed command. Previously a full erase
+  required `/forget-me` + `/clear-log` + `/reset-mood` separately, and the
+  avatar history was never clearable — so "delete everything about me" was not
+  actually achievable. Two-step confirmation like `/clear-log`.
+- **Avatar model rendering in the main GUI**: the model chosen via
+  `--avatar-loader` is now actually displayed by the main 3D companion window
+  (wireframe of the mesh vertices). New `avatar_model_store.py` persists the
+  selection (cwd-independent, atomic) and the GUI resolves/loads it at startup;
+  new `/avatar` slash command shows or refreshes the current model.
 
 ### Changed
 - **Shipped farewell lines no longer try to hold the user back.** The
@@ -163,6 +140,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **Fallback stubs had drifted from the functions they stand in for**, found by
+  the new type gate: `user_wellbeing` and `usage_guardrails` each define a
+  no-op `_find_archives` for when `conversation_log` can't be imported, and both
+  named the parameter `path` while the real function calls it `logfile`. A
+  keyword call would therefore have raised `TypeError` **only when the fallback
+  was active** — invisible on the normal path. Also annotated
+  `PluginManager.modules` (its sibling `plugins` already was) and marked
+  `ctypes.windll` as the Windows-only attribute it is.
+- **Interleaved glTF models were read wrong** (`gltf_utils`): the vertex loader
+  ignored `bufferView.byteStride`, so on any model that packs POSITION and
+  NORMAL into one buffer view it read normal components as coordinates from the
+  second vertex onward — the avatar rendered as a garbled shape. The spec
+  *requires* `byteStride` whenever two accessors share a buffer view, so this is
+  ordinary exporter output, not an exotic case. Verified with a real
+  round-tripped `.glb`.
+- **The demo viewer's index reader was broken three ways**
+  (`autonomous_gltf_avatar`): it read `buffer.data` directly, which is empty for
+  a real GLB (the binary lives in `gltf.binary_blob()`), so faces came out empty
+  every time; it hardcoded `uint16` regardless of `componentType`, corrupting
+  UNSIGNED_BYTE/UNSIGNED_INT models; and it ignored both bufferView and accessor
+  `byteOffset`. It now shares the `gltf_utils` implementation.
+- **Dashboard showed English internals on the Japanese pages, and its last two
+  pages were untranslatable** (work order W-06). The verification pass found the
+  dashboard was already mostly localized — 37 keys through `i18n.t()`, both
+  locales complete — so the feared "English user gets a Japanese dashboard" was
+  largely unfounded. Three real problems were not:
+  - `/stats` and `/summary` (plus two CSV link labels) built their text from
+    inline `'English' if is_en else '日本語'` ternaries — 16 pairs living
+    outside the locale files, so a third language was impossible and
+    `f'{name} replies'` vs `f'{name}の返答'` hardcoded per-language word order.
+    All 16 now resolve through 15 new keys in `main/i18n/locales/{ja,en}.json`,
+    with the persona name carried by a `{name}` placeholder so each language
+    positions it itself.
+  - The **raw internal affinity level key** (`friendly`, `neutral`) was rendered
+    straight from `config/mood_history.jsonl` into four places, printing English
+    identifiers in a Japanese UI; the hour axis on `/stats` likewise read `00h`
+    in both languages. New `mood.level_label(level_key, lang)` resolves a stored
+    key to its display label, keeping `_LEVELS` the single source of truth
+    alongside the existing `affinity_label`.
+  - The W-06 work order itself pointed at the wrong directory: `I18N` reads
+    `main/i18n/locales/`, while the root `locales/` it named is unreferenced by
+    any code, so adding keys there would have had no runtime effect at all.
+- **Locale drift had no guard.** `tests/test_i18n.py` checked a hand-written key
+  list that had gone stale (32 entries against 37 in use), and nothing compared
+  the two locales. The key list is now derived from `dashboard.py`'s source, so
+  adding an `i18n.t()` call automatically extends the contract, and new tests
+  assert ja/en key-set and nested-group parity — a key missing from `ja.json`
+  falls back to the *English* value rather than failing loudly, so drift was
+  invisible until a reader hit the stray English word.
 - **Opening up to Satin used to make it like you less** (`sentiment_target.py`,
   research item A10): affinity and wellbeing both read the same document-level
   polarity, so self-criticism and venting were scored as if aimed at the
@@ -194,7 +220,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   models degrade to a no-op stub that accepts anything, so the assertions
   failed as if the product were broken. The module now skips cleanly in either
   case.
-
 - **GUI shutdown was incomplete** (`closeEvent`): the TTS thread is now stopped
   and joined, and both refresh timers are stopped, so a timer can no longer
   fire against a destroyed widget on exit; a partially-constructed window also
@@ -211,21 +236,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suffix were hardcoded Japanese regardless of language, so an English user
   saw Japanese controls despite the advertised multi-language support. They
   now follow `persona.lang` like the rest of the GUI.
-
-### Added
-- **`/forget-all` — one-shot complete data erasure** (privacy): erases the
-  profile, the entire conversation history (and archives), affinity, and the
-  avatar selection in a single confirmed command. Previously a full erase
-  required `/forget-me` + `/clear-log` + `/reset-mood` separately, and the
-  avatar history was never clearable — so "delete everything about me" was not
-  actually achievable. Two-step confirmation like `/clear-log`.
-- **Avatar model rendering in the main GUI**: the model chosen via
-  `--avatar-loader` is now actually displayed by the main 3D companion window
-  (wireframe of the mesh vertices). New `avatar_model_store.py` persists the
-  selection (cwd-independent, atomic) and the GUI resolves/loads it at startup;
-  new `/avatar` slash command shows or refreshes the current model.
-
-### Fixed
 - **glTF loader silently rendered nothing for real files**: with pygltflib
   1.16 the GLB binary lives in `gltf.binary_blob()`, not `Buffer.get_data()`/
   `.data`, so `load_first_mesh_vertices` returned nothing for real `.glb`

@@ -273,6 +273,8 @@ def load_first_mesh_faces(gltf: Any, np: Any) -> Optional[Any]:
             if getattr(accessor, "bufferView", None) is None:
                 return None
             component_type = getattr(accessor, "componentType", None)
+            if component_type is None:
+                return None
             spec = _INDEX_COMPONENT_TYPES.get(component_type)
             if spec is None:
                 return None

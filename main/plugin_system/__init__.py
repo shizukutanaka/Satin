@@ -4,6 +4,7 @@ Lightweight plugin system for Satin
 import importlib
 import inspect
 from pathlib import Path
+from types import ModuleType
 from typing import Dict, List, Type, Optional, Any
 import sys
 
@@ -29,7 +30,9 @@ class PluginManager:
     def __init__(self, plugin_dirs: List[str]):
         self.plugin_dirs = [Path(d) for d in plugin_dirs]
         self.plugins: Dict[str, BasePlugin] = {}
-        self.modules = {}
+        # 読み込み済みプラグインのモジュールオブジェクト（プラグイン名 → module）。
+        # 隣の self.plugins は注釈済みなのに、ここだけ抜けていた。
+        self.modules: Dict[str, ModuleType] = {}
     
     def discover_plugins(self) -> List[str]:
         """Find all Python files in plugin directories"""

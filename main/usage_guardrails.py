@@ -40,7 +40,9 @@ try:
 except Exception:  # pragma: no cover - defensive fallback
     _USER_EVENT_TYPES = frozenset({"user_comment", "user"})
     _DEFAULT_LOGFILE = "avatar_event_log.jsonl"
-    def _find_archives(path: str) -> List[str]:
+    # 引数名は本物（conversation_log._find_archives）と一致させる。ずれていると
+    # キーワード呼び出しがフォールバック時だけ TypeError になる。
+    def _find_archives(logfile: str) -> List[str]:
         return []
 
 

@@ -13,6 +13,7 @@ emotional dependence.
 Stdlib-only; no GUI/network. Run: python -m unittest tests.test_usage_guardrails -v
 """
 import gzip
+import importlib
 import json
 import os
 import sys
@@ -216,6 +217,65 @@ class NudgeMessageTests(_LogBase):
         self._write(entries)
         msg = ug.usage_reflection(event_log_path=self._log, lang="ja", now=self._now)
         self.assertTrue(msg)
+
+
+class FallbackStubSignatureTests(unittest.TestCase):
+    """The optional-import fallbacks must match the real functions they stand in for.
+
+    usage_guardrails and user_wellbeing both re-implement
+    conversation_log._find_archives for the case where that import fails. Both
+    stubs had named the parameter `path` while the real function calls it
+    `logfile`, so a keyword call would have raised TypeError only when the
+    fallback was active — the hardest kind of bug to notice, since the normal
+    path works fine. mypy found it when the type gate went in (W-07); this test
+    keeps it caught even for anyone who doesn't run mypy locally.
+
+    Checked by name rather than by calling, so it holds regardless of whether
+    conversation_log is importable in the current environment.
+    """
+
+    def _params(self, func):
+        import inspect
+        return list(inspect.signature(func).parameters)
+
+    def _reload_with_fallback(self, module_name):
+        """Reload module_name with conversation_log unimportable.
+
+        The stub lives in an `except ImportError` branch, so in a healthy
+        environment it is never bound — `module._find_archives` is simply the
+        real function and any signature check passes vacuously. Forcing the
+        import to fail is the only way to actually exercise the stub.
+        """
+        from unittest import mock
+        module = importlib.import_module(module_name)
+        with mock.patch.dict(sys.modules, {"conversation_log": None}):
+            importlib.reload(module)
+            stub = module._find_archives
+            params = self._params(stub)
+        importlib.reload(module)  # restore the real import for other tests
+        return stub, params
+
+    def test_stub_signature_matches_the_real_function(self):
+        import conversation_log
+        real = self._params(conversation_log._find_archives)
+        self.assertIn("logfile", real)  # the name callers would use
+        for module_name in ("usage_guardrails", "user_wellbeing"):
+            _stub, params = self._reload_with_fallback(module_name)
+            self.assertEqual(
+                params, real,
+                f"{module_name}'s fallback _find_archives diverged from "
+                f"conversation_log's — a keyword call would break only when "
+                f"the fallback is active",
+            )
+
+    def test_stub_is_callable_with_the_real_keyword(self):
+        for module_name in ("usage_guardrails", "user_wellbeing"):
+            stub, _params = self._reload_with_fallback(module_name)
+            self.assertEqual(stub(logfile="anything.jsonl"), [], module_name)
+
+    def test_modules_still_work_after_the_reloads(self):
+        """The reload dance must leave the suite's modules usable."""
+        self.assertEqual(ug.usage_nudge({"concern": "none"}), "")
 
 
 if __name__ == "__main__":

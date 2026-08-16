@@ -68,6 +68,16 @@ jobs:
         run: |
           python -m py_compile $(find main -name "*.py" | sort)
 
+      - name: Lint (ruff)
+        run: |
+          python -m ruff check main/ tests/ satin_launcher.py
+
+      # 対象は mypy.ini が決める（未クリーンなモジュールはそこで免除リスト入り）。
+      # 引数を渡さないことで、リストの更新漏れによる検査漏れが起きないようにする。
+      - name: Type check (mypy)
+        run: |
+          python -m mypy
+
       - name: Run tests
         run: |
           python -m pytest tests/ -q --tb=short

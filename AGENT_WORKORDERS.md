@@ -66,7 +66,7 @@
 | `__version__` 不在・`--version` フラグ無し | 中 | W-03 |
 | 孤児モジュール（`sync_to_cloud.py` 等）の整理 🔸**ロケール 16 ファイルは削除済** | 中 | W-04 |
 | ~~dashboard の多言語対応状況が未検証~~ ✅**検証・実装済** | 中 | W-06 |
-| 型チェック（mypy）未導入 | 中 | W-07 |
+| ~~型チェック（mypy）未導入~~ ✅**導入済（52/94 モジュールを検査）** | 中 | W-07 |
 | ~~3D 描画がワイヤーフレーム止まり（面・法線・シェーディング無し）~~ ✅**実装済** | 低 | W-08 |
 | CI 未有効化・lock ファイル無し（オーナー/方針事項） | — | §4 |
 | Tier B/C（ローカル ML / TTS / LLM）は要方針判断 | — | W-90 |
@@ -241,19 +241,37 @@
 - **触らなかったもの**: セキュリティヘッダ（`no-store`）・CSRF トークン処理・
   `_render_page` の SSTI 対策・`?lang` の {en,ja} クランプ。
 
-### W-07: mypy の段階導入 — [難易度 M / 優先度 中]
-- **背景**: 型チェッカーが設定・依存・CI のいずれにも無い。ruff（F821 等）で
-  実行時 NameError 級を後追い検出してきた経緯があり、静的型検査層が欠けている。
-- **対象**: 新規 `mypy.ini`（または `pyproject` は無いので独立 ini）、`setup/requirements.txt`
-  の開発依存、`setup/github-actions-ci.yml` に lint ジョブ追加。
-- **実装前チェック**: `python -m mypy --version` で不在確認。中核モジュール
-  （`mood.py`, `conversation_log.py`, `user_wellbeing.py`, `persona.py`,
-  `avatar_model_store.py`）に対して緩い設定（`ignore_missing_imports=True`）で試走。
-- **実装方針**: まず上記 5 モジュールだけを対象に緩い mypy を通す（既存の型注釈が
-  多いので通る見込み）。CI に非ブロッキングで追加 → 段階的に対象拡大。
-- **テスト**: CI 設定なので pytest 対象外。ローカルで `mypy <対象>` がエラー 0。
-- **完了条件**: 中核 5 モジュールが mypy clean、requirements/CI に反映。
-- **触るな**: 大規模な型注釈リファクタ（段階導入が原則）。
+### W-07: mypy の段階導入 — ✅**完了**
+- **実装（済）**: `mypy.ini` を新設。カード当初案の「検査対象を列挙する」方式ではなく
+  **逆向き**にした: `files = main` で既定を全件検査とし、まだ通らないモジュールだけを
+  `ignore_errors` で免除列挙する。列挙する側を「これから直すもの」にしておくと
+  リストは縮む方向にしか動かず、**新規モジュールは黙って検査対象外にならない**。
+  （検査側を列挙する設計の失敗例が同じリポジトリにある — `tests/test_i18n.py` の
+  `_DASHBOARD_KEYS` は 32 件のハードコードのまま実使用 37 件に取り残されていた。）
+- **導入時点の実績**: main/ 94 モジュール中 **52 がクリーン**、42 を免除。
+  免除の大半は GUI/3D ウィジェット（`QOpenGLWidget if X is not None else object`
+  の条件付き基底クラスを mypy が解けない）と Web/インフラ系。
+- **見つかった実バグ（同コミットで修正）**: `user_wellbeing` と `usage_guardrails` の
+  optional-import フォールバック `_find_archives` が、本物（`conversation_log`）の
+  引数名 `logfile` に対し `path` と名乗っていた。**キーワード呼び出しが
+  フォールバック時だけ TypeError になる**という、通常経路では絶対に表に出ない不整合。
+  他に `plugin_system.PluginManager.modules` の注釈欠落（隣の `plugins` は注釈済み）、
+  `single_instance` の `ctypes.windll`（Windows 専用属性・type: ignore で明示）。
+- **CI（済）**: `setup/github-actions-ci.yml` に ruff と mypy のジョブを追加。
+  mypy は**引数なし**で起動する（対象は mypy.ini が決めるので、コマンドラインに
+  ファイルを並べて検査漏れが起きる余地を作らない）。`setup/requirements.txt` に
+  `mypy>=1.8` / `ruff>=0.4` を追加。
+- **テスト（済）**: `tests/test_mypy_config.py`（12 件）は mypy を起動せず設定だけを
+  守る — 存在しないモジュールへの陳腐化した免除、免除の重複、中核モジュール
+  （対話・記憶・安全系）が免除リストへ紛れ込むこと、免除が過半数を超えること、
+  CI がファイル名を並べて起動していないこと。加えて
+  `tests/test_usage_guardrails.py` にフォールバック署名の実行時テスト
+  （`conversation_log` を import 不能にしてリロードし、スタブを実際に検証）。
+- **次に進める人へ**: 免除リストから 1 行消して `python -m mypy` を通せば、それが
+  そのまま前進。1 エラーだけの小さいモジュール（`daily_summary`・`memory_safety`・
+  `cache_manager`・`task_scheduler`・`backup_scheduler`・`i18n`・`avatar_loader` …）
+  が着手しやすい。`advanced_error_handling.py:257` は `-> str` と宣言しつつ
+  `return None` している実バグ。
 
 ### W-08: 3D 描画の強化（面 + 単色シェーディング） — ✅**完了**
 - **実装（済）**: `gltf_utils` に `load_first_mesh_faces` / `load_first_mesh_normals`

@@ -32,7 +32,10 @@ def _pid_alive(pid: int) -> bool:
             import ctypes
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
             STILL_ACTIVE = 259
-            kernel32 = ctypes.windll.kernel32
+            # windll は Windows ビルドの ctypes にしか存在しないので、
+            # 他プラットフォームで型検査すると attr-defined になる。実行は
+            # os.name == "nt" でガード済み。
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
             handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
             if not handle:
                 return False

@@ -50,3 +50,5 @@ pytest>=7.4
 pytest-asyncio>=0.21
 hypothesis>=6.0        # tests/test_property_based_schemas.py
 pydantic>=2.0          # schema_validators.py のスキーマ検証モデル
+ruff>=0.4              # lint（CI で実行）
+mypy>=1.8              # 静的型検査。対象は mypy.ini（引数なしで `python -m mypy`）
