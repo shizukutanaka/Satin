@@ -5,7 +5,7 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 
 try:
@@ -18,7 +18,7 @@ try:
     # 設定読み込み自体は壊れないよう、失敗時は無効化する。
     from config.env import apply_env_overrides, ENV_SELECTOR_VAR
 except Exception:  # pragma: no cover - defensive
-    apply_env_overrides = None
+    apply_env_overrides = None  # type: ignore[assignment]
     ENV_SELECTOR_VAR = 'SATIN_ENV'
 
 # ロガーの設定
@@ -92,7 +92,7 @@ def _environment_layer_path(base_path: Path, env_name: str) -> Path:
     """ベース config.json に対する環境レイヤー config.<env>.json のパスを返す。"""
     return base_path.with_name(f"{base_path.stem}.{env_name}{base_path.suffix}")
 
-def load_config(file_path: Union[str, Path] = None) -> Dict[str, Any]:
+def load_config(file_path: Optional[Union[str, Path]] = None) -> Dict[str, Any]:
     """
     設定ファイルを読み込む（レイヤード・マルチ環境対応）。
 
@@ -125,7 +125,8 @@ def load_config(file_path: Union[str, Path] = None) -> Dict[str, Any]:
 
     return config
 
-def save_config(config: Dict[str, Any], file_path: Union[str, Path] = None) -> bool:
+def save_config(config: Dict[str, Any],
+                file_path: Optional[Union[str, Path]] = None) -> bool:
     """
     設定をファイルに保存する
     
@@ -184,7 +185,8 @@ def save_config(config: Dict[str, Any], file_path: Union[str, Path] = None) -> b
             except OSError:
                 pass
 
-def validate_config(config: Dict[str, Any], schema: Dict[str, Any] = None) -> Dict[str, List[str]]:
+def validate_config(config: Dict[str, Any],
+                    schema: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
     """
     設定値のバリデーションを行う
     
@@ -195,7 +197,7 @@ def validate_config(config: Dict[str, Any], schema: Dict[str, Any] = None) -> Di
     Returns:
         Dict[str, List[str]]: エラーメッセージの辞書
     """
-    errors = {}
+    errors: Dict[str, List[str]] = {}
     
     # デフォルトのバリデーションルール
     default_schema = {

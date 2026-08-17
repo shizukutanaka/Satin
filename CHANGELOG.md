@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Static type checking** (`mypy.ini`, work order W-07). `python -m mypy` with
-  no arguments now checks **70 of the 94 modules in `main/`** (52 at
+  no arguments now checks **73 of the 94 modules in `main/`** (52 at
   introduction); the rest are listed as exemptions. The list is deliberately inverted
   from the obvious design: everything is checked by default and the *exemptions*
   are enumerated, so the list can only shrink and a newly added module is never
@@ -141,7 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Four latent crashes and a wrong container annotation**, found by shrinking
-  the type-check exemption list from 42 modules to 24 (70 of 94 now checked):
+  the type-check exemption list from 42 modules to 21 (73 of 94 now checked):
   - `backup_scheduler._apply_retention` compared `len(backups) <= self.max_backups`
     where `max_backups` is `Optional[int]`. Its one caller checks for None
     first, so the `TypeError` never fired — but the method is a normal method
@@ -162,8 +162,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     place instead of that idiom being repeated at three call sites.
   - `cache_manager`, `memory_safety`, `advanced_rate_limiting`,
     `task_scheduler`, `i18n`, `manage_satin`, `daily_summary`, `avatar_loader`,
-    `async_integrator`, `schema_validators` and two Qt widgets needed
-    annotations or explicit ignores, not behaviour changes.
+    `async_integrator`, `schema_validators`, `utils_config`, `persona_cli`,
+    `async_optimization` and two Qt widgets needed annotations or explicit
+    ignores, not behaviour changes. `utils_config` and `async_optimization`
+    were mostly PEP 484 implicit-Optional (`= None` defaults declared under
+    non-Optional types), which mypy rejects by default since 0.990.
 - **Fallback stubs had drifted from the functions they stand in for**, found by
   the new type gate: `user_wellbeing` and `usage_guardrails` each define a
   no-op `_find_archives` for when `conversation_log` can't be imported, and both

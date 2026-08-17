@@ -22,7 +22,7 @@ import functools
 import logging
 import time
 from typing import Any, Callable, List, Optional, TypeVar, Coroutine
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import Executor, ThreadPoolExecutor, ProcessPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 import sys
@@ -125,8 +125,8 @@ class AsyncTaskResult:
     result: Any = None
     exception: Optional[Exception] = None
     duration_ms: float = 0.0
-    start_time: datetime = None
-    end_time: datetime = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
 
     @property
     def success(self) -> bool:
@@ -260,6 +260,9 @@ class ConcurrentExecutor:
         self._auto_thread: Optional[ThreadPoolExecutor] = None
         self._auto_process: Optional[ProcessPoolExecutor] = None
 
+        # 分岐ごとに別のエグゼキュータ型（None も可）を入れるので、最初の
+        # 代入で ThreadPoolExecutor に固定されないよう先に宣言する。
+        self.executor: Optional[Executor]
         if executor_type == "thread":
             self.executor = ThreadPoolExecutor(max_workers=max_workers)
         elif executor_type == "process":
@@ -286,6 +289,8 @@ class ConcurrentExecutor:
         """
         loop = asyncio.get_running_loop()
 
+        # 分岐ごとに Process/Thread/自前指定と別型が入るので基底で宣言する。
+        executor: Optional[Executor]
         if self.executor is None:
             # Auto-select a reused executor based on function characteristics.
             if self._is_cpu_bound(func):

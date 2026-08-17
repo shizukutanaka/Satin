@@ -66,7 +66,7 @@
 | `__version__` 不在・`--version` フラグ無し | 中 | W-03 |
 | 孤児モジュール（`sync_to_cloud.py` 等）の整理 🔸**ロケール 16 ファイルは削除済** | 中 | W-04 |
 | ~~dashboard の多言語対応状況が未検証~~ ✅**検証・実装済** | 中 | W-06 |
-| ~~型チェック（mypy）未導入~~ ✅**導入済（70/94 モジュールを検査・免除リストは削減中）** | 中 | W-07 |
+| ~~型チェック（mypy）未導入~~ ✅**導入済（73/94 モジュールを検査・免除リストは削減中）** | 中 | W-07 |
 | ~~3D 描画がワイヤーフレーム止まり（面・法線・シェーディング無し）~~ ✅**実装済** | 低 | W-08 |
 | CI 未有効化・lock ファイル無し（オーナー/方針事項） | — | §4 |
 | Tier B/C（ローカル ML / TTS / LLM）は要方針判断 | — | W-90 |
@@ -267,7 +267,7 @@
   CI がファイル名を並べて起動していないこと。加えて
   `tests/test_usage_guardrails.py` にフォールバック署名の実行時テスト
   （`conversation_log` を import 不能にしてリロードし、スタブを実際に検証）。
-- **免除リストの削減（継続中）**: 導入時 52/42 → **現在 70 モジュール検査 / 24 免除**。
+- **免除リストの削減（継続中）**: 導入時 52/42 → **現在 73 モジュール検査 / 21 免除**。
   この過程でさらに実バグが 4 件見つかった:
   `backup_scheduler._apply_retention` の `int <= None`、
   `youtube_integrator._get_video_info_api` の `None.videos()`（どちらも呼び出し側
@@ -277,10 +277,11 @@
   weakref（**コードが正しく注釈が誤っていた**ケース）。
 - **次に進める人へ**: `python -m mypy --config-file=/dev/null --ignore-missing-imports
   main/<module>.py` で素の指摘を見てから直し、mypy.ini の該当ブロックを消す
-  （設定を噛ませると免除が効いて何も出ないので注意）。残りで件数が少ないのは
-  `async_optimization`(4)・`utils_config`(5)・`persona_cli`(5)・`error_handling`(5)。
-  `utils_config` は PEP 484 の暗黙 Optional 禁止（`= None` の既定値に対し注釈が
-  非 Optional）が中心で機械的に直せる。
+  （設定を噛ませると免除が効いて何も出ないので注意）。残りは `error_handling`(5)・
+  `observability`(7)・`config_manager_enhanced`(8)・`web_integrator`(10) 等。
+  GUI/3D ウィジェット 9 件は条件付き基底クラスが主因なので、`# type: ignore[misc]`
+  を 1 行足すだけで済むものが多い（`tts_with_virtual_audio` /
+  `avatar_event_timeline_viewer` で実績あり）。
   GUI/3D ウィジェット群は条件付き基底クラスが原因なので `# type: ignore[misc]`
   を 1 行足すだけで済むものが多い（`tts_with_virtual_audio` /
   `avatar_event_timeline_viewer` で実績あり）。

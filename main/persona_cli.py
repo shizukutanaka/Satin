@@ -34,7 +34,7 @@
 from __future__ import annotations
 
 import time as _time
-from typing import Callable, List, Optional
+from typing import Any, Callable, List, Optional
 
 from persona import Persona, get_persona
 
@@ -42,7 +42,7 @@ try:
     from conversation_log import ConversationLog, get_conversation_log
 except Exception:  # pragma: no cover - defensive
     ConversationLog = None  # type: ignore
-    get_conversation_log = None
+    get_conversation_log = None  # type: ignore[assignment]
 
 try:
     from mood import (
@@ -59,7 +59,7 @@ try:
     )
 except Exception:  # pragma: no cover - defensive
     MoodTracker = None  # type: ignore
-    get_mood_tracker = None
+    get_mood_tracker = None  # type: ignore[assignment]
     _absence_message_fn = None  # type: ignore
     _anniversary_message_fn = None  # type: ignore
     _check_level_milestone = None  # type: ignore
@@ -76,7 +76,7 @@ try:
         _default_profile_path as _profile_path,
     )
 except Exception:  # pragma: no cover - defensive
-    get_user_profile = None
+    get_user_profile = None  # type: ignore[assignment]
     _personalize = None  # type: ignore
     _profile_path = None  # type: ignore
 
@@ -248,7 +248,7 @@ def run_chat(
     output_fn: Optional[Callable[[str], None]] = None,
     greet: bool = True,
     mood: "Optional[MoodTracker]" = None,
-    profile=None,
+    profile: Any = None,
 ) -> int:
     """対話ループを実行する。
 
@@ -302,7 +302,10 @@ def run_chat(
         if greeting:
             # 呼び名が分かっていれば冒頭に添えて「覚えている」ことを示す
             # （文頭の呼びかけは日英どちらでも自然: 「たろう、おはよう」/「Taro, ...」）
-            if profile is not None and getattr(profile, "name", "") \
+            # 既定値は "" ではなく None（getattr の typeshed オーバーロードは
+            # 空文字だと bool 版に当たって型が合わない）。空文字も None も
+            # falsy なので判定結果は変わらない。
+            if profile is not None and getattr(profile, "name", None) \
                     and "{user}" not in greeting:
                 sep = ", " if lang == "en" else "、"
                 greeting = f"{profile.name}{sep}{greeting}"
@@ -964,7 +967,8 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
         try:
             gift_key = _lookup_gift_key(item, lang=lang)
             if gift_key and hasattr(mood, "gift_received_today") and mood.gift_received_today(gift_key):
-                msg = _gift_cooldown_message(lang) if _gift_cooldown_message else ""
+                msg = (_gift_cooldown_message(lang)
+                       if _gift_cooldown_message is not None else "")
                 if not msg:
                     msg = "また明日ね。" if lang != "en" else "Come back tomorrow!"
                 output_fn(f"{avatar_name}: {msg}")
