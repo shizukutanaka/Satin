@@ -78,7 +78,9 @@ class TokenBucketRateLimiter:
         self.rate_per_second = rate_per_second
         self.burst_size = burst_size
         self.refill_interval = refill_interval
-        self.tokens = burst_size
+        # 補充は elapsed * rate なので float になる。int で初期化すると
+        # 以降の代入が型として食い違う。
+        self.tokens: float = float(burst_size)
         self.last_refill = time.time()
         self.lock = asyncio.Lock()
 
@@ -291,7 +293,9 @@ class AsyncAggregationService:
             集約結果辞書
         """
         start_time = time.time()
-        results = {
+        # 値の型が str / list / dict と混在するので、辞書リテラルからの推論
+        # （Collection[str]）に任せると入れ子への代入が通らない。
+        results: Dict[str, Any] = {
             'query': query,
             'sources': sources,
             'results': {},

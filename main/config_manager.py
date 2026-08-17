@@ -25,7 +25,9 @@ class ConfigManager:
         # config.json を指してバックアップが FileNotFound になるのを防ぐ）。
         self.config_path = config_path or str(DEFAULT_CONFIG_FILE)
         self.backup_dir = Path(self.config_path).parent / "backups"
-        self.current_config = None
+        # 実効設定のキャッシュ。未読込は None（注釈が無いと mypy に None 型と
+        # 推論され、load() 後の .get() が全部エラーになっていた）。
+        self.current_config: Optional[Dict[str, Any]] = None
         # update_plugin_config()/save() の read-merge-write 区間を保護する。
         # utils_config.update_config() 自体はロック無しで
         # _ensure_loaded()（読み取り）→ merge_configs()（マージ）→
@@ -37,7 +39,19 @@ class ConfigManager:
         
     def load(self) -> Dict[str, Any]:
         """設定を読み込む"""
-        self.current_config = get_config()
+        loaded = get_config()
+        self.current_config = loaded
+        return loaded
+
+    def _loaded(self) -> Dict[str, Any]:
+        """current_config を必ず非 None で返す（未読込なら読み込む）。
+
+        `if self.current_config is None: self.load()` を各所で繰り返していたが、
+        属性を書き換えるだけなので型の絞り込みが効かず、直後の .get() が
+        「None に get は無い」と指摘されていた。取得を 1 箇所に集約する。
+        """
+        if self.current_config is None:
+            return self.load()
         return self.current_config
     
     def save(self, new_config: Dict[str, Any]) -> bool:
@@ -54,9 +68,7 @@ class ConfigManager:
     
     def validate(self) -> Dict[str, List[str]]:
         """設定のバリデーションを実行"""
-        if self.current_config is None:
-            self.load()
-        return validate_config(self.current_config)
+        return validate_config(self._loaded())
     
     def create_backup(self) -> bool:
         """
@@ -145,10 +157,9 @@ class ConfigManager:
         Returns:
             Optional[Dict[str, Any]]: プラグインの設定（存在しない場合はNone）
         """
-        if self.current_config is None:
-            self.load()
-        
-        for plugin in self.current_config.get("plugins", []):
+        config = self._loaded()
+
+        for plugin in config.get("plugins", []):
             if plugin.get("name") == plugin_name:
                 return plugin.get("settings", {})
         return None
@@ -164,8 +175,7 @@ class ConfigManager:
         Returns:
             bool: 更新に成功したかどうか
         """
-        if self.current_config is None:
-            self.load()
+        cached = self._loaded()
 
         # 保存は環境変数オーバーレイ抜きのベース設定に対して行う。
         # 以前は self.current_config（load() で取得した get_config() 由来の
@@ -196,7 +206,7 @@ class ConfigManager:
 
             # current_config（実効設定のキャッシュ）も同期し、直後の
             # get_plugin_config() が古い値を返さないようにする。
-            for plugin in self.current_config.get("plugins", []):
+            for plugin in cached.get("plugins", []):
                 if plugin.get("name") == plugin_name:
                     plugin["settings"] = settings
                     break

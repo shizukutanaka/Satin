@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Static type checking** (`mypy.ini`, work order W-07). `python -m mypy` with
-  no arguments now checks **52 of the 94 modules in `main/`**; the 42 that
-  don't pass yet are listed as exemptions. The list is deliberately inverted
+  no arguments now checks **70 of the 94 modules in `main/`** (52 at
+  introduction); the rest are listed as exemptions. The list is deliberately inverted
   from the obvious design: everything is checked by default and the *exemptions*
   are enumerated, so the list can only shrink and a newly added module is never
   silently skipped. Wired into CI alongside a ruff job, with `mypy>=1.8` and
@@ -141,7 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Four latent crashes and a wrong container annotation**, found by shrinking
-  the type-check exemption list from 42 modules to 27 (67 of 94 now checked):
+  the type-check exemption list from 42 modules to 24 (70 of 94 now checked):
   - `backup_scheduler._apply_retention` compared `len(backups) <= self.max_backups`
     where `max_backups` is `Optional[int]`. Its one caller checks for None
     first, so the `TypeError` never fired — but the method is a normal method
@@ -155,10 +155,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     holding `weakref.ref(scope)`. The code was right and the annotation wrong,
     which is the more dangerous direction: it made the weakref pruning look
     like a type error rather than the intentional design it is.
+  - `ConfigManager.current_config` was written as a bare `= None`, so every
+    later `.get()` on it was a type error and the `if ... is None: self.load()`
+    idiom could not narrow it (the assignment happens on the attribute, not the
+    local). A `_loaded()` helper now returns the config non-optional from one
+    place instead of that idiom being repeated at three call sites.
   - `cache_manager`, `memory_safety`, `advanced_rate_limiting`,
-    `task_scheduler`, `i18n`, `manage_satin`, `daily_summary`, `avatar_loader`
-    and two Qt widgets needed annotations or explicit ignores, not behaviour
-    changes.
+    `task_scheduler`, `i18n`, `manage_satin`, `daily_summary`, `avatar_loader`,
+    `async_integrator`, `schema_validators` and two Qt widgets needed
+    annotations or explicit ignores, not behaviour changes.
 - **Fallback stubs had drifted from the functions they stand in for**, found by
   the new type gate: `user_wellbeing` and `usage_guardrails` each define a
   no-op `_find_archives` for when `conversation_log` can't be imported, and both

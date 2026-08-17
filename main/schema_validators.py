@@ -29,12 +29,12 @@ except ImportError:
         @classmethod
         def model_json_schema(cls): return {}
 
-    def ConfigDict(**kw): return dict(**kw)  # type: ignore[misc]
-    def Field(default=None, **kw): return default  # type: ignore[misc]
+    def ConfigDict(**kw): return dict(**kw)  # type: ignore[no-redef,misc]
+    def Field(default=None, **kw): return default  # type: ignore[no-redef,misc]
     def validator(*a, **kw): return lambda f: f  # type: ignore[misc]
-    def field_validator(*a, **kw): return lambda f: f  # type: ignore[misc]
+    def field_validator(*a, **kw): return lambda f: f  # type: ignore[no-redef,misc]
     class ValidationInfo: pass  # type: ignore[no-redef]
-    def AfterValidator(f): return f  # type: ignore[misc]
+    def AfterValidator(f): return f  # type: ignore[no-redef,misc]
 from typing import Optional, List, Dict, Any, Annotated, Union
 from enum import Enum
 from datetime import datetime
