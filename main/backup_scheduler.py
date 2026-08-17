@@ -220,6 +220,11 @@ class BackupScheduler:
         list_backups() は新しい順（降順）を返す前提（BackupManager の実装通り）。
         1 件の削除失敗が残りの削除を止めないよう、個別に例外を握り潰す。
         """
+        # 呼び出し側（_run_backup）は max_backups が None でないときだけ呼ぶが、
+        # このメソッド単体でもその不変条件を守る。None のまま比較すると
+        # `int <= None` で TypeError になる。
+        if self.max_backups is None:
+            return
         try:
             backups = self.backup_manager.list_backups()
         except Exception as e:

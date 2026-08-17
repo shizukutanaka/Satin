@@ -66,7 +66,7 @@
 | `__version__` 不在・`--version` フラグ無し | 中 | W-03 |
 | 孤児モジュール（`sync_to_cloud.py` 等）の整理 🔸**ロケール 16 ファイルは削除済** | 中 | W-04 |
 | ~~dashboard の多言語対応状況が未検証~~ ✅**検証・実装済** | 中 | W-06 |
-| ~~型チェック（mypy）未導入~~ ✅**導入済（52/94 モジュールを検査）** | 中 | W-07 |
+| ~~型チェック（mypy）未導入~~ ✅**導入済（67/94 モジュールを検査・免除リストは削減中）** | 中 | W-07 |
 | ~~3D 描画がワイヤーフレーム止まり（面・法線・シェーディング無し）~~ ✅**実装済** | 低 | W-08 |
 | CI 未有効化・lock ファイル無し（オーナー/方針事項） | — | §4 |
 | Tier B/C（ローカル ML / TTS / LLM）は要方針判断 | — | W-90 |
@@ -267,11 +267,23 @@
   CI がファイル名を並べて起動していないこと。加えて
   `tests/test_usage_guardrails.py` にフォールバック署名の実行時テスト
   （`conversation_log` を import 不能にしてリロードし、スタブを実際に検証）。
-- **次に進める人へ**: 免除リストから 1 行消して `python -m mypy` を通せば、それが
-  そのまま前進。1 エラーだけの小さいモジュール（`daily_summary`・`memory_safety`・
-  `cache_manager`・`task_scheduler`・`backup_scheduler`・`i18n`・`avatar_loader` …）
-  が着手しやすい。`advanced_error_handling.py:257` は `-> str` と宣言しつつ
-  `return None` している実バグ。
+- **免除リストの削減（継続中）**: 導入時 52/42 → **現在 67 モジュール検査 / 27 免除**。
+  この過程でさらに実バグが 4 件見つかった:
+  `backup_scheduler._apply_retention` の `int <= None`、
+  `youtube_integrator._get_video_info_api` の `None.videos()`（どちらも呼び出し側
+  だけがガードしていてメソッド単体では落ちる形）、
+  `advanced_error_handling.rotate_proxy` の `-> str` 宣言で `return None`、
+  `DependencyContainer._scopes` の注釈が `List[ServiceScope]` なのに実体は
+  weakref（**コードが正しく注釈が誤っていた**ケース）。
+- **次に進める人へ**: `python -m mypy --config-file=/dev/null --ignore-missing-imports
+  main/<module>.py` で素の指摘を見てから直し、mypy.ini の該当ブロックを消す
+  （設定を噛ませると免除が効いて何も出ないので注意）。残りで件数が少ないのは
+  `schema_validators`(4)・`async_integrator`(4)・`async_optimization`(4)・
+  `config_manager`(5)・`utils_config`(5)・`persona_cli`(5)・`error_handling`(5)。
+  `config_manager.py:151,199` は `None.get` で実バグの可能性が高い。
+  GUI/3D ウィジェット群は条件付き基底クラスが原因なので `# type: ignore[misc]`
+  を 1 行足すだけで済むものが多い（`tts_with_virtual_audio` /
+  `avatar_event_timeline_viewer` で実績あり）。
 
 ### W-08: 3D 描画の強化（面 + 単色シェーディング） — ✅**完了**
 - **実装（済）**: `gltf_utils` に `load_first_mesh_faces` / `load_first_mesh_normals`

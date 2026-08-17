@@ -16,7 +16,9 @@ except Exception:
         os.path.dirname(os.path.abspath(__file__)), "..", "avatar_event_log.jsonl"
     )
 
-class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):
+# PyQt5 未導入でも import できるようにする条件付き基底クラス。mypy は
+# 実行時に決まる基底を解決できないので明示的に無視する。
+class EventTimelineViewer(QMainWindow if QMainWindow is not None else object):  # type: ignore[misc]
     def __init__(self, logfile=_DEFAULT_EVENT_LOG):
         super().__init__()
         self.setWindowTitle("アバターイベントタイムラインビューア")

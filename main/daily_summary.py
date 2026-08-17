@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - defensive fallback
 try:
     from mood import _default_mood_history_path as _mood_history_default
 except Exception:  # pragma: no cover - defensive fallback
-    _mood_history_default = None
+    _mood_history_default = None  # type: ignore[assignment]
 
 
 def _default_event_log() -> str:

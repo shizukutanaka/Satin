@@ -300,7 +300,13 @@ class YouTubeIntegrator:
         return video_info
 
     def _get_video_info_api(self, video_id: str) -> Optional[YouTubeVideo]:
-        """YouTube Data API v3で動画情報を取得"""
+        """YouTube Data API v3で動画情報を取得
+
+        API キー未設定・googleapiclient 未導入だと youtube_service は None の
+        ままなので、呼び出し側のガードに頼らずここでも確認する。
+        """
+        if self.youtube_service is None:
+            return None
         request = self.youtube_service.videos().list(
             part='snippet,contentDetails,statistics',
             id=video_id
@@ -512,7 +518,7 @@ class YouTubeIntegrator:
             content_details = item['contentDetails']
 
             # プレイリスト内の動画を取得
-            video_ids = []
+            video_ids: List[str] = []
             next_page_token = None
 
             while len(video_ids) < max_results:

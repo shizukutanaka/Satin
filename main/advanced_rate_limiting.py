@@ -562,6 +562,9 @@ class DistributedRateLimiter:
         if key not in self.limiters:
             with self._lock:
                 if key not in self.limiters:
+                    # 分岐ごとに別のサブクラスを入れるので、最初の代入から
+                    # TokenBucketLimiter に固定されないよう基底で宣言する。
+                    limiter: RateLimiter
                     if self.algorithm == RateLimitAlgorithm.TOKEN_BUCKET:
                         limiter = TokenBucketLimiter(
                             capacity=self.config.get('capacity', 100),

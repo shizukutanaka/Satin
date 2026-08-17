@@ -77,7 +77,9 @@ class ServiceContainer:
         self._services: Dict[Type, ServiceDescriptor] = {}
         self._factories: Dict[Type, Callable] = {}
         self._singletons: Dict[Type, Any] = {}
-        self._scopes: List['ServiceScope'] = []
+        # 弱参照のリスト。スコープ本体を持つと GC されず、下の prune も
+        # 意味を失う（注釈は List['ServiceScope'] と誤っていた）。
+        self._scopes: List['weakref.ReferenceType[ServiceScope]'] = []
         # Per-type locks so concurrent resolves of the same singleton create it
         # exactly once, without a single container-wide lock that would deadlock
         # on nested singleton dependencies (asyncio.Lock is not reentrant).

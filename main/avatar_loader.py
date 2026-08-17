@@ -162,7 +162,8 @@ if __name__ == "__main__":
         raise SystemExit(1)
     try:
         import tkinterdnd2 as tkdnd
-        tk.Tk = tkdnd.TkinterDnD.Tk
+        # ドラッグ＆ドロップ対応版へ意図的に差し替える（モンキーパッチ）。
+        tk.Tk = tkdnd.TkinterDnD.Tk  # type: ignore[misc]
     except ImportError:
         pass
     root = tk.Tk()

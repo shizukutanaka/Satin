@@ -98,7 +98,9 @@ class TTSWorker(threading.Thread):
         sd.play(samples, audio.frame_rate, device=device_idx)
         sd.wait()
 
-class MainWindow(QMainWindow if QMainWindow is not None else object):
+# PyQt5 未導入でも import できるようにする条件付き基底クラス。mypy は
+# 実行時に決まる基底を解決できないので明示的に無視する。
+class MainWindow(QMainWindow if QMainWindow is not None else object):  # type: ignore[misc]
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TTS仮想オーディオデバイス出力サンプル")

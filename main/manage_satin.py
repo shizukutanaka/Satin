@@ -736,13 +736,16 @@ def cmd_summary(lang: str = "ja", yesterday: bool = False) -> None:
         from datetime import date, timedelta
         target_date = date.today() - timedelta(days=1)
 
-    kwargs = {
-        "lang": lang,
-        "event_log_path": event_log_path,
-        "mood_history_path": mood_history_path,
-    }
-    s = daily_summary(target_date=target_date, **kwargs)
-    greeting = summary_greeting(target_date=target_date, **kwargs)
+    # dict へ畳んで ** で渡すと、値の型が str と Optional[str] の合併へ広がり
+    # lang が Optional 扱いになる。素直に渡す。
+    s = daily_summary(
+        target_date=target_date, lang=lang,
+        event_log_path=event_log_path, mood_history_path=mood_history_path,
+    )
+    greeting = summary_greeting(
+        target_date=target_date, lang=lang,
+        event_log_path=event_log_path, mood_history_path=mood_history_path,
+    )
 
     print(f"=== {s['date']} のサマリー ===")
     print(f"あなたのメッセージ : {s['user_messages']}")

@@ -1,6 +1,7 @@
 import os
 import json
 import locale
+from typing import Dict
 # NOTE: tkinter is intentionally not imported at module level — it is only used
 # in the commented-out GUI demo below, and importing it unconditionally made this
 # module unimportable in headless environments (no Tk) despite not needing a GUI.
@@ -36,7 +37,9 @@ _SUPPORTED_LANGS = _discover_supported_langs()
 
 
 class I18N:
-    _translation_cache = {}
+    # 言語コード → 翻訳辞書。プロセス全体で共有するのでキーは
+    # _SUPPORTED_LANGS へクランプ済み（load_translation 参照）。
+    _translation_cache: Dict[str, Dict] = {}
     def __init__(self, lang=None):
         # self.lang keeps the raw detected/requested value (e.g. "fr" from
         # SATIN_LANG) — it's used for FONT_MAP.get(self.lang, 'Arial')

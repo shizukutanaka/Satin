@@ -140,6 +140,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **Four latent crashes and a wrong container annotation**, found by shrinking
+  the type-check exemption list from 42 modules to 27 (67 of 94 now checked):
+  - `backup_scheduler._apply_retention` compared `len(backups) <= self.max_backups`
+    where `max_backups` is `Optional[int]`. Its one caller checks for None
+    first, so the `TypeError` never fired — but the method is a normal method
+    and the next caller wouldn't know. It now establishes its own invariant.
+  - `youtube_integrator._get_video_info_api` dereferenced `self.youtube_service`,
+    which stays `None` when no API key is set or `googleapiclient` is absent.
+    Same shape: guarded by the caller, unguarded in itself.
+  - `advanced_error_handling.rotate_proxy` was annotated `-> str` and returned
+    `None` — an unimplemented stub whose signature lied to every caller.
+  - `DependencyContainer._scopes` was annotated `List[ServiceScope]` while
+    holding `weakref.ref(scope)`. The code was right and the annotation wrong,
+    which is the more dangerous direction: it made the weakref pruning look
+    like a type error rather than the intentional design it is.
+  - `cache_manager`, `memory_safety`, `advanced_rate_limiting`,
+    `task_scheduler`, `i18n`, `manage_satin`, `daily_summary`, `avatar_loader`
+    and two Qt widgets needed annotations or explicit ignores, not behaviour
+    changes.
 - **Fallback stubs had drifted from the functions they stand in for**, found by
   the new type gate: `user_wellbeing` and `usage_guardrails` each define a
   no-op `_find_archives` for when `conversation_log` can't be imported, and both

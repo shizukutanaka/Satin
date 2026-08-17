@@ -251,8 +251,12 @@ class ErrorRecoveryStrategy:
         return None  # 実装時に cache_manager から取得
 
     @staticmethod
-    def rotate_proxy() -> str:
-        """プロキシを切り替え"""
+    def rotate_proxy() -> Optional[str]:
+        """プロキシを切り替え
+
+        未実装のスタブ。`-> str` と宣言しつつ None を返していたため、戻り値を
+        文字列として扱う呼び出し側は実装後まで気づけない形になっていた。
+        """
         logger.info("Rotating proxy...")
         return None  # 実装時にプロキシリストから選択
 

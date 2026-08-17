@@ -76,7 +76,9 @@ class WeakReferencedCache:
         if len(self._cache) >= self.max_size:
             # LRU 削除（最も古い TTL を削除）
             if self._ttl_map:
-                oldest_key = min(self._ttl_map, key=self._ttl_map.get)
+                # dict.get はオーバーロードで Optional を返しうるため比較キーに
+                # 使うと型が合わない。同じ dict を走査しているので添字で十分。
+                oldest_key = min(self._ttl_map, key=lambda k: self._ttl_map[k])
                 self._cache.pop(oldest_key, None)
                 self._ttl_map.pop(oldest_key, None)
 

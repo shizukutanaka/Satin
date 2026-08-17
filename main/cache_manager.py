@@ -13,7 +13,7 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, TypeVar
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple, TypeVar, cast
 from datetime import datetime, timedelta
 from config_manager import get_config_manager
 import asyncio
@@ -131,7 +131,9 @@ class CacheManager:
 
         async def async_executor(*args, **kwargs) -> T:
             if is_coroutine:
-                return await func(*args, **kwargs)
+                # is_coroutine が真なら func は awaitable を返すが、
+                # Callable[..., T] の T からは型検査器に伝わらない。
+                return await cast(Awaitable[T], func(*args, **kwargs))
             loop = asyncio.get_running_loop()
             return await loop.run_in_executor(self.executor, lambda: func(*args, **kwargs))
 

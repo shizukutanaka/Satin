@@ -64,7 +64,10 @@ class TaskScheduler:
     """Task scheduler with priority queue"""
     
     def __init__(self, num_workers: int = 4):
-        self.ready_queue = queue.PriorityQueue()
+        # (priority, 単調増加のタイブレーカー, task)。task が None なら
+        # ワーカーへの停止シグナル（_seq の説明は下を参照）。
+        self.ready_queue: "queue.PriorityQueue[Tuple[int, int, Optional[ScheduledTask]]]" = \
+            queue.PriorityQueue()
         self.scheduled_tasks: List[Tuple[float, ScheduledTask]] = []
         self.tasks: Dict[str, ScheduledTask] = {}
         # Task ids for which periodic rescheduling has been cancelled. A periodic
