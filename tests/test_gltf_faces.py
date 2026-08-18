@@ -467,39 +467,6 @@ class GuiGeometryWiringTests(_GlbBuilder):
         self.assertIsNone(self._atts()._load_model_geometry(None))
 
 
-class AutonomousGltfAvatarFacesTests(_GlbBuilder):
-    """The demo viewer had its own index reader, and it was broken three ways.
-
-    It read `buffer.data` directly (empty for a real GLB, whose binary lives in
-    gltf.binary_blob()), hardcoded uint16 regardless of componentType, and
-    ignored both byteOffsets. It now shares gltf_utils.
-    """
-
-    def _model(self, path):
-        import autonomous_gltf_avatar as aga
-        return aga.GLTFModel(path)
-
-    def test_faces_load_from_a_real_glb(self):
-        import numpy as np
-        verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)
-        self._indexed_glb(verts, [0, 1, 2], 5123, name="demo.glb")
-        model = self._model(os.path.join(self._tmp, "demo.glb"))
-        self.assertEqual(len(model.faces), 1)
-        self.assertEqual(list(model.faces[0]), [0, 1, 2])
-
-    def test_unsigned_int_indices_are_not_misread_as_uint16(self):
-        import numpy as np
-        verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)
-        self._indexed_glb(verts, [0, 1, 2], 5125, name="demo32.glb")
-        model = self._model(os.path.join(self._tmp, "demo32.glb"))
-        self.assertEqual(list(model.faces[0]), [0, 1, 2])
-
-    def test_missing_file_leaves_empty_geometry(self):
-        model = self._model(os.path.join(self._tmp, "nope.glb"))
-        self.assertEqual(list(model.vertices), [])
-        self.assertEqual(list(model.faces), [])
-
-
 class PaintSolidTests(unittest.TestCase):
     """paintGL's solid path, with the GL calls captured instead of executed."""
 

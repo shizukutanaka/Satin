@@ -13,23 +13,6 @@ try:
 except ImportError:
     np = None  # type: ignore
 
-# ── OpenCV ─────────────────────────────────────────────────────────────────
-try:
-    import cv2
-except ImportError:
-    cv2 = None  # type: ignore
-
-# ── MediaPipe ──────────────────────────────────────────────────────────────
-try:
-    import mediapipe as _mp
-
-    mp_face_mesh = _mp.solutions.face_mesh
-    mp_drawing = _mp.solutions.drawing_utils
-except ImportError:
-    _mp = None  # type: ignore
-    mp_face_mesh = None  # type: ignore
-    mp_drawing = None  # type: ignore
-
 # ── PyQt5 ──────────────────────────────────────────────────────────────────
 try:
     from PyQt5.QtWidgets import (
@@ -61,12 +44,6 @@ try:
 except ImportError:
     pyttsx3 = None  # type: ignore
 
-# ── sounddevice ────────────────────────────────────────────────────────────
-try:
-    import sounddevice as sd
-except ImportError:
-    sd = None  # type: ignore
-
 # ── pygltflib ──────────────────────────────────────────────────────────────
 try:
     import pygltflib
@@ -75,9 +52,6 @@ except ImportError:
 
 __all__ = [
     "np",
-    "cv2",
-    "mp_face_mesh",
-    "mp_drawing",
     "QApplication",
     "QComboBox",
     "QFileDialog",
@@ -89,6 +63,5 @@ __all__ = [
     "Qt",
     "QTimer",
     "pyttsx3",
-    "sd",
     "pygltflib",
 ]

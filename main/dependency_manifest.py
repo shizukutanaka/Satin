@@ -25,14 +25,9 @@ OPTIONAL_PACKAGES: List[Tuple[str, str, str]] = [
     ("OpenGL",      "pip install PyOpenGL",         "3D アバター描画 (OpenGL)"),
     ("PIL",         "pip install pillow",           "画像処理（テクスチャ等）"),
     ("numpy",       "pip install numpy",            "数値計算（ポーズ・幾何）"),
-    ("cv2",         "pip install opencv-python",    "Web カメラ入力"),
-    ("mediapipe",   "pip install mediapipe",        "顔ランドマーク推定"),
     ("pyttsx3",     "pip install pyttsx3",          "音声合成 (TTS)"),
-    ("sounddevice", "pip install sounddevice",      "仮想オーディオ出力"),
     ("pygltflib",   "pip install pygltflib",        "glTF アバター読み込み"),
     ("flask",       "pip install flask",            "Web ダッシュボード"),
-    ("matplotlib",  "pip install matplotlib",       "イベント／好感度のグラフ"),
-    ("pydub",       "pip install pydub",            "音声ファイル変換"),
 ]
 
 # (import_name, message) — これらが無いと起動できない。

@@ -288,39 +288,5 @@ class RealGlbRoundTripTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class GltfModelRobustnessTests(unittest.TestCase):
-    """avatar_3d_gltf_viewer.GLTFModel must degrade gracefully on a
-    nonexistent/corrupt file instead of crashing the viewer. Regression:
-    pygltflib.GLTF2().load() raises FileNotFoundError/ValueError, and the
-    unguarded call would propagate out of the QFileDialog handler. This only
-    surfaced once pygltflib was actually installed (a declared dependency)."""
-
-    def setUp(self):
-        try:
-            import numpy  # noqa: F401
-            import pygltflib  # noqa: F401
-        except ImportError:
-            self.skipTest("numpy/pygltflib not installed")
-
-    def test_nonexistent_file_does_not_raise(self):
-        import avatar_3d_gltf_viewer as viewer
-        model = viewer.GLTFModel("/no/such/avatar.glb")  # must not raise
-        self.assertEqual(len(model.vertices), 0)
-
-    def test_corrupt_file_does_not_raise(self):
-        import tempfile
-        import avatar_3d_gltf_viewer as viewer
-        tmp = tempfile.mkdtemp()
-        try:
-            p = os.path.join(tmp, "bad.gltf")
-            with open(p, "w", encoding="utf-8") as f:
-                f.write("{ not valid gltf json")
-            model = viewer.GLTFModel(p)  # must not raise
-            self.assertEqual(len(model.vertices), 0)
-        finally:
-            import shutil
-            shutil.rmtree(tmp, ignore_errors=True)
-
-
 if __name__ == "__main__":
     unittest.main()

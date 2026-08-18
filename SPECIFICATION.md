@@ -9,8 +9,8 @@
 ## 1. 概要 (Overview)
 
 **Satin** は、3D アバターをデスクトップ上のコンパニオンとして動作させる
-Python アプリケーションである。ユーザーの入力（テキスト／音声／Web カメラによる
-表情トラッキング）に対し、**ルールベース**（LLM・外部 API 非依存）で応答し、
+Python アプリケーションである。ユーザーの入力（テキスト）に対し、
+**ルールベース**（LLM・外部 API 非依存）で応答し、
 TTS で音声合成しながら 3D アバターを動かす。関係性（好感度）・記憶・特別な日
 などの「育成シミュレーション」的な要素を持つ。
 
@@ -24,7 +24,7 @@ TTS で音声合成しながら 3D アバターを動かす。関係性（好感
 | 原則 | 内容 |
 |------|------|
 | **オフラインファースト** | LLM・外部 API への必須依存なし。応答はルールベース。 |
-| **標準ライブラリ中心** | コア機能は Python 標準ライブラリのみで動作。GUI/TTS/カメラ等は任意依存。 |
+| **標準ライブラリ中心** | コア機能は Python 標準ライブラリのみで動作。GUI/TTS/3D 等は任意依存。 |
 | **グレースフルデグラデーション** | 任意依存が無い／設定が壊れていても、機能を縮退させて起動を継続する。 |
 | **ヘッドレス対応** | GUI・GPU・ディスプレイ無し（SSH／CI／サーバ）でも CLI で全機能利用可。 |
 | **プライバシーローカル主義** | 会話・好感度・プロフィールは全てローカル保存。`data purge` で完全消去可能。`conversation_retention_days` で保存期間の上限も設定可（既定 0 = 無期限）。 |
@@ -34,9 +34,9 @@ TTS で音声合成しながら 3D アバターを動かす。関係性（好感
 
 - Python 3.8+
 - 必須: `tkinter`（標準）
-- 任意: PyQt5 / Pillow / numpy / opencv-python / mediapipe / pyttsx3 /
-  sounddevice / pygltflib / flask / psutil / tenacity / httpx / matplotlib /
-  pydub / beautifulsoup4 / selenium / tqdm
+- 任意: PyQt5 / PyOpenGL / Pillow / numpy / pygltflib（3D アバター）、
+  pyttsx3（TTS）、flask（ダッシュボード）。いずれも欠けても該当機能が縮退する
+  だけで起動は継続する。
 
 ---
 
@@ -76,8 +76,7 @@ satin_launcher.py
 │  conversation_log  会話履歴 (JSONL + ローテーション)         │
 ├─────────────────────────────────────────────────────────────┤
 │ 入出力・メディア層                                            │
-│  tts_thread / tts_with_virtual_audio / tts_manager_batch    │
-│  camera_thread (FaceMesh) / autonomous_behavior             │
+│  tts_thread / autonomous_behavior                           │
 │  notification_system / i18n                                  │
 ├─────────────────────────────────────────────────────────────┤
 │ 基盤層 (Infrastructure)                                      │
@@ -85,7 +84,7 @@ satin_launcher.py
 └─────────────────────────────────────────────────────────────┘
 ```
 
-規模: `main/` 配下 **55 モジュール**、`tests/` 配下 **59 テストファイル**
+規模: `main/` 配下 **37 モジュール**、`tests/` 配下 **50 テストファイル**
 （**2055 tests passing / 1 skipped**）。
 
 ---

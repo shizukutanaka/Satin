@@ -15,19 +15,12 @@ PyQt5>=5.15            # 3D アバター GUI 本体
 PyOpenGL>=3.1          # 3D アバター描画 (OpenGL)
 # tkinter は Python 標準ライブラリに含まれます
 
-# [3D / カメラ]
+# [3D]
 numpy>=1.24
-opencv-python>=4.7     # cv2
-mediapipe>=0.10
 pygltflib>=1.16
 
 # [音声]
 pyttsx3>=2.90
-sounddevice>=0.4
-pydub>=0.25
-
-# [可視化]
-matplotlib>=3.7
 
 # [開発・テスト]
 pytest>=7.4
