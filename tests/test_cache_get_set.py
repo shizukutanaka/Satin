@@ -54,11 +54,5 @@ class CacheGetSetTests(unittest.TestCase):
         self.cm.get("temp")  # triggers expiry + prune
         self.assertNotIn("temp", self.cm._ttl_overrides)
 
-    def test_integrators_use_get_set(self):
-        # Smoke: the integrator modules import and reference the cache API.
-        import youtube_integrator  # noqa: F401
-        import web_integrator  # noqa: F401
-
-
 if __name__ == "__main__":
     unittest.main()

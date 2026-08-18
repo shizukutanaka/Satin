@@ -98,16 +98,5 @@ class FindHandlerMROTests(unittest.TestCase):
         self.assertTrue(callable(handler))
 
 
-class IntegratorImportTests(unittest.TestCase):
-    def test_async_integrator_imports_without_httpx(self):
-        import async_integrator  # noqa: F401  (was NameError: httpx)
-
-    def test_web_integrator_imports(self):
-        import web_integrator  # noqa: F401  (was TypeError: 'dict' not callable)
-
-    def test_youtube_integrator_imports(self):
-        import youtube_integrator  # noqa: F401  (was ImportError: ErrorContext)
-
-
 if __name__ == "__main__":
     unittest.main()

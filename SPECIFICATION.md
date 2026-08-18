@@ -85,11 +85,6 @@ satin_launcher.py
 │  logging_manager / cache_manager / backup_manager / scheduler│
 │  plugin_manager / error_handling / graceful_shutdown        │
 │  utils_config / utils_profile / fsutil                      │
-├─────────────────────────────────────────────────────────────┤
-│ 外部統合層 (任意)                                            │
-│  youtube_integrator / paper_integrator / web_integrator     │
-│  content_aggregator / async_integrator                      │
-│  advanced_rate_limiting / retry_strategies / circuit_breaker │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -160,12 +155,15 @@ satin_launcher.py
 `validate` / `mood` / `log`（`show`/`clear`/`export`/`csv`/`search`/`prune`） /
 `backup` / `persona` / `summary` / `data purge` の各サブコマンド。GUI 不要のサーバ運用・スクリプト向け。
 
-### 3.8 外部統合 (任意)
+### 3.8 外部統合 — **撤去済み**
 
-- `youtube_integrator` / `paper_integrator`(arXiv/Scholar) / `web_integrator`。
-- `content_aggregator` が 3 ソースを `ThreadPoolExecutor` で並列横断検索し、
-  BM25 簡易版 + 人気度 + 鮮度で関連度スコアリング。
-- `async_integrator`（httpx）・トークンバケットレート制限・サーキットブレーカ。
+YouTube / arXiv / Web スクレイピングの統合層（`youtube_integrator` /
+`paper_integrator` / `web_integrator` / `content_aggregator` /
+`async_integrator` / `sync_to_cloud`）は削除した。**本製品の第一原理である
+「ローカル完結・オフライン・プライバシー第一」と正面から矛盾**しており、かつ
+どのエントリポイントからも読み込まれていなかった（import グラフで確認）。
+外部から情報を取ってくる機能が必要になったら、その時点で設計境界を含めて
+改めて判断する。
 
 ---
 

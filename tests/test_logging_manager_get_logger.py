@@ -29,14 +29,5 @@ class GetLoggerTests(unittest.TestCase):
         from logging_manager import LoggingManager
         self.assertTrue(callable(LoggingManager.get_logger))
 
-    def test_integrators_obtain_loggers(self):
-        # Smoke test: the modules that depend on get_logger must import.
-        import youtube_integrator
-        import web_integrator
-        # Each exposes its main class; confirm one to be safe
-        self.assertTrue(hasattr(youtube_integrator, "YouTubeIntegrator"))
-        self.assertTrue(hasattr(web_integrator, "WebIntegrator"))
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -41,10 +41,6 @@ tenacity>=8.2          # リトライ戦略
 # [可視化]
 matplotlib>=3.7
 
-# [学術論文検索 (任意)]
-# arxiv
-# scholarly
-
 # [開発・テスト]
 pytest>=7.4
 pytest-asyncio>=0.21
