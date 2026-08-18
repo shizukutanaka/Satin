@@ -3,9 +3,8 @@
 Satin is a 3D avatar desktop companion. It responds to what you type or say
 using offline, rule-based dialogue (no LLM or network required), speaks via
 text-to-speech, and tracks a growing relationship (affinity, memories, special
-days). It runs as a GUI avatar, a headless CLI chat, or a web dashboard. A
-flexible configuration-management subsystem (layered config, validation,
-versioning, backups, plugins) underpins it.
+days). It runs as a GUI avatar, a headless CLI chat, or a web dashboard.
+Everything it knows about you stays on your machine.
 
 See [`SPECIFICATION.md`](SPECIFICATION.md) for the full specification,
 architecture, and a strengths / weaknesses / improvements analysis.
@@ -16,131 +15,24 @@ contribution conventions).
 
 ## Features
 
-- Multi-language support
-- Advanced error handling
-- Task scheduling
-- Plugin system
-- Performance monitoring
-- Configuration validation
-- Automatic backups
-- Backup scheduling
-- Environment variable support
-- Dynamic plugin loading
-- Enhanced configuration versioning
-- Enhanced backup scheduler
-- Enhanced caching system
+Satin is a desktop 3D avatar companion. Everything below runs **locally and
+offline** — the dialogue, emotion and memory are dictionary/rule/BM25 based, with
+no LLM and no network calls.
 
-### Enhanced Caching System
-
-Satin now includes an enhanced caching system that:
-
-1. Supports async operations
-2. Provides detailed cache statistics
-3. Optimizes memory usage
-4. Manages disk cache efficiently
-5. Includes cache warmup
-
-To use the enhanced cache system:
-
-```python
-from main.cache_manager import CacheManager
-from main.logging_manager import Logger
-
-# Initialize logger and cache manager
-logger = Logger()
-cache_manager = CacheManager()
-
-# Create a cached function
-@cache_manager.cache
-async def expensive_operation(param):
-    # Simulate expensive operation
-    await asyncio.sleep(1)
-    return f"Result for {param}"
-
-# Use the cached function
-result = await expensive_operation("test")
-
-# Get cache statistics
-stats = cache_manager.get_cache_stats()
-print(f"Cache hit rate: {stats['hit_rate']}%")
-print(f"Average latency: {stats['average_latency']}ms")
-
-# Clear cache
-cache_manager.clear_cache()
-```
-
-### Enhanced Backup Scheduler
-
-Satin now includes an enhanced backup scheduler that:
-
-1. Provides detailed backup history
-2. Sends notifications for backup events
-3. Validates backup success/failure
-4. Automatically clears old backups
-5. Supports daily and weekly backups
-
-To use the enhanced backup scheduler:
-
-```python
-from main.backup_scheduler import BackupScheduler
-from main.notification_system import NotificationSystem
-from main.backup_manager import BackupManager
-from main.logging_manager import Logger
-
-# Initialize components
-logger = Logger()
-notification_system = NotificationSystem(logger)
-backup_manager = BackupManager(logger)
-
-# Initialize backup scheduler
-scheduler = BackupScheduler(backup_manager, notification_system)
-
-# Schedule daily backup at 2 AM
-scheduler.add_daily_backup(2, 0)
-
-# Schedule weekly backup on Sunday at 3 AM
-scheduler.add_weekly_backup("sunday", 3, 0)
-
-# Start the scheduler
-scheduler.start()
-
-# Get backup history
-history = scheduler.get_backup_history()
-
-# Clear backup history
-scheduler.clear_backup_history()
-```
-
-### Enhanced Configuration Version Management
-
-Satin now includes enhanced configuration version management that:
-
-1. Saves versions with optional descriptions
-2. Limits version history to prevent disk space issues
-3. Compares different versions
-4. Automatically backs up before restoration
-5. Provides detailed version information
-
-To use the enhanced version management:
-
-```python
-from main.config_version_manager import save_config_version, list_config_versions, restore_config_version, compare_versions
-
-# Save current configuration with description
-version_path = save_config_version(description="before_update")
-
-# List all versions with details
-versions = list_config_versions()
-for version in versions:
-    print(f"{version['timestamp']} - {version['size']} bytes")
-
-# Restore a specific version
-restore_config_version(versions[0]['path'])
-
-# Compare two versions
-comparison = compare_versions(versions[0]['path'], versions[1]['path'])
-print(f"Differences found: {len(comparison['differences'])}")
-```
+- **Remembers you** — your name, birthday, interests, and answers you gave it,
+  plus a searchable conversation history (BM25 relevance recall)
+- **A relationship that changes** — affinity across five levels, daily mood,
+  milestones, gifts, anniversaries
+- **Notices how you are** — wellbeing check-ins and change-point detection over
+  your own recent messages
+- **Refuses to be manipulative** — no retention hooks at goodbye, a dependence
+  guardrail, named crisis lines, and a standing "I am an AI" disclosure
+- **Privacy you can verify** — everything on disk at 0600, one-command total
+  erasure, and an optional retention window
+- **3D avatar** — load your own `.glb`/`.gltf`/`.vrm`, rendered with per-face
+  shading, with autonomous idle behaviour and optional TTS
+- **Headless too** — full conversation from the CLI, plus a local web dashboard
+- **Bilingual** — Japanese and English throughout, including the dashboard
 
 ### Avatar Persona / Dialogue
 
@@ -517,162 +409,6 @@ summary. A `GET /healthz` endpoint returns `{"status":"ok"}` for uptime probes.
 All conversation/affinity pages are served `no-store` so private data is never
 cached by the browser.
 
-### Plugin System
-
-Satin now includes a robust plugin system that:
-
-1. Automatically loads plugins from the plugins directory
-2. Supports plugin configuration
-3. Provides plugin reloading
-4. Includes error handling and logging
-
-To use the plugin system:
-
-```python
-from main.plugin_manager import PluginManager
-from main.logging_manager import Logger
-
-# Initialize logger and plugin manager
-logger = Logger()
-plugin_manager = PluginManager(logger)
-
-# Load all plugins
-plugin_manager.load_plugins()
-
-# Get a specific plugin
-my_plugin = plugin_manager.get_plugin("my_plugin")
-
-# Reload all plugins
-plugin_manager.reload_all_plugins()
-
-# Get all loaded plugins
-all_plugins = plugin_manager.get_all_plugins()
-```
-
-### Backup Scheduling
-
-Satin now includes a backup scheduler that:
-
-1. Schedules daily backups at specific times
-2. Schedules weekly backups on specific days
-3. Monitors backup success/failure
-4. Provides backup history
-
-To use the backup scheduler:
-
-```python
-from main.backup_scheduler import BackupScheduler
-from main.backup_manager import BackupManager
-
-# Initialize backup manager and scheduler
-backup_manager = BackupManager()
-scheduler = BackupScheduler(backup_manager)
-
-# Schedule daily backup at 2 AM
-scheduler.add_daily_backup(2, 0)
-
-# Schedule weekly backup on Sunday at 3 AM
-scheduler.add_weekly_backup('sunday', 3, 0)
-
-# Start the scheduler
-scheduler.start()
-```
-
-### Configuration Validation
-
-Satin now includes a configuration validator that:
-
-1. Validates configuration files against the schema
-2. Checks for valid logging levels
-3. Ensures UI theme configurations are correct
-4. Verifies network port settings
-
-To use the validator:
-
-```python
-from main.config_validator import ConfigValidator
-
-validator = ConfigValidator("path/to/config.json")
-validator.validate()
-```
-
-### Environment Variable Overrides
-
-Following the [12-factor](https://12factor.net/config) convention (as used by
-Dynaconf and Pydantic-Settings), any nested configuration key can be overridden
-at runtime with a `SATIN_`-prefixed environment variable. Use a double
-underscore (`__`) to descend into nested sections:
-
-```bash
-# settings.log_level = "DEBUG"
-export SATIN_SETTINGS__LOG_LEVEL=DEBUG
-
-# settings.backup.max_backups = 10
-export SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10
-
-# settings.debug_mode = true   (values are type-cast automatically)
-export SATIN_SETTINGS__DEBUG_MODE=true
-```
-
-```python
-from main.utils_config import get_config
-
-cfg = get_config()
-print(cfg["settings"]["log_level"])  # "DEBUG" when the env var above is set
-```
-
-Notes:
-
-- Values are automatically cast (`true`/`false` → bool, integers, floats,
-  comma-separated lists, JSON objects/arrays).
-- Overrides are applied **at read time only** — they are never written back to
-  `config.json` when you call `update_config()` / `save_config()`.
-- The legacy short aliases (e.g. `SATIN_LOG_LEVEL`) continue to work and take
-  precedence over the dynamic `SECTION__KEY` form.
-
-#### `.env` files
-
-A `.env` file in the working directory is auto-loaded the first time the
-config is read (no extra call needed), so you can keep local overrides out of
-your shell profile:
-
-```dotenv
-# .env
-SATIN_SETTINGS__LOG_LEVEL=DEBUG
-SATIN_SETTINGS__BACKUP__MAX_BACKUPS=10
-```
-
-- Real environment variables always win over `.env` values (the file provides
-  defaults, not overrides).
-- Set `SATIN_DISABLE_DOTENV=1` to skip auto-loading, or call
-  `config.env.load_dotenv(path, override=True)` explicitly for full control.
-
-#### Layered (multi-environment) config
-
-Set `SATIN_ENV` to select an environment-specific overlay file that is
-deep-merged over the base `config.json` (as in Dynaconf/Hydra):
-
-```
-config/
-  config.json              # base, always loaded
-  config.production.json   # loaded & merged when SATIN_ENV=production
-  config.development.json  # loaded & merged when SATIN_ENV=development
-```
-
-```bash
-export SATIN_ENV=production
-```
-
-The overlay only needs to contain the keys it changes; everything else falls
-through to the base. The full precedence chain, lowest to highest, is:
-
-```
-base config.json  <  config.<env>.json  <  .env file  <  real environment vars
-```
-
-If no `SATIN_ENV` is set, or the matching overlay file is absent, only the base
-config is loaded.
-
 ## Getting Started
 
 ### Prerequisites
@@ -743,24 +479,20 @@ per-face diffuse term. Models made only of points or line primitives fall back t
 the earlier wireframe drawing, and with no model selected you get the sphere
 placeholder — so an exotic or partly-broken file degrades instead of failing.
 
-To back up your configuration, run `launch/win/backup_satin.bat` (Windows) or
-`launch/mac/backup_satin.sh` (Mac).
+To back up your data, use `python main/manage_satin.py backup list` and the
+dashboard's `/sync` page.
 
 ## Directory Structure
 
 ```
 Satin/
 ├── satin_launcher.py  # Entry point: --chat / --dashboard / --manage / --validate
-├── config/            # Runtime configuration, mood/profile state, plugin configs
-├── main/              # Application code (dialogue, mood, TTS, GUI, dashboard, i18n, ...)
-│   ├── config/        # Layered config-management subsystem
-│   ├── i18n/          # Internationalization helpers + locales/ja.json, en.json
-│   └── plugin_system/ # Plugin loading/registration
-├── plugins/           # Sample/user plugins
-├── examples/          # Standalone usage examples for subsystems
+├── config/            # Runtime configuration + mood/profile state
+├── main/              # Application code (dialogue, mood, TTS, GUI, dashboard)
+│   └── i18n/          # Internationalization helpers + locales/ja.json, en.json
 ├── launch/            # Per-OS launch scripts (call satin_launcher.py)
-│   ├── win/run_satin.bat, backup_satin.bat
-│   └── mac/run_satin.sh, backup_satin.sh
+│   ├── win/run_satin.bat
+│   └── mac/run_satin.sh
 ├── setup/             # Install: requirements.txt + per-OS setup.bat / setup.sh
 └── tests/             # unittest suite (one file per module, run with pytest)
 ```

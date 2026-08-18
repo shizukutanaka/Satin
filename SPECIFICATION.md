@@ -81,14 +81,11 @@ satin_launcher.py
 │  notification_system / i18n                                  │
 ├─────────────────────────────────────────────────────────────┤
 │ 基盤層 (Infrastructure)                                      │
-│  config_manager(_enhanced) / config_validator / config_schema│
-│  logging_manager / cache_manager / backup_manager / scheduler│
-│  plugin_manager / error_handling / graceful_shutdown        │
-│  utils_config / utils_profile / fsutil                      │
+│  fsutil / log_retention / single_instance / version         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-規模: `main/` 配下 **83 モジュール**、`tests/` 配下 **94 テストファイル**
+規模: `main/` 配下 **55 モジュール**、`tests/` 配下 **59 テストファイル**
 （**2055 tests passing / 1 skipped**）。
 
 ---

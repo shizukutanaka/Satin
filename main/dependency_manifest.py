@@ -31,14 +31,8 @@ OPTIONAL_PACKAGES: List[Tuple[str, str, str]] = [
     ("sounddevice", "pip install sounddevice",      "仮想オーディオ出力"),
     ("pygltflib",   "pip install pygltflib",        "glTF アバター読み込み"),
     ("flask",       "pip install flask",            "Web ダッシュボード"),
-    ("psutil",      "pip install psutil",           "パフォーマンス監視"),
-    ("tenacity",    "pip install tenacity",         "非同期リトライ"),
-    ("httpx",       "pip install httpx",            "非同期 HTTP 統合"),
     ("matplotlib",  "pip install matplotlib",       "イベント／好感度のグラフ"),
     ("pydub",       "pip install pydub",            "音声ファイル変換"),
-    ("bs4",         "pip install beautifulsoup4",   "Web コンテンツ解析"),
-    ("selenium",    "pip install selenium",         "動的ページ取得"),
-    ("tqdm",        "pip install tqdm",             "バッチ進捗表示"),
 ]
 
 # (import_name, message) — これらが無いと起動できない。
