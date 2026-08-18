@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import random
+from typing import Any
 
 from optional_deps import np
 
@@ -30,8 +31,8 @@ try:
     from persona import get_persona
     from persona import _time_of_day as _persona_time_of_day
 except Exception:  # pragma: no cover - persona は常に import 可能なはずだが防御的に
-    get_persona = None
-    _persona_time_of_day = None
+    get_persona = None  # type: ignore[assignment]
+    _persona_time_of_day = None  # type: ignore[assignment]
 
 try:
     from mood import (
@@ -43,12 +44,12 @@ try:
         check_daily_login as _check_daily_login,
     )
 except Exception:  # pragma: no cover - defensive
-    _get_mood_tracker = None
-    _mood_history_path = None
-    _mood_path = None
-    _absence_message = None  # type: ignore
-    _anniversary_message = None  # type: ignore
-    _check_daily_login = None  # type: ignore
+    _get_mood_tracker = None  # type: ignore[assignment]
+    _mood_history_path = None  # type: ignore[assignment]
+    _mood_path = None  # type: ignore[assignment]
+    _absence_message = None  # type: ignore[assignment]
+    _anniversary_message = None  # type: ignore[assignment]
+    _check_daily_login = None  # type: ignore[assignment]
 
 try:
     from daily_summary import (
@@ -56,20 +57,20 @@ try:
         summary_greeting as _summary_greeting,
     )
 except Exception:  # pragma: no cover - defensive
-    _yesterday_greeting = None
-    _summary_greeting = None
+    _yesterday_greeting = None  # type: ignore[assignment]
+    _summary_greeting = None  # type: ignore[assignment]
 
 try:
     from user_profile import get_user_profile as _get_user_profile, \
         _default_profile_path as _profile_path
 except Exception:  # pragma: no cover - defensive
-    _get_user_profile = None
-    _profile_path = None
+    _get_user_profile = None  # type: ignore[assignment]
+    _profile_path = None  # type: ignore[assignment]
 
 try:
     from profile_questions import recall_fact as _recall_fact
 except Exception:  # pragma: no cover - defensive
-    _recall_fact = None
+    _recall_fact = None  # type: ignore[assignment]
 
 try:
     from special_days import (
@@ -78,8 +79,8 @@ try:
         BIRTHDAY_AFFINITY_BONUS as _BIRTHDAY_BONUS,
     )
 except Exception:  # pragma: no cover - defensive
-    _seasonal_greeting = None
-    _birthday_greeting = None
+    _seasonal_greeting = None  # type: ignore[assignment]
+    _birthday_greeting = None  # type: ignore[assignment]
     _BIRTHDAY_BONUS = 0.0
 
 try:
@@ -89,9 +90,9 @@ try:
         mood_affinity_multiplier as _mood_affinity_multiplier,
     )
 except Exception:  # pragma: no cover - defensive
-    _get_daily_mood = None
-    _mood_description = None
-    _mood_affinity_multiplier = None
+    _get_daily_mood = None  # type: ignore[assignment]
+    _mood_description = None  # type: ignore[assignment]
+    _mood_affinity_multiplier = None  # type: ignore[assignment]
 
 try:
     from user_wellbeing import wellbeing_reflection as _wellbeing_reflection
@@ -100,14 +101,14 @@ try:
         get_conversation_log as _get_conversation_log_wb,
     )
 except Exception:  # pragma: no cover - defensive
-    _wellbeing_reflection = None
-    _wb_default_logfile = None
-    _get_conversation_log_wb = None
+    _wellbeing_reflection = None  # type: ignore[assignment]
+    _wb_default_logfile = None  # type: ignore[assignment]
+    _get_conversation_log_wb = None  # type: ignore[assignment]
 
 try:
     from usage_guardrails import usage_reflection as _usage_reflection
 except Exception:  # pragma: no cover - defensive
-    _usage_reflection = None
+    _usage_reflection = None  # type: ignore[assignment]
 
 
 class AutonomousBehaviorMixin:
@@ -116,6 +117,11 @@ class AutonomousBehaviorMixin:
     reset_direction_on_run = False
     # start_autonomous / stop_autonomous で空文字へリセットする追加テキスト属性
     EXTRA_TEXT_FIELDS: tuple = ()
+
+    # 合成先のウィジェットが供給する属性。ミックスイン単体では持たないが、
+    # 実際に使うのでここで契約として宣言しておく（Qt の update() と座標）。
+    update: Any
+    position: Any
 
     @property
     def persona(self):

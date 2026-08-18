@@ -269,6 +269,27 @@ class TestCliWiring(unittest.TestCase):
         self.assertIn("人間ではありません", persona_cli._help_text("ja"))
         self.assertIn("not a human", persona_cli._help_text("en"))
 
+    def test_help_text_can_omit_the_disclosure_tail(self):
+        """起動時は法定開示が直後に続くので、/help 側の常設タグは外せること。"""
+        self.assertNotIn("人間ではありません",
+                         persona_cli._help_text("ja", with_disclosure=False))
+        self.assertNotIn("not a human",
+                         persona_cli._help_text("en", with_disclosure=False))
+        # 外したのは開示だけで、コマンド一覧そのものは残っていること
+        self.assertIn("/quit", persona_cli._help_text("ja", with_disclosure=False))
+
+    def test_session_start_prints_the_disclosure_exactly_once(self):
+        """起動直後に同じ開示文が 2 回続かないこと。
+
+        /help の常設タグと法定のセッション開始開示は別々の理由で存在するが、
+        起動時は隣り合って出るため、両方そのまま出すと同じ文が 2 行続いて
+        「表示バグ」に見える。読み飛ばされる開示は開示として機能しない。
+        """
+        out = self._run([])
+        notice = ad.session_notice("ja")
+        hits = [line for line in out if notice in line]
+        self.assertEqual(len(hits), 1, f"開示が {len(hits)} 回出ています: {out}")
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

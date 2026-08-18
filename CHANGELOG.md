@@ -9,16 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Static type checking** (`mypy.ini`, work order W-07). `python -m mypy` with
-  no arguments now checks **73 of the 94 modules in `main/`** (52 at
-  introduction); the rest are listed as exemptions. The list is deliberately inverted
-  from the obvious design: everything is checked by default and the *exemptions*
-  are enumerated, so the list can only shrink and a newly added module is never
-  silently skipped. Wired into CI alongside a ruff job, with `mypy>=1.8` and
-  `ruff>=0.4` added to `setup/requirements.txt`. `tests/test_mypy_config.py`
-  guards the config itself without invoking mypy — stale exemptions for deleted
-  modules, duplicates, core dialogue/memory/safety modules leaking into the
-  exemption list, and CI passing an explicit file list that would bypass the
-  config.
+  no arguments now checks **every module in `main/`** with **zero exemptions**
+  (at introduction, 42 of 52 modules were exempt). The exemption list is
+  deliberately inverted from the obvious design: everything is checked by default
+  and the *exemptions* are enumerated, so the list can only shrink and a newly
+  added module is never silently skipped — the mistake `tests/test_i18n.py`
+  made by hardcoding the keys to check (32 listed against 37 actually used).
+  Wired into CI alongside a ruff job, with `mypy>=1.8` and `ruff>=0.4` added to
+  `setup/requirements.txt`. `tests/test_mypy_config.py` guards the config itself
+  without invoking mypy — stale exemptions for deleted modules, duplicates, core
+  dialogue/memory/safety modules leaking into the exemption list, and CI passing
+  an explicit file list that would bypass the config.
+
+  Clearing the list surfaced real defects rather than just annotations: a
+  fallback implementation whose parameter name diverged from the real one
+  (`_find_archives`), so a keyword call raised `TypeError` only when the fallback
+  was active; an `int <= None` comparison and a `None.videos()` call guarded
+  solely by their callers; and a `-> str` function that returned `None`.
+  `warn_unused_ignores` is deliberately **not** enabled: for optional-dependency
+  fallbacks (`QOpenGLWidget = None`) an ignore is load-bearing when the package
+  is installed and unused when it isn't, so the check would flip with the
+  environment. Eight ignores that were dead regardless of environment were
+  removed.
 - **The avatar is drawn as a shaded solid, not a wireframe** (work order W-08).
   `paintGL` ran the raw vertex list through a single `GL_LINE_STRIP`, which
   connects vertices in file order and produces a scribble rather than a figure —
@@ -140,8 +152,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The AI disclosure printed twice at session start.** `_help_text` appends a
+  standing "I am an AI" tag because `/help` is where a user goes to ask what
+  this is, and the session-start disclosure required by the NY AI Companion
+  Models Law and California SB 243 is emitted right after it — so startup showed
+  the same sentence on two consecutive lines. Each is justified alone; adjacent
+  they read as a display bug, and a disclosure users learn to skip is not a
+  disclosure. `_help_text` gained `with_disclosure=`, and only the startup call
+  passes `False`. On-demand `/help` still carries the tag, and the legally
+  required notice is unchanged.
 - **Four latent crashes and a wrong container annotation**, found by shrinking
-  the type-check exemption list from 42 modules to 21 (73 of 94 now checked):
+  the type-check exemption list from 42 modules to 21 (73 of 94 checked at the
+  time; the list has since reached zero):
   - `backup_scheduler._apply_retention` compared `len(backups) <= self.max_backups`
     where `max_backups` is `Optional[int]`. Its one caller checks for None
     first, so the `TypeError` never fired — but the method is a normal method

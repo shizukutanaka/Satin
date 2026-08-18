@@ -15,19 +15,19 @@ try:
         mood_history_to_csv as _mood_history_to_csv,
     )
 except Exception:
-    _get_mood_tracker = None
-    affinity_label = None
-    _level_label = None
-    _load_mood_history = None
-    _mood_history_path = None
-    _mood_path = None
-    _mood_history_to_csv = None
+    _get_mood_tracker = None  # type: ignore[assignment]
+    affinity_label = None  # type: ignore[assignment]
+    _level_label = None  # type: ignore[assignment]
+    _load_mood_history = None  # type: ignore[assignment]
+    _mood_history_path = None  # type: ignore[assignment]
+    _mood_path = None  # type: ignore[assignment]
+    _mood_history_to_csv = None  # type: ignore[assignment]
 
 try:
     from daily_summary import daily_summary as _daily_summary, summary_greeting as _summary_greeting
 except Exception:
-    _daily_summary = None
-    _summary_greeting = None
+    _daily_summary = None  # type: ignore[assignment]
+    _summary_greeting = None  # type: ignore[assignment]
 
 # 会話イベント分類・既定ログパスは conversation_log を唯一の真実の源とする
 # （集計の食い違い・cwd 依存でのファイル分裂を防ぐ）。
@@ -38,8 +38,8 @@ try:
         DEFAULT_LOGFILE as _DEFAULT_EVENT_LOG,
     )
 except Exception:
-    _USER_TYPES = {"user_comment", "user"}
-    _AVATAR_TYPES = {"avatar_reply", "avatar"}
+    _USER_TYPES = frozenset({"user_comment", "user"})
+    _AVATAR_TYPES = frozenset({"avatar_reply", "avatar"})
     _DEFAULT_EVENT_LOG = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "avatar_event_log.jsonl",
@@ -65,13 +65,13 @@ except ImportError:
     Flask = render_template_string = request = redirect = url_for = send_file = session = abort = None  # type: ignore
 
 try:
-    from i18n import I18N
+    from i18n import I18N  # type: ignore[attr-defined]
 except ImportError:
     from importlib.util import spec_from_file_location as _spec, module_from_spec as _mfs
     import os as _os
     _spec_obj = _spec("satin_i18n", _os.path.join(_os.path.dirname(__file__), "i18n.py"))
-    _i18n_mod = _mfs(_spec_obj)
-    _spec_obj.loader.exec_module(_i18n_mod)
+    _i18n_mod = _mfs(_spec_obj)  # type: ignore[arg-type]
+    _spec_obj.loader.exec_module(_i18n_mod)  # type: ignore[union-attr]
     I18N = _i18n_mod.I18N
 
 def _no_cache(response):
@@ -365,7 +365,7 @@ def index(i18n):
         try:
             tracker = _get_mood_tracker()
             score = int(round(tracker.affinity))
-            level = affinity_label(tracker.affinity, lang) if affinity_label else tracker.level
+            level = affinity_label(tracker.affinity, lang) if affinity_label is not None else tracker.level
             stats_lines.append(f'{_html.escape(i18n.t("affinity_score", "Affinity"))}: <b>{score}/100</b> ({_html.escape(level)})')
         except Exception:
             pass
@@ -642,7 +642,7 @@ def mood(i18n):
             tracker = _get_mood_tracker()
             score = int(round(tracker.affinity))
             level = tracker.level
-            label = affinity_label(tracker.affinity, lang) if affinity_label else level
+            label = affinity_label(tracker.affinity, lang) if affinity_label is not None else level
             interactions = tracker.interactions
             last_ts = tracker._last_interaction_time
             if last_ts > 0:
@@ -783,7 +783,7 @@ def mood_history(i18n):
     if _load_mood_history is None:
         content += f'<p>{_html.escape(i18n.t("mood_unavailable", "Mood system unavailable."))}</p>'
     else:
-        history_path = _mood_history_path() if _mood_history_path else None
+        history_path = _mood_history_path() if _mood_history_path is not None else None
         entries = _load_mood_history(history_path, n=30) if history_path else []
         if not entries:
             content += f'<p>{_html.escape(i18n.t("mood_no_history", "No history recorded yet."))}</p>'
@@ -925,7 +925,7 @@ def _conversation_stats(log_path: str) -> dict:
                 continue
     except Exception:
         pass
-    peak_hour = max(per_hour, key=per_hour.get) if per_hour else None
+    peak_hour = max(per_hour, key=lambda h: per_hour[h]) if per_hour else None
     return {
         "total_user": total_user,
         "total_avatar": total_avatar,
@@ -1021,7 +1021,7 @@ def summary(i18n):
         s = _daily_summary(
             lang=lang,
             event_log_path=event_log_path,
-            mood_history_path=_mood_history_path() if _mood_history_path else None,
+            mood_history_path=_mood_history_path() if _mood_history_path is not None else None,
         )
         # アバターの一言
         greeting = ''
@@ -1029,7 +1029,7 @@ def summary(i18n):
             greeting = _summary_greeting(
                 lang=lang,
                 event_log_path=event_log_path,
-                mood_history_path=_mood_history_path() if _mood_history_path else None,
+                mood_history_path=_mood_history_path() if _mood_history_path is not None else None,
             )
         if greeting:
             content += (

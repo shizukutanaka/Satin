@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import hashlib
 from datetime import date as _date
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 # ── ムード定義 ────────────────────────────────────────────────────────────── #
 # 順序がそのまま選択重みに相当（均等分布 → 各1/6）。
-_MOODS = [
+_MOODS: List[Dict[str, Any]] = [
     {
         "key": "energetic",
         "ja": {"label": "活発", "desc": "今日はなんかはりきってる感じ！何でも聞いて！"},

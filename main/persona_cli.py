@@ -223,11 +223,17 @@ def respond_to(
     return reply
 
 
-def _help_text(lang: str = "ja") -> str:
-    # 「これは何なのか」を確かめに来る場所なので、末尾で AI である旨も示す
-    # （セッション開始時 + 3 時間ごとの開示とは別の、常設の手がかり）。
+def _help_text(lang: str = "ja", *, with_disclosure: bool = True) -> str:
+    """コマンド一覧。
+
+    「これは何なのか」を確かめに来る場所なので、既定では末尾で AI である旨も示す
+    （セッション開始時 + 3 時間ごとの開示とは別の、常設の手がかり）。
+    ただし起動直後は法定のセッション開始開示が直後に続くため、そこだけ
+    with_disclosure=False で外す — 同じ文が 2 行続くと「バグ表示」に見え、
+    読み飛ばす習慣がつく。開示は目立つときにだけ効く。
+    """
     tail = ""
-    if _ai_disclosure is not None:
+    if with_disclosure and _ai_disclosure is not None:
         tail = "\n" + _ai_disclosure.session_notice(lang)
     return (
         "コマンド: /help 一覧 | /history 履歴 | /search <キーワード> 検索 | "
@@ -379,7 +385,7 @@ def run_chat(
                     _say(wb)
             except Exception:  # pragma: no cover - defensive
                 pass
-    output_fn(_help_text(lang))
+    output_fn(_help_text(lang, with_disclosure=False))
 
     # AI であることをセッション開始時に必ず伝える（NY AI Companion Models 法 /
     # CA SB 243）。以降は 3 時間ごとにリマインドする。greet の有無に関わらず出す。

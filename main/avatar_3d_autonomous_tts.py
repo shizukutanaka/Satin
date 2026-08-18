@@ -27,16 +27,16 @@ try:
         shade_factor,
     )
 except Exception:  # pragma: no cover - defensive
-    load_first_mesh_vertices = None
-    load_first_mesh_faces = None
-    load_first_mesh_normals = None
-    compute_face_normals = None
-    normalize_vertices = None
-    shade_factor = None
+    load_first_mesh_vertices = None  # type: ignore[assignment]
+    load_first_mesh_faces = None  # type: ignore[assignment]
+    load_first_mesh_normals = None  # type: ignore[assignment]
+    compute_face_normals = None  # type: ignore[assignment]
+    normalize_vertices = None  # type: ignore[assignment]
+    shade_factor = None  # type: ignore[assignment]
 try:
     import avatar_model_store as _avatar_model_store  # noqa: E402
 except Exception:  # pragma: no cover - defensive
-    _avatar_model_store = None
+    _avatar_model_store = None  # type: ignore[assignment]
 
 # paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
 # 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
@@ -49,7 +49,7 @@ except ImportError:
 try:
     from conversation_log import get_conversation_log  # noqa: E402
 except Exception:  # pragma: no cover - defensive
-    get_conversation_log = None
+    get_conversation_log = None  # type: ignore[assignment]
 
 try:
     from mood import (  # noqa: E402
@@ -60,18 +60,18 @@ try:
         check_hurt_event as _check_hurt_event,
     )
 except Exception:  # pragma: no cover - defensive
-    get_mood_tracker = None
-    _default_mood_path = None
-    _default_mood_history_path = None
-    check_level_milestone = None
-    _check_confession_event = None
-    _check_interaction_milestone = None
-    _check_hurt_event = None
+    get_mood_tracker = None  # type: ignore[assignment]
+    _default_mood_path = None  # type: ignore[assignment]
+    _default_mood_history_path = None  # type: ignore[assignment]
+    check_level_milestone = None  # type: ignore[assignment]
+    _check_confession_event = None  # type: ignore[assignment]
+    _check_interaction_milestone = None  # type: ignore[assignment]
+    _check_hurt_event = None  # type: ignore[assignment]
 
 try:
     from persona_cli import _detect_ritual_event as _detect_ritual_event_gui
 except Exception:  # pragma: no cover - defensive
-    _detect_ritual_event_gui = None
+    _detect_ritual_event_gui = None  # type: ignore[assignment]
 
 try:
     from user_profile import (
@@ -80,9 +80,9 @@ try:
         _default_profile_path as _default_profile_path_gui,
     )
 except Exception:  # pragma: no cover - defensive
-    _get_user_profile_gui = None
-    _personalize_gui = None
-    _default_profile_path_gui = None
+    _get_user_profile_gui = None  # type: ignore[assignment]
+    _personalize_gui = None  # type: ignore[assignment]
+    _default_profile_path_gui = None  # type: ignore[assignment]
 
 try:
     from profile_questions import (
@@ -90,30 +90,30 @@ try:
         acknowledge_answer as _acknowledge_answer_gui,
     )
 except Exception:  # pragma: no cover - defensive
-    _next_unanswered_question_gui = None
-    _acknowledge_answer_gui = None
+    _next_unanswered_question_gui = None  # type: ignore[assignment]
+    _acknowledge_answer_gui = None  # type: ignore[assignment]
 
 try:
     import ai_disclosure as _ai_disclosure
 except Exception:  # pragma: no cover - defensive
-    _ai_disclosure = None
+    _ai_disclosure = None  # type: ignore[assignment]
 
 try:
     from crisis_support import crisis_reply as _crisis_reply_gui
 except Exception:  # pragma: no cover - defensive
-    _crisis_reply_gui = None
+    _crisis_reply_gui = None  # type: ignore[assignment]
 
 try:
     from daily_summary import summary_greeting as _summary_greeting_gui
 except Exception:  # pragma: no cover - defensive
-    _summary_greeting_gui = None
+    _summary_greeting_gui = None  # type: ignore[assignment]
 
 try:
     from user_wellbeing import wellbeing_summary as _wellbeing_summary_gui
     from user_wellbeing import wellbeing_message as _wellbeing_message_gui
 except Exception:  # pragma: no cover - defensive
-    _wellbeing_summary_gui = None
-    _wellbeing_message_gui = None
+    _wellbeing_summary_gui = None  # type: ignore[assignment]
+    _wellbeing_message_gui = None  # type: ignore[assignment]
 
 _HISTORY_DEFAULT_GUI = 10
 
@@ -123,8 +123,8 @@ try:
         mood_affinity_multiplier as _mood_affinity_multiplier_gui,
     )
 except Exception:  # pragma: no cover - defensive
-    _get_daily_mood_gui = None
-    _mood_affinity_multiplier_gui = None
+    _get_daily_mood_gui = None  # type: ignore[assignment]
+    _mood_affinity_multiplier_gui = None  # type: ignore[assignment]
 
 try:
     from gifts import (  # noqa: E402
@@ -134,15 +134,15 @@ try:
         cooldown_message as _gift_cooldown_message_gui,
     )
 except Exception:  # pragma: no cover - defensive
-    _lookup_gift_gui = None
-    _lookup_gift_key_gui = None
-    _gift_catalog_text_gui = None
-    _gift_cooldown_message_gui = None
+    _lookup_gift_gui = None  # type: ignore[assignment]
+    _lookup_gift_key_gui = None  # type: ignore[assignment]
+    _gift_catalog_text_gui = None  # type: ignore[assignment]
+    _gift_cooldown_message_gui = None  # type: ignore[assignment]
 
 try:
     from break_reminder import maybe_start_break_reminder  # noqa: E402
 except Exception:  # pragma: no cover - defensive
-    maybe_start_break_reminder = None
+    maybe_start_break_reminder = None  # type: ignore[assignment]
 
 try:
     from first_run import (  # noqa: E402
@@ -150,8 +150,8 @@ try:
         welcome_message as _welcome_message,
     )
 except Exception:  # pragma: no cover - defensive
-    _is_first_run = None
-    _welcome_message = None
+    _is_first_run = None  # type: ignore[assignment]
+    _welcome_message = None  # type: ignore[assignment]
 
 
 # N 回のコメントごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
@@ -316,7 +316,9 @@ def make_reminder_speak(viewer, tts_queue):
     return _speak
 
 
-class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWidget if QOpenGLWidget is not None else object):
+class AutonomousAvatarViewer(
+        AutonomousBehaviorMixin, GLViewportMixin,
+        QOpenGLWidget if QOpenGLWidget is not None else object):  # type: ignore[misc]
     reset_direction_on_run = True
     EXTRA_TEXT_FIELDS = ('comment_text',)
 
@@ -734,7 +736,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 if (gift_key and hasattr(tracker, "gift_received_today")
                         and tracker.gift_received_today(gift_key)):
                     msg = (_gift_cooldown_message_gui(lang)
-                           if _gift_cooldown_message_gui else "また明日ね。")
+                           if _gift_cooldown_message_gui is not None else "また明日ね。")
                     self._speak_reply(msg)
                     return
             except Exception as e:
@@ -1468,7 +1470,7 @@ class AutonomousAvatarViewer(AutonomousBehaviorMixin, GLViewportMixin, QOpenGLWi
                 glVertex3f(float(v[0]), float(v[1]), float(v[2]))
         glEnd()
 
-class MainWindow(QMainWindow if QMainWindow is not None else object):
+class MainWindow(QMainWindow if QMainWindow is not None else object):  # type: ignore[misc]
     def __init__(self):
         super().__init__()
         _persona = None
