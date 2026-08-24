@@ -37,7 +37,7 @@
 |---|--------|------|------|
 | B1 | 小型ローカル埋め込みで意味記憶（A4 の上位版、未導入時 A4 にフォールバック） | `conversation_log.py` | `CATEGORY_RESEARCH.md` カテゴリ6/10 |
 | B2 | WRIME 学習の小型日本語感情分類（A2 の上位版） | `mood.classify_sentiment` | [RoBERTa/DeBERTa, arXiv:2505.00013](https://arxiv.org/html/2505.00013v1) |
-| B3 | 表現力ローカル TTS（気分/好感度に応じた感情スタイル発話） | `tts_thread.py`, `tts_with_virtual_audio.py` | [Style-Bert-VITS2](https://github.com/litagin02/Style-Bert-VITS2), [ベンチ arXiv:2505.17320](https://arxiv.org/html/2505.17320v1) |
+| B3 | 表現力ローカル TTS（気分/好感度に応じた感情スタイル発話） | `tts_thread.py` | [Style-Bert-VITS2](https://github.com/litagin02/Style-Bert-VITS2), [ベンチ arXiv:2505.17320](https://arxiv.org/html/2505.17320v1) |
 
 ## Tier C（ローカル LLM オプション・要方針判断）
 

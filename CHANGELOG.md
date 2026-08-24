@@ -168,6 +168,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The dashboard's backup page called itself "Cloud Sync".** `/sync` zips
+  `config/` and the conversation log to a local file and touches no network at
+  all, but its heading read "Cloud Sync" / 「クラウド同期」, its button "Sync
+  Now", and its confirmation "Cloud sync executed" — labels left over from a
+  `sync_to_cloud` module that has since been deleted. The description directly
+  underneath said, correctly, that it creates a local backup, so the page
+  contradicted itself. In a product whose first principle is local-only,
+  offline, privacy-first, a screen that reads as though your conversation
+  history is being uploaded is not a typo; it misleads on the single point users
+  care most about. The locale keys were renamed along with their values
+  (`cloud_sync` → `create_backup`, and so on) so the code stops misleading its
+  next reader too, and both locales now state plainly that nothing is sent
+  anywhere. `tests/test_dashboard_i18n.py` asserts the page never says "cloud
+  sync" and — separately — that neither `sync()` nor `_build_sync_backup()`
+  references any network API, so the claim stays backed by the implementation.
+- **Deleted a module that would have uploaded user data to Google Cloud
+  Storage.** `main/plugins/cloud_backup.py` had zero references, sat in a
+  directory with no `__init__.py`, imported the long-deleted `config_manager`
+  (so it could not even be imported), and depended on `google-cloud-storage`,
+  which is not in `setup/requirements.txt`. It could never have run — but a
+  reader finding it would reasonably conclude Satin ships cloud upload. The
+  now-unread `plugins` array in `config/config.json`, which advertised
+  `comment_manager` / `tts_engine` / `overlay` modules that do not exist, went
+  with it.
+- **Documentation that no longer described this product.** After 59 modules were
+  deleted, the docs still pointed at them. `setup/README.md` was the worst: it
+  described a VRChat streaming tool with Twitch/YouTube/Nico overlays, and three
+  of its copy-pasteable commands (`python manage_satin.py --validate`,
+  `--backup`, `python comment_manager_batch.py --optimize`) would simply fail.
+  The two per-OS setup guides pointed at `win/run_satin.bat` and
+  `mac/run_satin.sh`, which live under `launch/`, not `setup/`. `SPECIFICATION.md`
+  §3.4 documented an entire configuration subsystem — `.env` loading, per-env
+  overlays, `SATIN_SECTION__KEY` overrides, hot reload — that exists in no form.
+  All rewritten from the actual scripts and code.
+
+  `tests/test_docs_references.py` now fails on any Markdown file that names a
+  `.py` or directory that isn't there, and on any broken relative link (which
+  immediately caught `docs/history/README.md` pointing one directory too high).
+  `CHANGELOG.md` and `docs/history/` are exempt from the freshness check, since
+  a record of what *was* removed is supposed to name removed things — but broken
+  links are broken regardless, so links are checked everywhere.
+
+  Hard-coded test counts were removed rather than corrected. "2,939 passed" and
+  "2,055 passed" had both been written down and both had drifted; a number that
+  changes every commit cannot be kept in sync by hand, so the docs now say to
+  run `python check.py`. `SPECIFICATION.md` also shed its §7 (181 lines, 43% of
+  the file) to `docs/history/` — it was a changelog living inside a spec, under
+  a heading that said "implemented in this commit" long after it spanned dozens.
+
 - **The test suite wrote to the user's real affinity file.** `python -m pytest
   tests/` mutated `config/mood.json` and appended to `config/mood_history.jsonl`
   on every run: tests that drive real code paths (`persona_cli`,

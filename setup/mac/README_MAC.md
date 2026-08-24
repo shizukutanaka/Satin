@@ -1,89 +1,80 @@
-# Satin for macOS
+# Satin for macOS / Linux
 
-## セットアップ手順
+パスはすべて**リポジトリ root からの相対**です。セットアップと起動は
+別のディレクトリにある点に注意してください（`setup/` と `launch/`）。
 
-### 1. 前提条件
-- macOS 10.15 (Catalina) 以降
-- Python 3.8 以降（Homebrew推奨）
-- コマンドラインツール（Xcode Command Line Tools）
+## 1. 前提条件
 
-### 2. コマンドラインツールのインストール
+- macOS 10.15 (Catalina) 以降、または一般的な Linux ディストリビューション
+- Python 3.10 以降を推奨（CI が検証しているのは 3.10 / 3.11 / 3.12。
+  構文上は 3.8 でも読めますが、その組み合わせは検証していません）
 
-ターミナルを開き、以下のコマンドを実行：
+macOS で Python が入っていない場合:
 
 ```bash
 xcode-select --install
-```
-
-### 3. Homebrewのインストール（未インストールの場合）
-
-```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-### 4. Pythonのインストール（未インストールの場合）
-
-```bash
 brew install python
 ```
 
-### 5. Satinのセットアップ
-
-1. ターミナルでSatinのディレクトリに移動：
-   ```bash
-   cd /path/to/Satin
-   ```
-
-2. セットアップスクリプトに実行権限を付与：
-   ```bash
-   chmod +x mac/setup.sh
-   ```
-
-3. セットアップを実行：
-   ```bash
-   ./mac/setup.sh
-   ```
-
-## 起動方法
+## 2. セットアップ
 
 ```bash
-./mac/run_satin.sh
+chmod +x setup/mac/setup.sh
+./setup/mac/setup.sh
+```
+
+スクリプトは自身の位置からリポジトリルートを解決するので、どこから呼んでも
+同じ結果になります。実行内容は pip の更新と `setup/requirements.txt` の
+インストール、それに `launch/mac/run_satin.sh` への実行権限付与だけです。
+仮想環境は作らないので、venv を使いたい場合は先に有効化してから実行して
+ください。
+
+## 3. 起動
+
+```bash
+./launch/mac/run_satin.sh
+```
+
+`setup/mac/` ではなく `launch/mac/` にあります。直接起動することもできます。
+
+```bash
+python3 satin_launcher.py
 ```
 
 ## トラブルシューティング
 
-### セキュリティ警告が表示される場合
-
-1. システム環境設定 > セキュリティとプライバシー を開く
-2. 「一般」タブで「開く」ボタンをクリック
-
-### パーミッションエラーが発生する場合
-
-```bash
-chmod +x mac/*.sh
-```
-
-### 依存関係のインストールに失敗する場合
+### 依存関係のインストールに失敗する
 
 ```bash
 python3 -m pip install --upgrade pip
-pip3 install -r requirements.txt
+pip3 install -r setup/requirements.txt
 ```
+
+`PyQt5` / `PyOpenGL` の導入に失敗しても、対話 CLI
+（`python3 satin_launcher.py --chat`）と Web ダッシュボードは動きます。
+3D アバター GUI だけが使えません。
+
+### パーミッションエラー
+
+```bash
+chmod +x setup/mac/setup.sh launch/mac/run_satin.sh
+```
+
+### 起動しない
+
+```bash
+python3 satin_launcher.py --version   # ここが通らなければ Python 側の問題
+python3 check.py                       # 何が壊れているかを一括で表示
+```
+
+Satin はログファイルを作りません。エラーはターミナルにそのまま出ます。
 
 ## アンインストール
 
-1. 仮想環境を削除：
-   ```bash
-   rm -rf venv
-   ```
-2. インストールしたパッケージを削除：
-   ```bash
-   pip3 uninstall -r requirements.txt -y
-   ```
+Satin はリポジトリの外に何も書きません。ディレクトリごと削除すれば完了です。
+導入した Python パッケージも消したい場合:
 
-## サポート
-
-問題が解決しない場合は、以下の情報を添えてサポートチケットを作成してください：
-- エラーメッセージ全体
-- 実行したコマンド
-- 環境情報（`sw_vers` と `python3 --version` の出力）
+```bash
+pip3 uninstall -r setup/requirements.txt -y
+```

@@ -1,8 +1,12 @@
 # Satin 仕様書 (Specification)
 
-> 最終更新: 2026-06-20
-> 対象リビジョン: `claude/deepresearch-ultrathink-improvement-59Yhc`
-> ステータス: ドラフト（既存実装からのリバースエンジニアリングに基づく）
+> ステータス: 実装をリバースエンジニアリングした仕様。実装が真実の源であり、
+> 齟齬があれば本書の側が誤っている。
+>
+> 日付とリビジョンをここに書くのはやめた。更新を忘れた瞬間に嘘になり、
+> そして必ず忘れるからである（実際「最終更新: 2026-06-20 / 対象リビジョン:
+> claude/deepresearch-ultrathink-improvement-59Yhc」のまま何十コミットも
+> 放置されていた）。いつ何が変わったかは `git log` と `CHANGELOG.md` が持つ。
 
 ---
 
@@ -13,11 +17,6 @@ Python アプリケーションである。ユーザーの入力（テキスト�
 **ルールベース**（LLM・外部 API 非依存）で応答し、
 TTS で音声合成しながら 3D アバターを動かす。関係性（好感度）・記憶・特別な日
 などの「育成シミュレーション」的な要素を持つ。
-
-> **注記:** ルートの `README.md` 冒頭は本プロジェクトを
-> *"a powerful and flexible configuration management system"* と記述しているが、
-> 実体は **3D アバター・デスクトップコンパニオン**である。設定管理機構は
-> その基盤コンポーネントの一つにすぎない。本仕様書は実装を真実の源とする。
 
 ### 1.1 設計原則 (Design Principles)
 
@@ -32,7 +31,7 @@ TTS で音声合成しながら 3D アバターを動かす。関係性（好感
 
 ### 1.2 動作要件 (Requirements)
 
-- Python 3.8+
+- Python 3.10 以降を推奨（CI が検証しているのは 3.10 / 3.11 / 3.12）
 - 必須: `tkinter`（標準）
 - 任意: PyQt5 / PyOpenGL / Pillow / numpy / pygltflib（3D アバター）、
   pyttsx3（TTS）、flask（ダッシュボード）。いずれも欠けても該当機能が縮退する
@@ -84,8 +83,12 @@ satin_launcher.py
 └─────────────────────────────────────────────────────────────┘
 ```
 
-規模: `main/` 配下 **37 モジュール**、`tests/` 配下 **50 テストファイル**
-（**2055 tests passing / 1 skipped**）。
+規模: `main/` 配下 **37 モジュール**、`tests/` 配下 51 テストファイル。
+
+テスト件数はここに書かない。「2,939 件」「2,055 件」と 2 度書かれ、2 度とも
+実数とずれた — コミットごとに変わる数を人手で同期し続けるのは負け戦である。
+現在値が要るときは `python check.py`（または `python -m pytest tests/ -q`）を
+実行すること。
 
 ---
 
@@ -121,22 +124,37 @@ satin_launcher.py
   アーカイブも横断する。
 - 書き込み失敗は発話・UI を止めない（防御的）。
 
-### 3.4 設定管理 (`config_manager*.py` / `utils_config.py`)
+### 3.4 設定 — **多層オーバーライドは撤去済み**
 
-- `config/config.json` を基底に、以下の優先順で上書き（12-factor 準拠）:
-  ```
-  base config.json  <  config.<env>.json  <  .env  <  実環境変数 (SATIN_*)
-  ```
-- `SATIN_SECTION__KEY` 形式でネストキーを上書き（型自動キャスト）。
-- `EnhancedConfigManager`: diff / undo スタック / ホットリロード（watchdog 任意）/
-  JSON Schema サブセット検証 / エクスポート・インポート。
+設定は `config/` 直下の JSON をそのまま読むだけである。オーバーレイも
+`.env` 読み込みも環境変数によるネストキー上書きも**存在しない**。
 
-### 3.5 TTS (`tts_thread.py` / `tts_with_virtual_audio.py`)
+| ファイル | 読み手 |
+|---|---|
+| `config/config.json` | `version.py`（バージョン）・`log_retention.py`（保持日数）ほか |
+| `config/persona.json` | `persona.py` |
+| `config/mood_config.json` | `mood.py`（好感度キーワード） |
+| `config/plugins/break_reminder.json` | `break_reminder.py` |
+
+かつて `config_manager` / `config_manager_enhanced` / `utils_config` /
+`config_schema` / `config_validator` / `config_version_manager` と
+`main/config` パッケージが 12-factor 風の多層マージ（`config.<env>.json` → `.env` →
+`SATIN_SECTION__KEY`）と diff / undo / ホットリロードを提供していたが、
+**どのエントリポイントからも使われていなかった**ため削除した。設定 6 通りの
+優先順位を覚えないと挙動が読めない状態は、単一ユーザーのデスクトップアプリに
+とって機能ではなくコストである。
+
+検証は `python main/manage_satin.py validate`（`config/` を再帰的に走査し
+構文 + `persona.json` / `mood_config.json` の意味的検証を行う）。
+
+### 3.5 TTS (`tts_thread.py`)
 
 - `pyttsx3` ベースのバックグラウンドスレッド。`tts_queue` から読み上げ文を取得。
-- 仮想オーディオ版は `save_to_file` + デバイス再生（VTuber 配信向け）。
 - スレッドループは `queue.get` と処理を分離し、処理例外でスレッドが死なないよう
   `try/except/finally` で `is_speaking` リセット・一時ファイル削除を保証。
+- 仮想オーディオ出力版（`tts_with_virtual_audio`、VTuber 配信向けに
+  `save_to_file` + デバイス再生を行っていた）は削除した。配信は本製品の
+  用途ではなく、どこからも呼ばれていなかった。
 
 ### 3.6 Web ダッシュボード (`dashboard.py`)
 
@@ -169,7 +187,7 @@ YouTube / arXiv / Web スクレイピングの統合層（`youtube_integrator` /
 
 | ファイル | 用途 | 種別 |
 |----------|------|------|
-| `config/config.json` | アプリ基底設定（log_level / backup / plugins …） | 設定 |
+| `config/config.json` | アプリ基底設定（version / settings） | 設定 |
 | `config/persona.json` | 人格・対話・応答ルール・好感度語 | 設定 |
 | `config/mood_config.json` | 感情語・delta 上書き | 設定 |
 | `config/user_profile.json` | 呼び名・誕生日・趣味（**git-ignore / 個人情報**） | 記憶 |
@@ -198,13 +216,16 @@ YouTube / arXiv / Web スクレイピングの統合層（`youtube_integrator` /
    GUI と同じ人格・応答・ロギングを CLI から利用でき、ユニットテスト可能
    （入出力関数を注入可能）。
 3. **手厚いテスト**
-   2055 件のテストが通過。境界値・null・スレッド耐性まで回帰テスト済み。
+   境界値・null・スレッド耐性まで回帰テスト済み。テストを追加したら修正コードを
+   `git stash` して「修正が無いと落ちる」ことを確認する規約（revert-verify）。
 4. **プライバシー設計**
    個人データのローカル保存・`data purge` による完全消去・Web の `no-store`。
 5. **原子的書き込みの徹底**
    状態ファイルは `.tmp` + `os.replace()` で部分書き込み破損を回避。
-6. **12-factor 準拠の設定オーバーライド**
-   環境変数・`.env`・環境別オーバレイの多層マージ。
+6. **設定の単純さ**
+   `config/` 直下の JSON を読むだけ。オーバーレイも `.env` も環境変数による
+   ネストキー上書きも無い（§3.4 参照）。挙動を知るのに優先順位表を覚える
+   必要が無いことは、単一ユーザーのデスクトップアプリでは長所である。
 7. **国際化基盤**
    i18n フォールバックチェーンが UI と対話で共通化されている。
 
@@ -212,194 +233,20 @@ YouTube / arXiv / Web スクレイピングの統合層（`youtube_integrator` /
 
 | # | 重大度 | 箇所 | 内容 |
 |---|--------|------|------|
-| W1 | 中 | `satin_launcher.py` vs `dashboard.py` | ダッシュボードのポートが不整合。ランチャ既定=**5000**、`dashboard.py` 直接実行=**5003**、README=**5003**。`--dashboard` 起動時のみ 5000 になり、ドキュメント・直接実行と食い違う。 |
-| W2 | 中 | `README.md` 冒頭 | 製品説明が実体（3D アバターコンパニオン）と乖離（"configuration management system"）。新規参加者が誤解する。 |
-| W3 | 低 | ドキュメント | 体系的な仕様書が存在せず、知識が README と多数の `*_IMPROVEMENTS.md` に散在。 |
-| W4 | 低 | `dashboard.py` | ハードコードされたポート（定数化されていない）。再利用・テスト時に変更しづらい。 |
-| W5 | 低 | 任意依存の管理 | 依存一覧が `satin_launcher.py` 内にハードコードされ、`setup/requirements.txt` と二重管理。 |
+| W1 | 解消済 | `dashboard.py` | ポート不整合（ランチャ 5000 / 直接実行 5003）は `DEFAULT_DASHBOARD_PORT` へ一本化し、`SATIN_DASHBOARD_PORT` で上書き可能にした。W4（ハードコード）も同時に解消。 |
+| W2 | 解消済 | `README.md` 冒頭 | 製品説明が "configuration management system" となっていた乖離を修正済み。 |
+| W3 | 解消済 | ドキュメント | 本仕様書がその答えであり、散在していた `*_IMPROVEMENTS.md` は `docs/history/` へ集約した。 |
+| W5 | 解消済 | 任意依存の管理 | 依存一覧は `main/dependency_manifest.py` を唯一の真実の源とし、`satin_launcher.py` はそれを読む。 |
 | W6 | 情報 | `null`/型不正データ耐性 | 直近セッションで JSONL/設定の `null` 値クラッシュを多数修正済み（§ CHANGELOG）。同種の防御は今後も新規 I/O ごとに必要。 |
 | W7 | 解消済 (I25/I26) | `satin_launcher.py` 既定モード + アバター描画 | 商用品質監査で発見: 既定起動が `avatar_loader.AvatarLoaderApp`（何も表示しないファイル選択ダイアログ）を開くだけで本体 GUI に繋がらず、かつ本体 GUI は常に仮の球体しか描画せず、選んだアバターモデルを表示する手段が無かった。I25 で既定起動を本体 GUI に接続、I26 で `--avatar-loader` の選択を共有ストア経由で本体 GUI が読み込み・描画するよう統合（頂点ワイヤーフレーム、テクスチャ・スキニングは対象外）。 |
 
-## 7. 改善点 (Improvements) — 本コミットで実装
+## 7. 改善の記録
 
-- **[実装] I26 (W7 完了 — 選んだアバターを本体 GUI が描画):**
-  `--avatar-loader` で選んだモデルを本体 3D GUI が実際に描画するよう統合。
-  新規 `avatar_model_store.py`（cwd 非依存の canonical な選択履歴・アトミック
-  保存・拡張子/実在チェック付き解決）を受け渡し口として `avatar_loader.py` と
-  `avatar_3d_autonomous_tts.py` を接続。`gltf_utils.load_first_mesh_vertices` を
-  実 pygltflib 1.16（GLB の頂点は `Buffer.get_data()`/`.data` ではなく
-  `gltf.binary_blob()` にある）に対応させ、bufferView/accessor のオフセットも
-  尊重するよう修正（この不整合で従来は実 GLB を渡しても何も描画されなかった）。
-  `gltf_utils.normalize_vertices` で重心中心・最大半径 1 に正規化。`GLTFModel`
-  の読み込みを try/except で保護し、存在しない/壊れたファイルでもクラッシュせず
-  球体へフォールバック。GUI に `/avatar` コマンド追加。テスト 30 件超追加
-  （store・normalize・実 GLB 往復・ロード堅牢性・コマンド）。
-- **[実装] I25 (W7 解消 — 既定起動が本体 GUI に繋がっていなかった):**
-  `satin_launcher.py` の既定モードを `avatar_loader.AvatarLoaderApp`（ファイル
-  選択のみで何も起動しない tkinter ダイアログ）から、TTS・好感度・会話ログ・
-  スラッシュコマンドを持つ本体 GUI (`avatar_3d_autonomous_tts.MainWindow`) の
-  起動 (`_launch_avatar_gui`) に変更。旧ダイアログは `--avatar-loader` で引き
-  続き利用可能。3D モデル読み込み（glTF/VRM の実パース・描画）を本体 GUI に
-  統合する作業は別途の設計判断が必要なため対象外（`avatar_3d_gltf_viewer.py`
-  にのみ実装済み、ワイヤーフレームのみ）。テスト 4 件追加（既定モードの
-  dispatch・`--avatar-loader` の dispatch・import 失敗時のエラー処理）。
-- **[実装] I23 (新機能 — ユーザーの気分への寄り添い / wellbeing):** ソクラテス式
-  問答（「コンパニオンが chatbot ではなく『生きている』と感じる要素は？」→ 記憶
-  ＋自発性＋**あなた固有の共感**）から導出。`mood.py` がアバターの好感度を扱う
-  のに対し、新規 `user_wellbeing.py` は**ユーザー自身の最近の気分**を会話ログの
-  発話感情から推定し、落ち込み時はそっと気づかい・上向き時は一緒に喜ぶ一言を返す
-  （データ不足・中立時は何も言わない）。感情分類は `mood.classify_sentiment`
-  （新設の純関数）を単一の真実の源として再利用し LLM 非依存。CLI に
-  `/feeling`（別名 `/checkin`）コマンドを追加。テスト 24 件追加。
-- **[実装] I24 (I23 の改良 — wellbeing の自発化):** S/W/I 分析で「リアクティブ
-  のみ（`/feeling` を打たないと働かない＝ソクラテスの自発性が欠落）」を最大の
-  短所と特定。セッション開始のあいさつ直後に、明確なトレンドがある時だけ寄り添い
-  の一言を**自発的に**添えるよう `run_chat` を改良（トレンド無し/データ不足/mood
-  無効時は無言で通常あいさつを邪魔しない）。集計は実際の書き込み先 `conv_log` を
-  参照しテスト容易性も確保。テスト 3 件追加（low トレンド時に追加・無トレンド時
-  沈黙・mood 無効時沈黙）。残課題: GUI 連携、ログ全走査の効率化。
-
-
-- **[実装] I22 (静的解析 ruff 由来 — 未使用 import のクリーンアップ):** `ruff`
-  (F401) の **安全な autofix のみ**（`[*]` 印付き 199 件）を適用し、74 ファイルから
-  純粋に未使用の import を除去。`try: import x; X_AVAILABLE=True` 形式の可用性
-  プローブ（19 件）は ruff が autofix 対象外として保守的に保持。あわせて
-  `logging_manager` の陳腐化したテスト（未使用になった `time` import の存在を
-  要求していた）を実態（`threading` のみ必要）に合わせて更新。
-- **[実装] I21 (静的解析 ruff 由来 — `List` 未 import で plugin が import 不能 +
-  lint ゲート導入):** `ruff` (F821) で `plugins/cloud_backup.py` が戻り値注釈に
-  `List[...]` を使うのに `from typing import` へ `List` が無く（`__future__
-  annotations` も無し）、google-cloud-storage 導入環境で **モジュール import 時に
-  `NameError`** になる実バグを検出・修正。あわせて、今セッションで見つけた
-  F821/B006/B904 級のバグを将来自動検出するため `ruff.toml` を新規追加。
-  correctness 系ルール（B006/B904/E711-714/E722/F811/F821/F823/PLE）を enforced
-  set として緑に保ち、CI/pre-commit ゲート化できる状態にした（F401/F841 等の
-  hygiene 系は将来クリーンアップ対象として除外）。
-  参考: [Python のセキュリティ/品質を静的解析で守る — ruff/Bandit (Qiita kina006097)](https://qiita.com/kina006097/items/436c012504b1d60a5c5f)
-- **[実装] I20 (静的解析 ruff 由来 — 例外チェーン欠落 B904):** `except` 節内で
-  別の例外を送出する際 `from e` を付けず、元例外のトレースバックが失われていた
-  18 箇所を修正（`config_validator` / `plugin_manager` / `config_version_manager`
-  / `backup_scheduler` / `schema_validators` / `config/schema`）。`raise ... from e`
-  で連鎖を保持し、設定読込・プラグイン・バックアップ失敗時の根本原因追跡を
-  容易にした（純加算的変更で挙動不変）。
-  参考: [例外の再送出と from / 例外チェーン (Qiita hasoya)](https://qiita.com/hasoya/items/05d4e49d492869875cca)
-- **[実装] I19 (静的解析 ruff 由来 — 3D 描画が NameError でクラッシュ):**
-  `ruff` (F821 undefined-name) で、7 つの 3D アバタービューア
-  (`avatar_3d_sync` / `avatar_3d_gltf_viewer` / `avatar_3d_autonomous` /
-  `avatar_3d_autonomous_or_camera` / `avatar_3d_mic_tts_modes` /
-  `autonomous_gltf_avatar` / `avatar_3d_autonomous_tts`) が `paintGL`/`draw`
-  内で OpenGL 名 (`glClear` / `glBegin` / `GL_*` / `gluSphere` 等) を **import
-  せず**使用していることを検出。import 共通化リファクタで各モジュールから
-  `from OpenGL.GL import *` が抜け落ち、**アプリ中核の 3D 描画が初回 paint で
-  `NameError` クラッシュ**する潜在バグだった（GUI/GPU/PyOpenGL 必須でテスト
-  未到達のため見逃されていた）。`avatar_3d_viewer.py` の生存パターンに合わせ、
-  各モジュールにガード付き `from OpenGL.GL/GLU import *` を追加。
-  検証: ruff F821 解消 + py_compile + ヘッドレステスト全通過（実 GUI 描画は
-  本環境に display/GPU が無く未実行）。
-- **[実装] I18 (静的解析 ruff 由来 — ミュータブルデフォルト引数):** `ruff`
-  (bugbear B006) で、手動 grep が見逃していた関数引数のミュータブルデフォルトを
-  4件検出。`content_aggregator.search_all_sources` /
-  `get_trending_content` / `create_knowledge_base` の `sources=[...]` と
-  `youtube_integrator.get_transcript` の `languages=['ja','en']`。現状は読み取り
-  専用で実害は無いが、全呼び出しで同一リストを共有する脆弱性のため `None`
-  センチネルパターンへ統一。あわせて `config_validator` の `not X in Y`
-  (誤読しやすいが機能的には正しい) を `not in` に明確化 (E713)。
-  参考: [ミュータブルデフォルト引数の罠 (Qiita Vermee81)](https://qiita.com/Vermee81/items/eb6c43cae896b3a3bb48)
-
-- **[実装] I1 (W1, W4 解消):** ダッシュボードのポートを単一の定数
-  `DEFAULT_DASHBOARD_PORT = 5003` に集約し、`dashboard.py` の `__main__` と
-  `satin_launcher.py --dashboard` の既定値を一致させる。環境変数
-  `SATIN_DASHBOARD_PORT` でも上書き可能にする。
-- **[実装] I2 (W2 解消):** `README.md` 冒頭の製品説明を実体に合わせて修正。
-- **[実装] I3 (W3 解消):** 本仕様書 `SPECIFICATION.md` を新規作成（このファイル）。
-
-- **[実装] I4 (W6 再発防止 / B3):** JSONL 読み込みの共通ローダ
-  `fsutil.iter_jsonl_dicts()` / `load_jsonl_dicts()` を追加。空行・JSON 構文
-  エラー行・`dict` 以外（`null`/配列/スカラ）を一元的にスキップする。
-  `avatar_event_report.load_events` / `avatar_event_logger.replay` /
-  `mood.load_mood_history` を本ローダへ移行し、重複していたガードを集約。
-
-- **[実装] I17 (Qiita 由来 — テンプレ漏れ防御 / `{user}` 集約):** GUI の
-  コメント応答で `{user}` プレースホルダ解決が `speak_comment` のみで行われ、
-  別の出力経路 `_speak_reply()`（ギフト・プロフィール質問・スラッシュコマンド
-  応答）を通らなかった。現状それらの台詞に `{user}` は無いが、将来追加すると
-  literal `{user}` が読み上げ／表示へ漏れる脆さがあった。`{user}` 解決を全
-  コメント応答の唯一の出口 `_speak_reply()` に集約し（personalize は `{user}`
-  非含有なら無変換のため無害）、防御を一点に統一。
-  参考: [str.format / テンプレートの波括弧と KeyError (Qiita)](https://qiita.com/FGtatsuro/items/a64066e2151203b7221a)
-
-- **[実装] I16 (Qiita 由来 — 無制限キューでメモリ肥大):** `camera_thread` が
-  無制限 `queue.Queue` に毎フレーム pose を `put` していたため、消費側 (Qt
-  タイマー) が止まる/遅れる (ウィンドウ最小化・GL 停止等) と pose がメモリに
-  際限なく溜まった。ライブ姿勢は最新のみ有効なので `_enqueue_pose()` で
-  バックログを `_MAX_BACKLOG=2` に制限 (古いフレームを捨てて最新を保持)。
-  参考: [queue.Queue の maxsize とバックプレッシャー (Qiita)](https://qiita.com/tomyox693/items/5624dd8f11305f9de7f0)
-- **[実装] I15 (Zenn 由来 — 環境変数の非有限 float キャスト):** `config/env.py`
-  の自動型キャストが `float()` をそのまま使い、環境変数 `inf` / `-inf` /
-  `infinity` / `nan` / `1e999` を黙って `float('inf')` / `float('nan')` に
-  変換していた。`nan` は全比較が False になり閾値判定を破壊、`inf` も数値
-  ロジックを壊す。`math.isfinite()` で非有限値は数値扱いせず文字列へ
-  フォールバック（正当な `1e3`=1000.0 等の有限値は従来通り数値）。
-  参考: [浮動小数点の比較と誤差 / math.isclose (Zenn)](https://zenn.dev/sergicalsix/articles/f261d66bc1773b)
-- **[実装] I14 (プライバシー — バックアップ zip が world-readable):**
-  `backup_manager.create_backup()` および `dashboard._build_sync_backup()` が
-  生成する zip は `mood.json` / `user_profile.json` / `avatar_event_log.jsonl`
-  等の**個人データを含む**にも関わらず、umask 既定 (0o644) のまま放置で
-  マルチユーザー環境の他ユーザーが読めた。これは既に `fsutil.restrict_to_owner`
-  で対策していた個別ファイルと一貫しない抜け穴。生成直後に所有者のみ読み書き可
-  (0o600) に制限する best-effort 処理を追加。
-- **[実装] I12 (Snyk/Qiita 由来 — Zip Slip 脆弱性):**
-  `backup_manager.restore_backup()` が `shutil.unpack_archive`（内部で
-  `zipfile.extractall`）をパス検証なしで呼んでいたため、悪意ある zip 内に
-  ``../etc/passwd`` 等のエントリがあると **target_dir 外への任意ファイル書き込み**
-  が可能だった。`manage_satin.cmd_backup_restore` は既に同型ガードを実装済み
-  だったため、その実装に揃えて各エントリの解決後パスを `realpath` で検証する
-  方式に書き換え。
-  参考: [Zip Slip 脆弱性の解説 (Snyk)](https://snyk.io/blog/behind-the-disclosure-the-zip-slip-vulnerability/)
-- **[実装] I13 (Qiita 由来 — exc_info 欠落でスタックトレース消失):**
-  `backup_scheduler` / `logging_manager` の重要 except 節が
-  `logger.error(f"...{e}")` だけでスタックトレースを残さず、根本原因の切り分け
-  が困難だった。クリティカル経路 3 箇所に `exc_info=True` を追加。
-  参考: [logger による例外のログ出力 (Qiita)](https://qiita.com/AirhAurum/items/de28ad28cbf91514bcf3)
-- **[実装] I11 (Zenn 由来 — 非原子的書き込みで基底設定が破損):** アプリ全体で
-  最も使われる設定書き込みパス `utils_config.save_config()` だけが、他全モジュール
-  が使う原子的パターンを使わず **インプレース `open(path,'w')`** で書いており、
-  書き込み中のクラッシュ／`json.dump` 例外で `config.json` が切り詰められ次回
-  起動でアプリ全体が壊れる危険があった。同一ディレクトリの一時ファイルへ
-  全量書き込み→`fsync`→`os.replace` の原子的書き込みに変更（失敗時は元ファイル
-  を保全し一時ファイルも残さない）。
-  参考: [sync コマンドのデータ同期と I/O エラー検出 (Zenn)](https://zenn.dev/satoru_takeuchi/articles/248574593145ed)
-- **[実装] I10 (Qiita 由来 — naive/aware datetime 混在):** `content_aggregator`
-  で YouTube Data API 由来の **aware** datetime と yt-dlp/論文/Web 由来の
-  **naive** datetime が混在し、(a) `datetime.now() - aware` で TypeError →
-  関連度スコアリングが例外で **YouTube 結果が丸ごと欠落**、(b) `min/max(dates)`
-  も同型 TypeError。変換 funnel で `_to_naive()`（aware→UTC naive）に一律正規化。
-  参考: [utcnow() の代わりに now(UTC) を / naive・aware の落とし穴 (Qiita)](https://qiita.com/ayu_ko_mimo/items/ac334dcc9a073aac28f7)
-- **[実装] I8 (Qiita 由来 — RotatingFileHandler 重複登録):** `LoggingManager`
-  を 2 回インスタンス化するとルートロガーに同一ハンドラが二重に追加され、
-  全ログ行が重複出力、Windows ではローテーション時に PermissionError になる。
-  ハンドラに ``satin.rotating_file`` / ``satin.console`` のマーカー名を付け、
-  既存検出で重複登録を防止。
-  参考: [RotatingFileHandler の重複ハンドラ落とし穴 (Qiita)](https://qiita.com/KAZAMAI_NaruTo/items/a1dc89e4ae0ecab56c77)
-- **[実装] I9 (Zenn 由来 — シングルトン スレッドセーフ):**
-  `get_enhanced_config_manager()` がロック無しの素朴な ``if is None: create``
-  実装で、並行コンテキストで 2 インスタンス生成され得た（undo/listener 状態が
-  分裂し最後勝ち）。double-checked locking パターンに統一。
-  参考: [Singleton の罠 — スレッドセーフ実装 (Zenn)](https://zenn.dev/koduki/articles/47ebe8d93e27e0)
-- **[実装] I6 (Zenn 由来 — Flask セッション強化):** ダッシュボードのセッション
-  Cookie に `HTTPONLY=True` / `SAMESITE='Lax'` / `PERMANENT_SESSION_LIFETIME=12h`
-  / `SECURE` を環境変数 `SATIN_DASHBOARD_HTTPS=1` でオプトイン可能化。Flask の
-  素のデフォルト (SAMESITE 未設定・31日 lifetime) は CSRF/リプレイに弱いため。
-  参考: [Flask セッション管理とセキュリティ (Zenn)](https://zenn.dev/saiki_toshiki/articles/946e4a3c2eb4c5)
-- **[実装] I7 (Qiita 由来 — Windows tempfile 競合):** `tts_with_virtual_audio.py`
-  で `NamedTemporaryFile(delete=False)` を `with` で保持したまま
-  `pyttsx3.save_to_file()` を呼んでいたため、Windows で **共有違反**となり
-  TTS が黙って失敗していた。`tf.close()` 後にパスだけ渡すよう修正。
-  参考: [NamedTemporaryFile の Windows 落とし穴 (Qiita)](https://qiita.com/yuji38kwmt/items/c6f50e1fc03dafdcdda0)
-- **[実装] I5 (W5 / B1):** 任意・必須依存の単一宣言 `dependency_manifest.py`
-  （重い import を行わない純データ）を追加し、`satin_launcher.py` の依存チェック
-  をここから生成。ランチャ内のハードコード一覧を撤去し二重管理を解消。
-  各依存に「有効化する機能」の説明を付与（ドキュメント用）。
+実装済み改善の詳細な記録は
+[`docs/history/SPECIFICATION_IMPROVEMENTS.md`](docs/history/SPECIFICATION_IMPROVEMENTS.md)
+へ移した。仕様書は「今どうであるか」を書く場所であり、
+「いつ何を直したか」は変更履歴の仕事だからである
+（最新は [`CHANGELOG.md`](CHANGELOG.md)）。
 
 ### 7.1 将来の改善候補 (Backlog, 未実装)
 
@@ -414,10 +261,31 @@ YouTube / arXiv / Web スクレイピングの統合層（`youtube_integrator` /
 
 ## 8. 検証 (Verification)
 
+リポジトリ root で以下を実行する。
+
 ```bash
-cd /home/user/Satin
-python -m pytest tests/ -q          # 全回帰 (現在 2055 passed)
-python satin_launcher.py --validate # 設定検証
-python main/dashboard.py            # http://127.0.0.1:5003
-python satin_launcher.py --dashboard  # 同一ポートで起動すること (I1)
+python check.py     # これ 1 本。緑ならリリース可能な状態である
+```
+
+`check.py` が実行するもの: `py_compile` / ruff / mypy / pytest /
+`manage_satin validate` / 起動スモーク 3 種（`--version`・`--chat`・
+ダッシュボードの主要ルート）。約 10 秒で終わり、`--fast` を付けると
+起動スモークを省いて編集中の高速ループに使える。
+
+CI（`setup/github-actions-ci.yml`）もこの同じコマンドを呼ぶ。検証内容を
+2 箇所に書かないことで、「手元では通るのに CI で落ちる」がリスト間の
+ずれから生じる余地を無くしている。
+
+`check.py` は個人データ（好感度・会話履歴）を退避してから起動スモークを
+走らせるので、検証しただけでユーザーとアバターの関係が進むことはない。
+
+個別に実行したい場合:
+
+```bash
+python -m pytest tests/ -q             # 全回帰
+python -m ruff check main/ tests/      # lint
+python -m mypy                          # 型（対象は mypy.ini が決める。引数を渡さない）
+python main/manage_satin.py validate    # 設定検証
+python main/dashboard.py                # http://127.0.0.1:5003
+python satin_launcher.py --dashboard    # 同一ポートで起動すること
 ```

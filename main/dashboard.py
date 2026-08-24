@@ -316,7 +316,7 @@ TEMPLATE = '''
   <li><a href="/conversation?lang={{lang}}">{{i18n.t('conversation', 'Chat')}}</a></li>
   <li><a href="/conversation/search?lang={{lang}}">{{i18n.t('search', 'Search')}}</a></li>
   <li><a href="/backups?lang={{lang}}">{{i18n.t('backups')}}</a></li>
-  <li><a href="/sync?lang={{lang}}">{{i18n.t('cloud_sync')}}</a></li>
+  <li><a href="/sync?lang={{lang}}">{{i18n.t('create_backup')}}</a></li>
   <li><a href="/mood?lang={{lang}}">{{i18n.t('mood', 'Mood')}}</a></li>
   <li><a href="/stats?lang={{lang}}">{{i18n.t('stats', 'Stats')}}</a></li>
   <li><a href="/summary?lang={{lang}}">{{i18n.t('summary', 'Summary')}}</a></li>
@@ -447,7 +447,7 @@ def sync(i18n):
             config_dir = os.path.join(_root, 'config')
             _build_sync_backup(zip_path, config_dir, event_log_path)
             backup_path_display = zip_name
-            msg = i18n.t('executed_cloud_sync')
+            msg = i18n.t('created_backup')
         except Exception as exc:
             msg = _html.escape(str(exc))
             msg_color = 'red'
@@ -471,9 +471,9 @@ def sync(i18n):
             existing_html += f'<li><a href="/download/{fn_esc}?lang={lang}">{fn_esc}</a></li>'
         existing_html += '</ul>'
 
-    content = f'''<h3>{_html.escape(i18n.t("cloud_sync"))}</h3>
+    content = f'''<h3>{_html.escape(i18n.t("create_backup"))}</h3>
 <p>{_html.escape(i18n.t("sync_description", "Create a local backup of config files and conversation log."))}</p>
-<form method="post">{_csrf_field()}<button type="submit">{_html.escape(i18n.t("manual_cloud_sync"))}</button></form>
+<form method="post">{_csrf_field()}<button type="submit">{_html.escape(i18n.t("create_backup_now"))}</button></form>
 {backup_info}
 <p style="color:{msg_color}">{_html.escape(msg)}</p>
 {existing_html}'''

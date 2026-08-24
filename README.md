@@ -119,8 +119,8 @@ unlock more personal questions via an optional `follow_up_by_affinity` block.
 
 Every exchange (your comment + the avatar's reply) is recorded to the avatar
 event log (`avatar_event_log.jsonl`), so conversations show up in the existing
-event tooling — the timeline viewer, the Flask dashboard's `/logs` page, and the
-event report. You can also read the history programmatically:
+event tooling — the Flask dashboard's `/logs` page. You can also read the
+history programmatically:
 
 ```python
 from main.conversation_log import get_conversation_log
@@ -494,27 +494,47 @@ Satin/
 │   ├── win/run_satin.bat
 │   └── mac/run_satin.sh
 ├── setup/             # Install: requirements.txt + per-OS setup.bat / setup.sh
+├── docs/history/      # Archived session logs and past improvement records
+├── check.py           # The verification gate — one command, also what CI runs
 └── tests/             # unittest suite (one file per module, run with pytest)
 ```
 
 ## Development
 
-### Running Tests
+### The verification gate
+
+One command decides whether the tree is green:
 
 ```bash
-pip install -r setup/requirements.txt   # includes pytest / pytest-asyncio
+pip install -r setup/requirements.txt   # includes pytest, ruff, mypy
+python check.py                         # ~10 seconds
+```
+
+It runs `py_compile`, ruff, mypy, the pytest suite, config validation, and three
+launch smokes (`--version`, `--chat`, the dashboard's main routes). Add `--fast`
+to skip the smokes while editing, or `--list` to see the plan without running it.
+
+The smokes exist because the unit tests import modules directly and so never
+observe whether an entry point actually *starts* — a wiring fault in argument
+parsing or an optional-dependency fallback can pass every test. They run with
+your personal data (affinity, conversation history) snapshotted and restored, so
+running the gate never advances your relationship with the avatar as a side
+effect.
+
+`setup/github-actions-ci.yml` runs this same command rather than re-listing the
+checks, so "passes locally, fails in CI" can't come from the two lists drifting
+apart. See [Contributing](#contributing) for how to activate CI on this
+repository — until an owner does, the gate has never run automatically and
+`python check.py` is the only thing standing in for it.
+
+To run a step on its own:
+
+```bash
 python -m pytest tests/ -q
+python -m ruff check main/ tests/ satin_launcher.py
+python -m mypy                       # target set by mypy.ini — pass no arguments
+python main/manage_satin.py validate
 ```
-
-### Linting
-
-```bash
-pip install ruff
-ruff check main/ tests/
-```
-
-Both are also what `setup/github-actions-ci.yml` runs (see [Contributing](#contributing)
-for how to activate CI on this repository).
 
 ## Contributing
 

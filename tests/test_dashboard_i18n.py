@@ -286,3 +286,46 @@ class AcceptLanguageNegotiationTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+@unittest.skipUnless(_HAS_FLASK, "flask is not installed")
+class BackupPageHonestyTests(_RenderBase):
+    """バックアップページが「クラウド同期」を騙らないこと。
+
+    /sync は config/ と会話ログをローカルの zip にまとめるだけで、ネットワークに
+    一切触れない。にもかかわらず見出しは「クラウド同期」/"Cloud Sync"、ボタンは
+    「今すぐ同期」、完了メッセージは「クラウド同期を実行しました」だった
+    （`sync_to_cloud` が存在した頃のラベルの残骸）。
+
+    その直下の説明文には「ローカルバックアップを作成します」と正しく書いてあり、
+    ページが自分自身と矛盾していた。「ローカル完結・オフライン・プライバシー
+    第一」を第一原理に掲げる製品で、データが外部へ出ると読める表示をするのは
+    単なる誤字ではない — ユーザーが最も気にしている一点について嘘をついている。
+    """
+
+    def test_page_does_not_claim_to_sync_to_a_cloud(self):
+        for lang, forbidden in (("en", ("Cloud Sync", "cloud sync")),
+                                ("ja", ("クラウド同期",))):
+            body = self._body("/sync", lang)
+            for word in forbidden:
+                with self.subTest(lang=lang, word=word):
+                    self.assertNotIn(word, body)
+
+    def test_page_says_what_it_actually_does(self):
+        self.assertIn("Create Backup", self._body("/sync", "en"))
+        self.assertIn("バックアップを作成", self._body("/sync", "ja"))
+
+    def test_page_states_that_nothing_leaves_the_machine(self):
+        """プライバシーについては黙っているのでなく、明示的に安心させる。"""
+        self.assertIn("Nothing is sent anywhere", self._body("/sync", "en"))
+        self.assertIn("外部へ送信されることはありません", self._body("/sync", "ja"))
+
+    def test_the_route_makes_no_network_call(self):
+        """表示だけでなく実装もローカル完結であること（表示の裏取り）。"""
+        import inspect
+        source = inspect.getsource(dashboard.sync)
+        source += inspect.getsource(dashboard._build_sync_backup)
+        for forbidden in ("requests.", "urllib", "http.client", "socket.",
+                          "boto3", "google.cloud"):
+            with self.subTest(api=forbidden):
+                self.assertNotIn(forbidden, source)

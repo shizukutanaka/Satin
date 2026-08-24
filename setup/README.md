@@ -1,118 +1,62 @@
-# Satin
+# Satin — インストール
 
-<div align="center">
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platform">
-  <img src="https://img.shields.io/badge/Python-3.8+-yellow" alt="Python 3.8+">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License: MIT">
-</div>
+Satin はローカル完結・オフラインのデスクトップ 3D アバターコンパニオンです。
+製品全体の説明は[リポジトリ root の README](../README.md) を参照してください。
 
-**Satin** はVRChat配信・コメント管理・TTS・オーバーレイ専用の統合ツールです。
+このディレクトリにはインストールに必要なものだけが入っています。
 
-## 🌟 主な特徴
+| ファイル | 用途 |
+|---|---|
+| `requirements.txt` | Python 依存パッケージ（全 OS 共通） |
+| `win/setup.bat` | Windows 用セットアップ（[手順](win/README_WIN.md)） |
+| `mac/setup.sh` | macOS / Linux 用セットアップ（[手順](mac/README_MAC.md)） |
+| `github-actions-ci.yml` | CI ワークフロー定義（有効化は所有者が手動で行う。ファイル冒頭を参照） |
 
-- 🎙️ VRChat配信向けコメント読み上げ・管理
-- 🖥️ マルチプラットフォーム対応 (Windows/macOS/Linux)
-- 🌐 マルチ言語対応 (日本語/English)
-- 🎮 コメントオーバーレイ (Twitch/YouTube/Nico 対応)
-- 🛠️ 配信補助機能・管理用GUI
-- 🔄 自動バックアップ・復元機能
+## 自動セットアップ
 
-## 🚀 クイックスタート
+リポジトリ root から実行します。スクリプトは自身の位置からリポジトリルートを
+解決するので、どこから呼んでも構いません。
 
-### セットアップ方法
-
-#### Windows ユーザー向け
-1. `win` フォルダ内の `setup.bat` をダブルクリック
-2. 管理者権限を求められたら「はい」を選択
-3. セットアップ完了を待つ
-
-#### macOS ユーザー向け
 ```bash
-# 実行権限を付与
-chmod +x mac/setup.sh
+# Windows
+setup\win\setup.bat
 
-# セットアップを実行
-./mac/setup.sh
+# macOS / Linux
+chmod +x setup/mac/setup.sh
+./setup/mac/setup.sh
 ```
 
-### 起動方法
+いずれも pip を更新し、`setup/requirements.txt` を導入します。
 
-#### Windows
-- `win` フォルダ内の `run_satin.bat` をダブルクリック
+## 手動セットアップ
 
-#### macOS / Linux
+スクリプトを使わない場合はこれだけです。
+
 ```bash
-./mac/run_satin.sh
+pip install -r setup/requirements.txt
 ```
 
-## 🛠 ツール一覧
+## 起動
 
-Satinには以下の便利なツールが含まれています：
+セットアップスクリプトとは**別のディレクトリ**にあります（`launch/`）。
 
-| ツール名 | 説明 | 対応OS |
-|---------|------|-------|
-| `manage_satin.py` | 設定ファイル全体の管理 | 全OS |
-| `comment_manager_batch.py` | コメント管理設定の検証・最適化 | 全OS |
-| `tts_manager_batch.py` | TTS設定の検証・最適化 | 全OS |
-| `overlay_manager_batch.py` | オーバーレイ設定の検証・最適化 | 全OS |
-
-## 🔧 高度な使い方
-
-### バッチ処理の実行例
 ```bash
-# 設定ファイルのバリデーション
-python manage_satin.py --validate
+# Windows
+launch\win\run_satin.bat
 
-# バックアップの作成
-python manage_satin.py --backup
+# macOS / Linux
+./launch/mac/run_satin.sh
 
-# コメント管理設定の最適化
-python comment_manager_batch.py --optimize
+# あるいは直接
+python satin_launcher.py
 ```
 
-### コマンドラインオプション
-```
--h, --help      ヘルプを表示
--v, --verbose   詳細なログを出力
---validate      設定ファイルの検証を実行
---backup        設定ファイルのバックアップを作成
---optimize      設定の最適化を実行
+## 動作確認
+
+```bash
+python satin_launcher.py --version
+python check.py               # 全検証（テスト・lint・型・起動スモーク）
 ```
 
-## 🛠 トラブルシューティング
-
-### よくある問題
-
-1. **Pythonがインストールされていない場合**
-   - [Python公式サイト](https://www.python.org/downloads/)から最新版をインストール
-   - インストール時に「Add Python to PATH」にチェックを入れる
-
-2. **パッケージのインストールに失敗する場合**
-   ```bash
-   python -m pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-3. **権限エラーが発生する場合**
-   - Windows: 管理者として実行
-   - macOS/Linux: `sudo` を付与して実行
-- ログファイル（satin_profile.log等）でエラーや実行時間を確認
-- バックアップ(zip)からの復旧は、zipを展開し元ファイルを上書きするだけ
-- バリデーションエラー時はエラーログ参照＋必要に応じて手動修正
-
-### 今後の拡張予定
-- バッチ処理結果のGUI可視化やWebダッシュボード対応
-- 自動リストア・バージョン管理・ワンクリック復旧
-- 重大エラー時の自動ロールバック・リトライ
-
-## フォルダ構成例
-
-- comment_manager_*.py, comment_reader_*.py ... コメント管理・読み上げ
-- manage_satin.py ... 配信補助・管理
-- config.json ... 配信設定ファイル
-- tts_manager_batch.py, overlay_manager_batch.py ... TTS/オーバーレイ管理バッチ
-- batch_utilities_README.md ... バッチ最適化ガイド
-
----
-
-ご質問・要望はIssuesへ！
+`check.py` は個人データ（好感度・会話履歴）を書き換えないので、
+インストール直後の確認に使っても安全です。
