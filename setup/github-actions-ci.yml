@@ -9,6 +9,14 @@
 #        cp setup/github-actions-ci.yml .github/workflows/ci.yml
 #        git add .github/workflows/ci.yml && git commit && git push
 #
+#    （有効化されるまで CI は一度も走りません。それまでの唯一の防波堤は
+#     手元の `python check.py` です。）
+#
+# 設計方針: **このファイルは検証内容を持たない。** 何を検証するかは
+# リポジトリ root の check.py が一箇所で定義し、CI はそれを呼ぶだけにする。
+# 以前は yml 側にも pytest / ruff / mypy を個別に並べていたが、その形だと
+# 「手元で通ったのに CI で落ちる」（およびその逆）が構造的に起こりうる。
+# 手元と CI が文字通り同じコマンドを実行することで、その種の齟齬を消す。
 # -----------------------------------------------------------------------------
 name: CI
 
@@ -19,29 +27,10 @@ on:
     branches: ["**"]
 
 jobs:
-  lint:
-    # 静的解析ゲート: ruff.toml の enforced set（correctness 系ルール）。
-    # これにより F821 未定義名（OpenGL 未 import の 3D 描画クラッシュ・
-    # cloud_backup の List 未 import 等）、B006 ミュータブルデフォルト、
-    # B904 例外チェーン欠落といったバグ類型の回帰を自動検出する。
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install ruff
-        run: python -m pip install --upgrade pip ruff
-
-      - name: Ruff lint (enforced correctness rules from ruff.toml)
-        run: ruff check main/ tests/
-
-  test:
+  check:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
 
@@ -64,22 +53,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r setup/requirements.txt
 
-      - name: Syntax check all main modules
-        run: |
-          python -m py_compile $(find main -name "*.py" | sort)
-
-      - name: Lint (ruff)
-        run: |
-          python -m ruff check main/ tests/ satin_launcher.py
-
-      # 対象は mypy.ini が決める（未クリーンなモジュールはそこで免除リスト入り）。
-      # 引数を渡さないことで、リストの更新漏れによる検査漏れが起きないようにする。
-      - name: Type check (mypy)
-        run: |
-          python -m mypy
-
-      - name: Run tests
-        run: |
-          python -m pytest tests/ -q --tb=short
-        env:
-          PYTHONPATH: main
+      # 検証ゲート本体。中身（py_compile / ruff / mypy / pytest /
+      # config validate / 起動スモーク）は check.py が決める。
+      # 手元で `python check.py` が緑なら、ここも緑になる。
+      - name: Verification gate
+        run: python check.py

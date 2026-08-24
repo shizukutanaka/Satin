@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **One verification gate** (`check.py`). `python check.py` runs the whole
+  definition of green — `py_compile`, ruff, mypy, pytest, config validation, and
+  three launch smokes (`--version`, `--chat`, the dashboard's main routes) — in
+  about 10 seconds, and `--fast` drops the smokes for the edit loop. CI now
+  calls the same command instead of re-listing the checks in YAML, so "passes
+  locally, fails in CI" can no longer come from the two lists drifting apart;
+  `tests/test_mypy_config.py` enforces that delegation.
+
+  The smokes exist because the unit tests import modules directly and so never
+  observe whether an entry point actually starts — wiring faults in argument
+  parsing, import order, or an optional-dependency fallback can pass all 1,946
+  tests. They run inside a context manager that snapshots and restores the
+  personal-data files, because a command called `check` must not advance the
+  user's affinity score as a side effect; `tests/test_check_gate.py` verifies
+  the restore holds even when the body raises.
+
 - **Static type checking** (`mypy.ini`, work order W-07). `python -m mypy` with
   no arguments now checks **every module in `main/`** with **zero exemptions**
   (at introduction, 42 of 52 modules were exempt). The exemption list is
@@ -152,6 +168,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The test suite wrote to the user's real affinity file.** `python -m pytest
+  tests/` mutated `config/mood.json` and appended to `config/mood_history.jsonl`
+  on every run: tests that drive real code paths (`persona_cli`,
+  `autonomous_behavior.start_autonomous`, the GUI command handlers) call
+  `get_mood_tracker()` bare, and its default resolves to the live file. Running
+  the tests therefore nudged the user's relationship score — a test suite must
+  not have opinions about how close you are to your companion. `conftest.py`
+  gained a `_isolate_mood` fixture matching the ones already there for
+  `conversation_log` and `user_profile`; the two tests that assert on real path
+  resolution opt out via a new `real_paths` marker rather than being silently
+  validated against a redirected path.
+- **Three shipped config files were unparseable JSON, and `validate` said they
+  were fine.** `validate_configs` globbed only the top level of `config/`, so
+  `config/plugins/*.json` was never checked — and three of those files contained
+  `//` comments, which JSON does not allow. It now recurses (skipping the
+  generated `cache/`). Removed four orphaned plugin configs left behind when the
+  plugin system was deleted: `cache_manager`, `logging_manager` and
+  `performance_monitor` (the unparseable three) plus `i18n.json`, which parsed
+  but was read by nothing — the most misleading of the four, since its
+  `"default_language"` looks authoritative and changes nothing. A test now fails
+  on any `config/plugins/*.json` with no `main/*.py` to read it.
 - **The AI disclosure printed twice at session start.** `_help_text` appends a
   standing "I am an AI" tag because `/help` is where a user goes to ask what
   this is, and the session-start disclosure required by the NY AI Companion

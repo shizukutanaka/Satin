@@ -8,6 +8,8 @@ import os
 import sys
 import tempfile
 import unittest
+
+import pytest
 from datetime import date, timedelta, datetime
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
@@ -140,6 +142,7 @@ class DefaultPathAlignmentTests(unittest.TestCase):
     def test_event_log_default_matches_conversation_log(self):
         self.assertEqual(_default_event_log(), _REAL_DEFAULT_LOGFILE)
 
+    @pytest.mark.real_paths
     def test_mood_history_default_matches_mood_module(self):
         import mood
         self.assertEqual(_default_mood_history(), mood._default_mood_history_path())

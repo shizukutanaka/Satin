@@ -138,13 +138,28 @@ class GrandfatherListTests(unittest.TestCase):
 
 
 class CiWiringTests(unittest.TestCase):
-    def test_ci_runs_mypy_without_arguments(self):
+    def _check_py(self) -> str:
+        with open(os.path.join(_ROOT, "check.py"), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_gate_runs_mypy_without_arguments(self):
+        """The gate must invoke bare `mypy` — an explicit file list would
+        bypass mypy.ini's `files` and silently shrink the checked set."""
+        gate = self._check_py()
+        self.assertIn('"-m", "mypy"', gate)
+        for bypass in ('"mypy", "main"', '"mypy", "main/"', '"mypy", "--"'):
+            self.assertNotIn(bypass, gate)
+
+    def test_ci_delegates_to_the_same_gate_developers_run(self):
+        """CI must call check.py rather than re-listing the checks itself.
+
+        Two copies of "what green means" drift apart, and the drift only
+        surfaces as "passes locally, fails in CI" (or worse, the reverse).
+        """
         path = os.path.join(_ROOT, "setup", "github-actions-ci.yml")
         with open(path, encoding="utf-8") as fh:
             ci = fh.read()
-        self.assertIn("python -m mypy", ci)
-        # an explicit file list here would bypass mypy.ini's `files`
-        self.assertNotIn("python -m mypy main/", ci)
+        self.assertIn("python check.py", ci)
 
     def test_mypy_is_a_declared_dependency(self):
         path = os.path.join(_ROOT, "setup", "requirements.txt")

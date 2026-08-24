@@ -70,3 +70,62 @@ def _isolate_user_profile(tmp_path, monkeypatch):
     user_profile.reset_user_profile()
     yield
     user_profile.reset_user_profile()
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "real_paths: 既定パスの解決そのものを検証するテスト。個人データ隔離用の "
+        "autouse フィクスチャによる差し替えを無効にする（差し替えたパスを検証しても "
+        "何も確かめたことにならないため）。",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_mood(request, tmp_path, monkeypatch):
+    """Same isolation for the mood singleton — the last personal-data file the
+    suite was still writing for real.
+
+    `python -m pytest tests/` mutated the user's actual config/mood.json and
+    config/mood_history.jsonl on every run: tests that exercise real code paths
+    (persona_cli, autonomous_behavior.start_autonomous, the GUI command
+    handlers) call get_mood_tracker() bare, and its default resolves to the
+    repo's live affinity file. Running the test suite therefore nudged the
+    user's relationship score and appended history rows — a test suite must not
+    have opinions about how close you are to your companion.
+
+    Consumers bind `_default_mood_path` by reference at import time, so — as
+    with user_profile above — patching the function alone isn't enough; the
+    write methods are redirected too, and only when they target the real
+    default (explicit-path roundtrip tests pass through untouched).
+    """
+    import mood
+
+    if request.node.get_closest_marker("real_paths"):
+        # 既定パスの解決自体を検証するテスト。差し替えずに素通しする。
+        yield
+        return
+
+    real_mood = mood._default_mood_path()
+    real_history = mood._default_mood_history_path()
+    tmp_mood = str(tmp_path / "mood.json")
+    tmp_history = str(tmp_path / "mood_history.jsonl")
+
+    monkeypatch.setattr(mood, "_default_mood_path", lambda: tmp_mood)
+    monkeypatch.setattr(mood, "_default_mood_history_path", lambda: tmp_history)
+
+    _orig_save = mood.MoodTracker.save
+    _orig_snapshot = mood.MoodTracker.snapshot_to_history
+
+    def _redirected_save(self, path):
+        return _orig_save(self, tmp_mood if path == real_mood else path)
+
+    def _redirected_snapshot(self, history_path):
+        return _orig_snapshot(
+            self, tmp_history if history_path == real_history else history_path)
+
+    monkeypatch.setattr(mood.MoodTracker, "save", _redirected_save)
+    monkeypatch.setattr(mood.MoodTracker, "snapshot_to_history", _redirected_snapshot)
+    mood.reset_mood_tracker()
+    yield
+    mood.reset_mood_tracker()

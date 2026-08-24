@@ -84,8 +84,18 @@ def validate_configs(config_dir: str = ".") -> list[str]:
     - persona.json: Persona.from_dict() でロードできるか、
                     responses/dialogue ブロックの rules が dict を含むか
     - mood_config.json: positive/negative が言語→リストの dict か
+
+    探索はサブディレクトリまで再帰する。以前は config_dir 直下だけを見ており、
+    config/plugins/*.json が検査対象外だった — その結果、パースすらできない
+    JSON（`//` コメント入り）を 3 ファイル同梱したまま「全設定ファイルが
+    正常です」と報告し続けていた。壊れた設定を見逃す検証器は、無いより悪い。
+
+    cache/ 配下は実行時生成物（ユーザーが編集する設定ではない）なので除外する。
     """
-    files = sorted(glob.glob(os.path.join(config_dir, "*.json")))
+    files = sorted(
+        f for f in glob.glob(os.path.join(config_dir, "**", "*.json"), recursive=True)
+        if "cache" not in os.path.relpath(f, config_dir).split(os.sep)
+    )
     errors: list[str] = []
     if not files:
         print(f"[WARN] {config_dir} に JSON ファイルが見つかりませんでした。")
@@ -96,7 +106,9 @@ def validate_configs(config_dir: str = ".") -> list[str]:
         try:
             with open(fname, encoding="utf-8") as f:
                 data_by_file[fname] = json.load(f)
-            print(f"[OK]   {os.path.basename(fname)}")
+            # basename ではなく config_dir からの相対パス。サブディレクトリを
+            # 見るようになったので plugins/foo.json と foo.json を区別する。
+            print(f"[OK]   {os.path.relpath(fname, config_dir)}")
         except json.JSONDecodeError as e:
             msg = f"[ERROR] {fname}: JSON 構文エラー — {e}"
             print(msg)

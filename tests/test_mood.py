@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
@@ -405,6 +407,7 @@ class MoodHistoryTests(unittest.TestCase):
         entries = load_mood_history(self._history_path)
         self.assertEqual(len(entries), 1)
 
+    @pytest.mark.real_paths
     def test_default_history_path_is_in_config_dir(self):
         from mood import _default_mood_history_path
         path = _default_mood_history_path()

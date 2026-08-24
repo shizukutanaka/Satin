@@ -6,6 +6,7 @@ log subcommands, backup list, and the argparse main() dispatcher.
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
 import sys
@@ -60,6 +61,73 @@ class ValidateConfigsTests(unittest.TestCase):
             self._write(d, "bad.json", 'oops')
             errors = manage_satin.validate_configs(d)
         self.assertEqual(len(errors), 1)
+
+    def test_recurses_into_subdirectories(self):
+        """サブディレクトリの壊れた JSON も検出すること。
+
+        以前は config_dir 直下だけを glob しており、config/plugins/*.json が
+        丸ごと検査対象外だった。その結果、パース不能な JSON を 3 ファイル
+        同梱したまま「全設定ファイルが正常です」と報告し続けていた。
+        """
+        with tempfile.TemporaryDirectory() as d:
+            self._write(d, "good.json", '{}')
+            os.makedirs(os.path.join(d, "plugins"))
+            self._write(d, os.path.join("plugins", "broken.json"),
+                        '{"a": 1,  // コメントは JSON では無効\n "b": 2}')
+            errors = manage_satin.validate_configs(d)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("broken.json", errors[0])
+
+    def test_skips_generated_cache_directory(self):
+        """cache/ は実行時生成物なので検査対象外（ユーザー設定ではない）。"""
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "cache"))
+            self._write(d, os.path.join("cache", "junk.json"), 'not json at all')
+            errors = manage_satin.validate_configs(d)
+        self.assertEqual(errors, [])
+
+
+class ShippedConfigTests(unittest.TestCase):
+    """リポジトリが実際に同梱している設定ファイルそのものの検証。
+
+    テスト用の一時ディレクトリではなく本物の config/ を見る。壊れた設定を
+    同梱したまま気づかない、という事故を防ぐのがこのクラスの唯一の役目。
+    """
+
+    def _config_dir(self) -> str:
+        return os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config")
+
+    def test_all_shipped_configs_parse(self):
+        for path in glob.glob(os.path.join(self._config_dir(), "**", "*.json"),
+                              recursive=True):
+            rel = os.path.relpath(path, self._config_dir())
+            if "cache" in rel.split(os.sep):
+                continue
+            with self.subTest(config=rel):
+                with open(path, encoding="utf-8") as f:
+                    json.load(f)  # 壊れていれば JSONDecodeError で落ちる
+
+    def test_no_plugin_config_without_a_module_to_read_it(self):
+        """config/plugins/ に、読み手のいない設定ファイルを残さないこと。
+
+        プラグイン機構を削除したあと、cache_manager / i18n / logging_manager /
+        performance_monitor の設定ファイルだけが取り残されていた。読み手が
+        いない設定は単に無駄なのではなく積極的に有害で、たとえば
+        plugins/i18n.json の "default_language" はいくら書き換えても効かない
+        のに、効くように見える。
+        """
+        plugins_dir = os.path.join(self._config_dir(), "plugins")
+        if not os.path.isdir(plugins_dir):
+            return
+        main_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
+        orphans = []
+        for path in sorted(glob.glob(os.path.join(plugins_dir, "*.json"))):
+            stem = os.path.splitext(os.path.basename(path))[0]
+            if not os.path.exists(os.path.join(main_dir, f"{stem}.py")):
+                orphans.append(os.path.basename(path))
+        self.assertEqual(orphans, [], f"読み手のいないプラグイン設定: {orphans}")
 
 
 class PersonaSemanticValidationTests(unittest.TestCase):
