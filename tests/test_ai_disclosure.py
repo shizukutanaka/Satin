@@ -24,6 +24,8 @@ import queue
 import sys
 import tempfile
 import unittest
+
+from conftest import make_qt_stub  # noqa: E402
 from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
@@ -145,7 +147,7 @@ class TestGuiWiring(unittest.TestCase):
         _profile_mod.reset_user_profile()
 
     def _viewer(self):
-        v = object.__new__(_gui.AutonomousAvatarViewer)
+        v = make_qt_stub(_gui.AutonomousAvatarViewer)
         v.comment_text = ""
         v.talk_text = ""
         v.mode = "idle"
@@ -155,7 +157,7 @@ class TestGuiWiring(unittest.TestCase):
         return v
 
     def test_session_start_shows_the_notice(self):
-        w = object.__new__(_gui.MainWindow)
+        w = make_qt_stub(_gui.MainWindow)
         w._lang = "ja"
         w.viewer = self._viewer()
         self.assertTrue(w._show_ai_disclosure())
@@ -163,7 +165,7 @@ class TestGuiWiring(unittest.TestCase):
 
     def test_session_start_stamps_the_clock(self):
         """So the very next message does not repeat the notice."""
-        w = object.__new__(_gui.MainWindow)
+        w = make_qt_stub(_gui.MainWindow)
         w._lang = "ja"
         w.viewer = self._viewer()
         w._show_ai_disclosure()

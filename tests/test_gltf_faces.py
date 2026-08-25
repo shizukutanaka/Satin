@@ -32,6 +32,8 @@ import sys
 import tempfile
 import unittest
 
+from conftest import make_qt_stub  # noqa: E402
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _MAIN = os.path.join(_ROOT, "main")
 sys.path.insert(0, _MAIN)
@@ -475,7 +477,7 @@ class PaintSolidTests(unittest.TestCase):
             self.skipTest("numpy/pygltflib not installed")
         import avatar_3d_autonomous_tts as atts
         self.atts = atts
-        self.viewer = object.__new__(atts.AutonomousAvatarViewer)
+        self.viewer = make_qt_stub(atts.AutonomousAvatarViewer)
 
     def _capture(self, vertices, faces, normals):
         """Run _paint_solid with the GL entry points stubbed out.

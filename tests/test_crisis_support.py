@@ -27,6 +27,8 @@ import queue
 import sys
 import tempfile
 import unittest
+
+from conftest import make_qt_stub  # noqa: E402
 from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
@@ -203,7 +205,7 @@ class TestGuiWiring(unittest.TestCase):
         _profile_mod.reset_user_profile()
 
     def _viewer(self):
-        v = object.__new__(_gui.AutonomousAvatarViewer)
+        v = make_qt_stub(_gui.AutonomousAvatarViewer)
         v.comment_text = ""
         v.talk_text = ""
         v.mode = "idle"

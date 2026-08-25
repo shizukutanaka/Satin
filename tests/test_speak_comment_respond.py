@@ -12,6 +12,8 @@ import os
 import queue
 import sys
 import unittest
+
+from conftest import make_qt_stub  # noqa: E402
 from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
@@ -26,7 +28,7 @@ import user_profile as _profile_mod  # noqa: E402
 
 def _make_viewer(tts_queue=None):
     """Construct the viewer without running Qt's __init__."""
-    v = object.__new__(_mod.AutonomousAvatarViewer)
+    v = make_qt_stub(_mod.AutonomousAvatarViewer)
     v.comment_text = ""
     v.mode = "idle"
     v.ticks = 0
@@ -308,7 +310,7 @@ class SilentFailureObservabilityTests(unittest.TestCase):
     RESILIENT (no crash) AND OBSERVABLE (logged), not silently swallowed."""
 
     def _viewer(self):
-        v = object.__new__(_mod.AutonomousAvatarViewer)
+        v = make_qt_stub(_mod.AutonomousAvatarViewer)
         v.comment_text = ""
         v.mode = "idle"
         v.ticks = 0

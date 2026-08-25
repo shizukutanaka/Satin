@@ -9,6 +9,8 @@ import queue
 import sys
 import tempfile
 import unittest
+
+from conftest import make_qt_stub  # noqa: E402
 from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
@@ -425,7 +427,7 @@ class SpeakCommentWiringTests(unittest.TestCase):
              mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
                                property(lambda self: respond_persona)), \
              mock.patch.object(_mod, "_get_user_profile_gui", lambda: None):
-            v = object.__new__(_mod.AutonomousAvatarViewer)
+            v = make_qt_stub(_mod.AutonomousAvatarViewer)
             v.comment_text = ""
             v.mode = "idle"
             v.ticks = 0
@@ -449,7 +451,7 @@ class SpeakCommentWiringTests(unittest.TestCase):
         with mock.patch.object(_mod, "get_conversation_log", _boom), \
              mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
                                property(lambda self: None)):
-            v = object.__new__(_mod.AutonomousAvatarViewer)
+            v = make_qt_stub(_mod.AutonomousAvatarViewer)
             v.comment_text = ""
             v.mode = "idle"
             v.ticks = 0

@@ -38,13 +38,23 @@ try:
 except Exception:  # pragma: no cover - defensive
     _avatar_model_store = None  # type: ignore[assignment]
 
-# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_*/gluSphere 等) を取り込む。
+# paintGL/draw が使う OpenGL 名 (glClear/glBegin/GL_* 等) を取り込む。
 # 共通化リファクタでこの import が抜け、描画時に NameError になっていた。
 try:
     from OpenGL.GL import *  # noqa: F401,F403
-    from OpenGL.GLU import *  # noqa: F401,F403
 except ImportError:
     pass
+
+# GLU はプレースホルダ球にしか使わないので明示的に取り込む。
+# 星 import にしない理由: mypy は星 import から名前を解決できず、注釈付きの
+# 関数（= 検査対象）の中で使うと name-defined エラーになる。実際
+# `_paint_placeholder` に `-> None` を付けた瞬間に表面化した。
+# 未導入時は None を入れ、利用側でガードする（本ファイルの他の任意依存と同じ様式）。
+try:
+    from OpenGL.GLU import gluNewQuadric, gluSphere
+except ImportError:  # pragma: no cover - defensive
+    gluNewQuadric = None  # type: ignore[assignment]
+    gluSphere = None  # type: ignore[assignment]
 
 try:
     from conversation_log import get_conversation_log  # noqa: E402
@@ -107,6 +117,11 @@ try:
     from farewell_integrity import is_farewell as _is_farewell_gui
 except Exception:  # pragma: no cover - defensive
     _is_farewell_gui = None  # type: ignore[assignment]
+
+try:
+    from everyday_distress import is_distressed as _is_distressed_gui
+except Exception:  # pragma: no cover - defensive
+    _is_distressed_gui = None  # type: ignore[assignment]
 
 try:
     from daily_summary import summary_greeting as _summary_greeting_gui
@@ -532,8 +547,11 @@ class AutonomousAvatarViewer(
         # farewell_integrity が PRESSURE_TO_RESPOND として禁じている型そのもの
         # である（persona_cli の同じ箇所と対で修正した — 片方だけ直すと
         # GUI と CLI で振る舞いがずれる）。
+        # つらさを打ち明けられた直後にも付けない（persona_cli の同じ箇所と対）。
         _leaving_gui = _is_farewell_gui is not None and _is_farewell_gui(comment)
-        if persona is not None and _FOLLOW_UP_EVERY > 0 and not _leaving_gui \
+        _hurting_gui = _is_distressed_gui is not None and _is_distressed_gui(comment)
+        if persona is not None and _FOLLOW_UP_EVERY > 0 \
+                and not _leaving_gui and not _hurting_gui \
                 and not reply.rstrip().endswith(("？", "?")):
             try:
                 interactions = None
@@ -1452,8 +1470,29 @@ class AutonomousAvatarViewer(
                     glVertex3f(float(v[0]), float(v[1]), float(v[2]))
                 glEnd()
         else:
+            self._paint_placeholder()
+
+    def _paint_placeholder(self) -> None:
+        """モデル未読込のときのプレースホルダ球。
+
+        GLU（gluSphere）を使うが、`pip install PyOpenGL` はシステムライブラリ
+        libGLU.so を導入しないため、Linux のクリーン環境では実体が無いことが
+        ある。しかも import は成功し、呼んだ瞬間に NullFunctionError になる。
+        Qt は仮想メソッド内の例外でプロセスを abort するので、ここを裸で
+        呼ぶと**アバターを選んでいないだけでアプリごと落ちる**。
+
+        プレースホルダが出ないことは機能の縮退にすぎず、会話も TTS も
+        ダッシュボードも動く。落とすほどの価値は無いので握りつぶす。
+        必須の描画経路（射影行列）からは GLU をすでに排除してある
+        （gl_widget_base 参照）。
+        """
+        if gluNewQuadric is None or gluSphere is None:
+            return
+        try:
             quad = gluNewQuadric()
             gluSphere(quad, 1.0, 32, 32)
+        except Exception as e:  # NullFunctionError 等（GLU の実体が無い環境）
+            logger.debug("プレースホルダ球を描画できませんでした: %s", e)
 
     #: ソリッド描画のベース色（陰影係数を掛けて面ごとの明るさを作る）
     SOLID_BASE_COLOR = (0.6, 0.8, 1.0)

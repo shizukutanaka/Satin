@@ -24,6 +24,19 @@
 
 スモークは会話ログ・好感度を書き換えるため、一時ディレクトリへ隔離してから
 実行する（ゲートを回しただけでユーザーの好感度が動くのは副作用として不当）。
+
+任意依存の有無について
+----------------------
+**このゲートの結果は、入っている任意依存に左右される。** 実際、PyQt5 を入れて
+いない環境では緑なのに、入れると 197 件落ちる状態が長く続いていた（テストが
+`object.__new__(QOpenGLWidget のサブクラス)` を使っており、Qt が本物になると
+TypeError になるため）。CI は requirements.txt を全部入れるので、CI を有効化
+した時点で赤になる — 「手元で緑なら CI でも緑」という前提が、環境差で崩れる。
+
+そこで実行のたびに任意依存の状態を表示する。緑であることと、**何をもって
+緑なのか**をセットで見せる。全部入りで検証したければ:
+
+    pip install -r setup/requirements.txt
 """
 from __future__ import annotations
 
@@ -38,6 +51,9 @@ import time
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 _MAIN = os.path.join(_ROOT, "main")
+
+# 任意依存。有無でテストの通り方が変わりうるので、実行のたびに状態を出す。
+_OPTIONAL_DEPS = ("PyQt5", "OpenGL", "flask", "numpy", "pygltflib", "PIL", "pyttsx3")
 
 # 端末が UTF-8 でない場合に備え、記号はここで一元管理する。
 _OK, _NG, _SKIP = "PASS", "FAIL", "SKIP"
@@ -208,6 +224,19 @@ _SMOKE = [
 ]
 
 
+def _optional_dep_status() -> tuple[list[str], list[str]]:
+    """導入済み / 未導入の任意依存を返す。"""
+    import importlib.util
+    present, missing = [], []
+    for name in _OPTIONAL_DEPS:
+        try:
+            found = importlib.util.find_spec(name) is not None
+        except Exception:  # pragma: no cover - defensive: 壊れた spec でも止めない
+            found = False
+        (present if found else missing).append(name)
+    return present, missing
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Satin の検証ゲート（CI とローカルで同一のコマンド）")
@@ -226,6 +255,15 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Satin 検証ゲート — {len(plan)} 項目"
           + ("（--fast: スモーク省略）" if args.fast else ""))
+    present, missing = _optional_dep_status()
+    if missing:
+        print(f"  任意依存: {len(present)}/{len(_OPTIONAL_DEPS)} 導入済み"
+              f"（未導入: {', '.join(missing)}）")
+        print("  ※ 未導入の依存に関わるテストは、CI（全部入り）と結果が"
+              "異なりうる。全部入りで確かめるには "
+              "pip install -r setup/requirements.txt")
+    else:
+        print(f"  任意依存: 全 {len(_OPTIONAL_DEPS)} 件導入済み（CI と同条件）")
     started = time.time()
     results = [fn() for _, fn in _STATIC]
     if not args.fast:

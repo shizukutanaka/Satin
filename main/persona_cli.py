@@ -122,6 +122,11 @@ except Exception:  # pragma: no cover - defensive
     _is_farewell = None  # type: ignore
 
 try:
+    from everyday_distress import is_distressed as _is_distressed
+except Exception:  # pragma: no cover - defensive
+    _is_distressed = None  # type: ignore
+
+try:
     from daily_summary import summary_greeting as _summary_greeting
 except Exception:  # pragma: no cover - defensive
     _summary_greeting = None  # type: ignore
@@ -669,9 +674,14 @@ def run_chat(
         # farewell_integrity が PRESSURE_TO_RESPOND として禁じている型そのもの
         # である。あちらは台詞そのものを検査するが、ここは「別れの直後に質問を
         # 連結する」という組み立て側の漏れだったので、入口で止める。
+        # つらさを打ち明けられた直後にも付けない。「ひとりで抱えなくていい
+        # からね。 最近どんなことが楽しかった？」は、受け止めた直後に楽しい
+        # 話題へ振り直す形で、共感を帳消しにする。別れと同じく、話題を進める
+        # 権利は相手の側にある。
         _leaving = _is_farewell is not None and _is_farewell(text)
+        _hurting = _is_distressed is not None and _is_distressed(text)
         if _FOLLOW_UP_EVERY > 0 and exchanges % _FOLLOW_UP_EVERY == 0 \
-                and not _leaving \
+                and not _leaving and not _hurting \
                 and not reply.rstrip().endswith(("？", "?")):
             try:
                 question = ""

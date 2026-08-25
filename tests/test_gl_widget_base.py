@@ -31,7 +31,7 @@ class _GLPatch:
 
     NAMES = (
         "glClearColor", "glEnable", "glViewport", "glMatrixMode",
-        "glLoadIdentity", "gluPerspective",
+        "glLoadIdentity", "glFrustum",
     )
     # GL constants are also undefined when OpenGL is not installed.
     CONSTANTS = ("GL_DEPTH_TEST", "GL_PROJECTION", "GL_MODELVIEW")
@@ -70,17 +70,41 @@ class InitializeGLTests(unittest.TestCase):
 
 
 class ResizeGLTests(unittest.TestCase):
+    """射影は GLU ではなくコアの glFrustum で積む（gl_widget_base の docstring 参照）。
+
+    `gluPerspective(fovy, aspect, near, far)` と等価な視錐台は
+        top = near * tan(fovy / 2), right = top * aspect
+    で、glFrustum(-right, right, -top, top, near, far) になる。
+    """
+
+    def _expected_bounds(self, aspect):
+        import math
+        top = 0.1 * math.tan(math.radians(45.0) / 2.0)
+        right = top * aspect
+        return -right, right, -top, top
+
+    def _assert_frustum(self, mock_call, aspect):
+        mock_call.assert_called_once()
+        left, right, bottom, top, near, far = mock_call.call_args[0]
+        e_left, e_right, e_bottom, e_top = self._expected_bounds(aspect)
+        self.assertAlmostEqual(left, e_left, places=9)
+        self.assertAlmostEqual(right, e_right, places=9)
+        self.assertAlmostEqual(bottom, e_bottom, places=9)
+        self.assertAlmostEqual(top, e_top, places=9)
+        self.assertEqual(near, 0.1)
+        self.assertEqual(far, 100.0)
+
     def test_normal_aspect(self):
         with _GLPatch() as gl:
             _Widget().resizeGL(800, 400)
-            gl.calls["gluPerspective"].assert_called_once_with(45.0, 2.0, 0.1, 100.0)
+            self._assert_frustum(gl.calls["glFrustum"], 2.0)
             gl.calls["glViewport"].assert_called_once_with(0, 0, 800, 400)
 
     def test_zero_height_does_not_divide_by_zero(self):
         with _GLPatch() as gl:
             # Must not raise ZeroDivisionError; falls back to aspect 1.0.
             _Widget().resizeGL(640, 0)
-            gl.calls["gluPerspective"].assert_called_once_with(45.0, 1.0, 0.1, 100.0)
+            self._assert_frustum(gl.calls["glFrustum"], 1.0)
 
 
 class NoOpWhenUnavailableTests(unittest.TestCase):

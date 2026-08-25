@@ -217,6 +217,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The test suite only passed when PyQt5 was *absent*.** Installing the optional
+  GUI dependencies — exactly what `setup/requirements.txt` and CI do — turned
+  2,021 passing tests into 197 failures. The GUI tests build a viewer with
+  `object.__new__(AutonomousAvatarViewer)` to skip Qt's `__init__`; that works
+  while the class inherits from plain `object`, and raises
+  `object.__new__(X) is not safe` the moment the base is really `QOpenGLWidget`.
+  CI has never run (it needs an owner to install the workflow), so nothing ever
+  noticed. Switching to `cls.__new__(cls)` only moved the failure: PyQt5 gates
+  *attribute access itself* on `__init__` having run, so even
+  `getattr(self, "_clear_log_pending", False)` raises `RuntimeError` rather than
+  returning the default. `tests/conftest.py` now provides `make_qt_stub(cls)`,
+  which rebuilds the class from `vars(cls)` with the Qt bases filtered out — the
+  code under test stays real, only the Qt liveness check goes away, and the
+  result is identical with or without PyQt5.
+
+  `check.py` now prints which optional dependencies are present on every run.
+  The gate's promise is "green here means green in CI"; that promise is void if
+  the two environments differ, so the gate says what it measured.
+- **The 3D window aborted at startup when `libGLU` was missing.** `pip install
+  PyOpenGL` does not install the system library, and a clean Linux box may not
+  have it. The guard was `except ImportError`, which never fires: PyOpenGL builds
+  a lazy binding, so `from OpenGL.GLU import gluPerspective` succeeds and the
+  failure only arrives as `NullFunctionError` at call time — inside `resizeGL`, a
+  Qt virtual method, where an escaping exception makes Qt abort the process. No
+  traceback, no degradation, just `Aborted`, against a stated design principle.
+  Rather than guard the dependency, the dependency was removed: `gluPerspective`
+  is expressible exactly in core `glFrustum` (`top = near·tan(fovy/2)`,
+  `right = top·aspect`), verified by comparing both `GL_PROJECTION_MATRIX` values
+  on a live GL context — identical to within float32 rounding (<5e-7). GLU now
+  appears only in the placeholder sphere, which is guarded and degrades to
+  drawing nothing. The system library is documented in `setup/requirements.txt`.
+- **A follow-up question was appended to a message of sympathy.** 「ひとりで抱え
+  なくていいからね。 最近どんなことが楽しかった？」 — pivoting to "so what's been
+  fun lately?" immediately after acknowledging a hard day cancels the
+  acknowledgement. Same shape as the farewell case: the question is concatenated
+  without regard to what the reply was. Suppressed after distress in both entry
+  points, on the same principle — the right to move the conversation on belongs
+  to the person who is struggling.
 - **The avatar declared love to users it had known for three messages.**
   `check_confession_event` fired the moment affinity crossed from `friendly` to
   `close` — and with the default tuning, typing 「大好き」 three times on a first

@@ -13,6 +13,11 @@ flask>=2.3
 pillow>=9.0            # 画像処理 (avatar_loader, thumbnails)
 PyQt5>=5.15            # 3D アバター GUI 本体
 PyOpenGL>=3.1          # 3D アバター描画 (OpenGL)
+                       # ※ pip はシステムライブラリを入れない。Linux では
+                       #   別途 libGLU が必要な場合がある（Debian/Ubuntu:
+                       #   `apt install libglu1-mesa`）。無くても会話・
+                       #   ダッシュボードは動き、3D はプレースホルダ球が
+                       #   出ないだけに縮退する。
 # tkinter は Python 標準ライブラリに含まれます
 
 # [3D]

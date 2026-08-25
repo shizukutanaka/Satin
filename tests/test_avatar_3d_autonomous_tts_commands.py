@@ -15,6 +15,8 @@ tests/test_avatar_3d_autonomous_or_camera.py.
 import os
 import sys
 import unittest
+
+from conftest import make_qt_stub  # noqa: E402
 from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
@@ -24,7 +26,7 @@ import avatar_3d_autonomous_tts as _mod  # noqa: E402
 
 
 def _fake_viewer(**overrides):
-    v = object.__new__(_mod.AutonomousAvatarViewer)
+    v = make_qt_stub(_mod.AutonomousAvatarViewer)
     defaults = dict(
         tts_queue=None,
         comment_text="",
@@ -534,7 +536,7 @@ class MainWindowChromeI18nTests(unittest.TestCase):
     controls despite the product's advertised multi-language support."""
 
     def _window(self, lang):
-        w = object.__new__(_mod.MainWindow)
+        w = make_qt_stub(_mod.MainWindow)
         w._lang = lang
         return w
 
@@ -565,7 +567,7 @@ class MainWindowWelcomeTests(unittest.TestCase):
     slash commands) is invisible at first contact."""
 
     def _window(self, lang="ja"):
-        w = object.__new__(_mod.MainWindow)
+        w = make_qt_stub(_mod.MainWindow)
         w._lang = lang
         w.viewer = mock.Mock()
         return w
@@ -641,7 +643,7 @@ class MainWindowCloseEventTests(unittest.TestCase):
     after the widget was destroyed and access a dead widget."""
 
     def _window(self):
-        w = object.__new__(_mod.MainWindow)
+        w = make_qt_stub(_mod.MainWindow)
         w.tts_thread = mock.Mock()
         w.text_timer = mock.Mock()
         w.viewer = mock.Mock()
@@ -676,7 +678,7 @@ class MainWindowCloseEventTests(unittest.TestCase):
     def test_survives_missing_attributes(self):
         # A partially-constructed window (Qt init failed midway) must still
         # close without raising.
-        w = object.__new__(_mod.MainWindow)
+        w = make_qt_stub(_mod.MainWindow)
         w.tts_thread = None
         w.viewer = None
         w.break_reminder = None

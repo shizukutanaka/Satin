@@ -129,3 +129,49 @@ def _isolate_mood(request, tmp_path, monkeypatch):
     mood.reset_mood_tracker()
     yield
     mood.reset_mood_tracker()
+
+
+# --------------------------------------------------------------------------- #
+# Qt ウィジェットのロジックを、Qt 基底クラス抜きで検証するためのヘルパ
+# --------------------------------------------------------------------------- #
+def _is_qt_class(cls) -> bool:
+    return getattr(cls, "__module__", "").startswith("PyQt5")
+
+
+def make_qt_stub(cls):
+    """cls と同じメソッドを持ち、Qt 基底クラスだけを外したインスタンスを返す。
+
+    GUI のロジック（スラッシュコマンド処理・応答生成・ログ記録）を、実際の
+    ウィンドウを開かずに検証するために使う。
+
+    **なぜこの形なのか（2 段階の失敗を経て）**
+
+    1. 元は `object.__new__(AutonomousAvatarViewer)` だった。PyQt5 が入って
+       いない環境では基底が素の object なのでこれが通る。PyQt5 が入ると基底が
+       QOpenGLWidget（C 拡張型）になり `object.__new__(X) is not safe` で
+       TypeError。つまり従来のやり方は **PyQt5 が無い環境でしか通らない
+       テスト**を作っていた。CI は requirements.txt を全部入れるので、CI が
+       有効化された時点で 197 件が落ちる状態だった（この環境へ実際に PyQt5 を
+       入れて再現した）。
+
+    2. `cls.__new__(cls)` に変えると確保はできるが、PyQt5 は
+       **属性アクセスそのもの**を `__init__` 実行済みかで検査する。
+       `getattr(self, "_clear_log_pending", False)` のような既定値付きの
+       参照ですら `RuntimeError: super-class __init__() ... was never called`
+       になり、AttributeError ではないので既定値は効かない。個々のメソッドを
+       no-op で潰しても追いつかない。
+
+    そこで Qt を継承しない同型のクラスを組み立てる。`vars(cls)` の中身
+    （speak_comment 等の実装）はそのまま使い、基底から Qt クラスだけを取り除く
+    ので、**検証対象の実コードは本物のまま**で、Qt の生存確認だけが外れる。
+    PyQt5 の有無に関係なく同じ結果になる。
+
+    描画通知 `update()` は Qt が供給する契約なので no-op を持たせる
+    （`AutonomousBehaviorMixin` が `update` を合成先の提供物として宣言している）。
+    """
+    bases = tuple(b for b in cls.__bases__ if not _is_qt_class(b)) or (object,)
+    namespace = {k: v for k, v in vars(cls).items()
+                 if k not in ("__dict__", "__weakref__")}
+    namespace.setdefault("update", lambda self, *a, **k: None)
+    stub_cls = type(f"{cls.__name__}Stub", bases, namespace)
+    return stub_cls.__new__(stub_cls)

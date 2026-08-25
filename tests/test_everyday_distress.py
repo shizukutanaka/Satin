@@ -274,6 +274,25 @@ class FarewellFollowUpTests(unittest.TestCase):
             with self.subTest(needle=needle):
                 self._assert_contains(src, needle, "avatar_3d_autonomous_tts.py")
 
+    def test_cli_suppresses_the_follow_up_after_distress(self):
+        """つらさを打ち明けられた直後に話題を振らないこと。
+
+        「ひとりで抱えなくていいからね。 最近どんなことが楽しかった？」は、
+        受け止めた直後に楽しい話題へ振り直す形で、共感を帳消しにする。
+        話題を進める権利は相手の側にある — 別れの場合と同じ理屈である。
+        （実際に GUI を起動して会話したときに出た。）
+        """
+        src = self._source_of("persona_cli.py")
+        for needle in ("_is_distressed", "and not _hurting"):
+            with self.subTest(needle=needle):
+                self._assert_contains(src, needle, "persona_cli.py")
+
+    def test_gui_suppresses_the_follow_up_after_distress(self):
+        src = self._source_of("avatar_3d_autonomous_tts.py")
+        for needle in ("_is_distressed_gui", "and not _hurting_gui"):
+            with self.subTest(needle=needle):
+                self._assert_contains(src, needle, "avatar_3d_autonomous_tts.py")
+
     def test_both_entry_points_import_the_farewell_check(self):
         """任意 import の様式を守りつつ、両方が同じ判定関数を使うこと。"""
         for module, alias in (("persona_cli.py", "_is_farewell"),
