@@ -295,3 +295,82 @@ class TestCliWiring(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class StartupMessageCompositionTests(unittest.TestCase):
+    """起動時の 2 つのメッセージが、互いを消さずに両方出ること。
+
+    GUI の表示は 1 本の `comment_text` なので、`_speak_reply` を続けて呼ぶと
+    **後の呼び出しが前を消す**。初回歓迎（first_run）と AI 開示をそれぞれ
+    個別に呼んでいたため、初回起動のユーザーには開示しか見えていなかった。
+
+    first_run.py は「初回接触時に製品の価値（覚えてくれる・関係が育つ）が
+    一切見えず、読み上げツールと誤解されうる」問題のために書かれたのに、
+    その表示自体が別の起動メッセージに上書きされていた — 直したはずの欠陥が
+    直っていない、という形である。
+
+    法定の開示（NY AI Companion Models 法 / CA SB 243）が消えるのも当然に
+    許されないので、**両方が出ること**を検証する。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self.log = ConversationLog(os.path.join(self._tmp, "c.jsonl"))
+        self._patchers = [
+            mock.patch.object(_gui, "get_conversation_log", lambda: self.log),
+            mock.patch.object(_gui, "get_mood_tracker", None),
+            mock.patch.object(_gui, "_get_user_profile_gui", lambda: None),
+        ]
+        for p in self._patchers:
+            p.start()
+
+    def tearDown(self):
+        for p in self._patchers:
+            p.stop()
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _window(self, welcome: str):
+        window = make_qt_stub(_gui.MainWindow)
+        window._lang = "ja"
+        viewer = make_qt_stub(_gui.AutonomousAvatarViewer)
+        viewer.comment_text = ""
+        viewer.talk_text = ""
+        viewer.mode = "idle"
+        viewer.ticks = 0
+        viewer.tts_queue = None
+        viewer.pending_fact_key = None
+        window.viewer = viewer
+        window._welcome_text = lambda: welcome
+        return window
+
+    def test_first_run_shows_welcome_and_disclosure_together(self):
+        window = self._window("WELCOME_TEXT")
+        window._show_startup_messages()
+        shown = window.viewer.comment_text
+        self.assertIn("WELCOME_TEXT", shown)
+        self.assertIn("人間ではありません", shown)
+
+    def test_returning_user_sees_only_the_disclosure(self):
+        window = self._window("")
+        window._show_startup_messages()
+        shown = window.viewer.comment_text
+        self.assertIn("人間ではありません", shown)
+        self.assertEqual(shown, ad.session_notice("ja"))
+
+    def test_the_disclosure_timestamp_is_stamped(self):
+        """開始直後に 3 時間リマインダーが重ねて出ないこと。"""
+        window = self._window("WELCOME_TEXT")
+        window._show_startup_messages()
+        self.assertIsNotNone(window.viewer._last_ai_disclosure_ts)
+
+    def test_neither_message_is_lost_when_both_exist(self):
+        """片方だけになっていないこと（上書きの再発検出）。"""
+        window = self._window("WELCOME_TEXT")
+        window._show_startup_messages()
+        shown = window.viewer.comment_text
+        self.assertGreater(len(shown), len(ad.session_notice("ja")),
+                           "開示だけになっている（歓迎が上書きされた）")
+        self.assertGreater(len(shown), len("WELCOME_TEXT"),
+                           "歓迎だけになっている（開示が落ちた）")
+

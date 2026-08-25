@@ -217,6 +217,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The first-run welcome was overwritten by the legal disclosure.** `first_run.py`
+  exists because a new user's first sight of the GUI was a static avatar, a
+  button labelled with internal jargon ("自律モードON"), and a text field — none
+  of which conveys that this thing remembers you. The onboarding message it
+  produces was wired in and unit-tested, and nobody ever saw it: the GUI shows
+  one `comment_text`, and `_speak_reply` replaces it, so calling the welcome and
+  then the AI disclosure left only the disclosure on screen. A fix that was
+  written, tested and merged, and did nothing.
+
+  Both are now composed into a single message, so a first-time user gets the
+  four-line "here's what I can do" *and* the notice the NY and California
+  statutes require. `tests/test_ai_disclosure.py` asserts neither one can
+  swallow the other — checking each is present is not enough, since that was
+  true of the disclosure the whole time it was eating the welcome.
+
 - **One in six new users were asked to be left alone on first contact.** The
   daily mood is picked deterministically from the date, and one of its six
   entries is 「なんかしんみりした気分…。そっとしておいてくれると嬉しいかも。」

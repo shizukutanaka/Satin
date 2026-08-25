@@ -1568,10 +1568,46 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):  # type: i
         self.text_timer = QTimer(self)
         self.text_timer.timeout.connect(self.update_talk_text)
         self.text_timer.start(100)
-        # 初回起動なら「できること」を最初に伝える（2 回目以降は出さない）
-        self._maybe_show_welcome()
-        # AI であることをセッション開始時に必ず伝える（毎回・初回に限らない）
-        self._show_ai_disclosure()
+        # 起動時の 2 つのメッセージ（初回のみの歓迎と、毎回の AI 開示）を
+        # **1 つにまとめて**出す。_speak_reply は comment_text を置き換えるので、
+        # 続けて呼ぶと後者が前者を消す — 実際そうなっており、初回起動のユーザーに
+        # 歓迎メッセージは一度も見えていなかった（開示だけが残る）。
+        # first_run.py はまさに「初回接触時に製品の価値が見えない」問題のために
+        # 書かれたのに、その表示が別の起動メッセージに上書きされていた。
+        self._show_startup_messages()
+
+    def _show_startup_messages(self) -> None:
+        """起動時のメッセージ（初回歓迎 + AI 開示）を 1 つにまとめて出す。
+
+        `_speak_reply` は comment_text を置き換えるため、2 回続けて呼ぶと後者が
+        前者を消す。それぞれを個別に呼んでいたので、初回起動のユーザーには
+        歓迎メッセージが見えていなかった。
+        """
+        parts = []
+        welcome = self._welcome_text()
+        if welcome:
+            parts.append(welcome)
+        notice = self._ai_disclosure_text()
+        if notice:
+            parts.append(notice)
+        if not parts:
+            return
+        try:
+            self.viewer._speak_reply("\n".join(parts))
+            if notice:
+                self.viewer._last_ai_disclosure_ts = time.time()
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("起動メッセージの表示に失敗: %s", e)
+
+    def _ai_disclosure_text(self) -> str:
+        """セッション開始時の AI 開示の本文（出せなければ空文字）。"""
+        if _ai_disclosure is None:
+            return ""
+        try:
+            return _ai_disclosure.session_notice(self._lang)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("AI 開示（セッション開始）の生成に失敗: %s", e)
+            return ""
 
     def _show_ai_disclosure(self) -> bool:
         """セッション開始時の AI 開示を表示する。表示したら True。
@@ -1591,8 +1627,8 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):  # type: i
             logger.debug("AI 開示（セッション開始）の表示に失敗: %s", e)
             return False
 
-    def _maybe_show_welcome(self) -> bool:
-        """初回起動なら歓迎＋できることの案内を表示する。表示したら True。
+    def _welcome_text(self) -> str:
+        """初回起動なら歓迎＋できることの案内を返す（2 回目以降は空文字）。
 
         第一原理: 製品の価値（覚えてくれる・関係が育つ）が初回接触時に一切
         見えず「読み上げツール」と誤解されうる問題への対処。過去の利用痕跡
@@ -1612,8 +1648,23 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):  # type: i
             if get_conversation_log is not None:
                 has_history = bool(get_conversation_log().recent(1))
             if not _is_first_run(interactions, has_name, has_history):
-                return False
-            self.viewer._speak_reply(_welcome_message(self._lang))
+                return ""
+            return _welcome_message(self._lang)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("初回オンボーディングの生成に失敗: %s", e)
+            return ""
+
+    def _maybe_show_welcome(self) -> bool:
+        """初回起動なら歓迎を表示する。表示したら True（単体テスト用の入口）。
+
+        通常の起動経路は `_show_startup_messages()` を通る — そちらは AI 開示と
+        1 つのメッセージにまとめる（別々に出すと後者が前者を上書きするため）。
+        """
+        text = self._welcome_text()
+        if not text:
+            return False
+        try:
+            self.viewer._speak_reply(text)
             return True
         except Exception as e:  # pragma: no cover - defensive
             logger.debug("初回オンボーディングの表示に失敗: %s", e)
