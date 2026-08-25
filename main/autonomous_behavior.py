@@ -52,6 +52,13 @@ except Exception:  # pragma: no cover - defensive
     _check_daily_login = None  # type: ignore[assignment]
 
 try:
+    from mood import is_first_meeting as _is_first_meeting_ab
+except Exception:  # pragma: no cover - defensive
+    def _is_first_meeting_ab(tracker=None):  # type: ignore[misc]
+        """mood を読めない場合は「初対面ではない」側に倒す。"""
+        return False
+
+try:
     from daily_summary import (
         yesterday_greeting as _yesterday_greeting,
         summary_greeting as _summary_greeting,
@@ -155,6 +162,10 @@ class AutonomousBehaviorMixin:
                     tracker.snapshot_to_history(_mood_history_path())
             except Exception as e:
                 logger.debug("起動時の好感度処理に失敗しました: %s", e)
+        # 「初対面か」は check_daily_login が _last_login_date を書き込む前に
+        # 確定させる（persona_cli の同じ箇所と対。あとで判定すると常に False）。
+        first_meeting = _is_first_meeting_ab()
+
         persona = self.persona
         if persona is not None:
             greeting = persona.greeting(level=level)
@@ -217,8 +228,15 @@ class AutonomousBehaviorMixin:
                 except Exception as e:
                     logger.debug("季節あいさつの生成に失敗しました: %s", e)
             # デイリームード（その日の気質を一言で添える）
-            if _get_daily_mood is not None and _mood_description is not None:
+            if (_get_daily_mood is not None and _mood_description is not None
+                    and not first_meeting):
                 try:
+                    # 初対面ではデイリームードを添えない。ムードの価値は「日ごとに違う」
+                # ことにあるが、初日には比べる昨日が無い。しかも 6 種のうち
+                # melancholy は「そっとしておいてくれると嬉しいかも」で、初対面の
+                # 3 番目の発話がこれになると、個性ではなく拒絶として読まれる。
+                # 日付だけで決まるので、1/6 の新規ユーザーがそれを引く。
+                    #
                     # 日付のみで決定（可変の呼び名 salt は使わない）。日中に名前を
                     # 設定/消去しても気分が変わらず、ギフト倍率とも一致する。
                     dmood = _get_daily_mood()

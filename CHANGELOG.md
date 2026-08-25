@@ -217,6 +217,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **One in six new users were asked to be left alone on first contact.** The
+  daily mood is picked deterministically from the date, and one of its six
+  entries is 「なんかしんみりした気分…。そっとしておいてくれると嬉しいかも。」
+  ("feeling wistful — I'd appreciate some space"). On a first run that was the
+  avatar's *third* utterance, before the user had typed anything. The mood
+  system exists to make the companion different from day to day; on day one
+  there is no previous day to differ from, so it reads as rejection rather than
+  personality. It is now skipped on a genuine first meeting and returns from the
+  second session onward.
+
+  The first attempt at this fix did nothing, and only running the app showed it:
+  `check_daily_login` writes `_last_login_date` earlier in the same greeting
+  sequence, so evaluating "is this a first meeting?" at the point of use always
+  answered no. `check_daily_login` carries a comment warning about exactly this
+  trap, and the fix walked into it from outside. The state is now captured
+  before the greeting block runs, and the regression test drives a real
+  `MoodTracker` through the whole sequence rather than stubbing the flag — a
+  stubbed flag is what hid the bug the first time.
+
 - **The GUI/CLI comparison is now a test, not a habit**
   (`tests/test_interface_parity.py`). Every command that exists in both entry
   points is driven through both and the replies compared. Doing this comparison

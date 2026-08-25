@@ -2575,3 +2575,71 @@ class CliUnknownCommandTests(unittest.TestCase):
         out = self._run(["hello"])
         self.assertFalse(any(self._notice() in line for line in out), out)
         self.assertTrue(any(line.strip() for line in out))
+
+
+class CliFirstMeetingTests(unittest.TestCase):
+    """初対面では「関係がある前提の演出」を出さないこと。
+
+    まっさらな状態での起動は、ユーザーがこの製品を見る最初の 5 秒である。
+    そこで出していたもの:
+
+    - 「おかえり！今日も会いに来てくれてうれしいな。」— 一度も会っていない相手に
+    - 「なんかしんみりした気分…。そっとしておいてくれると嬉しいかも。」
+      — 3 番目の発話がこれだと、個性ではなく拒絶として読まれる。日替わりムードは
+        日付だけで決まるので、新規ユーザーの 1/6 がこれを引いた。
+
+    どちらも「時間をかけて育つ関係」という製品の核を、入口で損なう。
+    """
+
+    def _run(self, first_meeting):
+        d = _Driver([])
+        with mock.patch.object(persona_cli, "_is_first_meeting_cli",
+                               lambda *a, **k: first_meeting), \
+             mock.patch.object(persona_cli, "_get_daily_mood", lambda **k: "melancholy"), \
+             mock.patch.object(persona_cli, "_mood_description",
+                               lambda *a, **k: "MOOD_LINE"):
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=None,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+            )
+        return d.out
+
+    def test_daily_mood_is_omitted_on_a_first_meeting(self):
+        out = self._run(first_meeting=True)
+        self.assertFalse(any("MOOD_LINE" in line for line in out), out)
+
+    def test_daily_mood_returns_for_a_returning_user(self):
+        """2 日目以降は通常どおり出ること（機能を殺していない）。"""
+        out = self._run(first_meeting=False)
+        self.assertTrue(any("MOOD_LINE" in line for line in out), out)
+
+    def test_the_greeting_itself_still_appears_on_a_first_meeting(self):
+        """ムードを外した結果、無言になっていないこと。"""
+        out = self._run(first_meeting=True)
+        self.assertTrue(any(line.strip() for line in out))
+
+    def test_first_meeting_is_decided_before_the_login_check_mutates_state(self):
+        """判定順序の回帰テスト。
+
+        `check_daily_login` は `_last_login_date` を書き込む。したがって
+        「初対面か」をそのあとで判定すると**常に False**になる。単体テストでは
+        フラグを直接差し替えていたため気づかず、実際に起動して初めて
+        「修正したのにムードが出続ける」ことが分かった。
+
+        ここでは本物の MoodTracker を渡し、あいさつ処理を丸ごと通したうえで
+        ムードが出ないことを確かめる — 順序が壊れれば落ちる。
+        """
+        from mood import MoodTracker
+        tracker = MoodTracker()          # まっさらな新規ユーザー
+        d = _Driver([])
+        with mock.patch.object(persona_cli, "_get_daily_mood", lambda **k: "melancholy"), \
+             mock.patch.object(persona_cli, "_mood_description",
+                               lambda *a, **k: "MOOD_LINE"):
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=None, mood=tracker,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=True,
+            )
+        self.assertFalse(any("MOOD_LINE" in line for line in d.out), d.out)
+        # 前提の確認: あいさつ処理が実際に状態を書き換えていること
+        self.assertTrue(tracker._last_login_date,
+                        "check_daily_login が走っていない — テストの前提が崩れている")

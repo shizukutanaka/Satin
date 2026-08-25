@@ -117,6 +117,13 @@ except Exception:  # pragma: no cover - defensive
     _crisis_reply = None  # type: ignore
 
 try:
+    from mood import is_first_meeting as _is_first_meeting_cli
+except Exception:  # pragma: no cover - defensive
+    def _is_first_meeting_cli(tracker=None):  # type: ignore[misc]
+        """mood を読めない場合は「初対面ではない」側に倒す。"""
+        return False
+
+try:
     from data_erasure import erase_all_user_data as _erase_all_user_data
 except Exception:  # pragma: no cover - defensive
     _erase_all_user_data = None  # type: ignore
@@ -437,6 +444,12 @@ def run_chat(
         if _personalize is not None:
             text = _personalize(text, profile, lang)
         output_fn(f"{name}: {text}")
+    # 「初対面か」は**あいさつ処理が状態を書き換える前に**確定させる。
+    # check_daily_login が _last_login_date を書き込むため、そのあとで判定すると
+    # 常に「初対面ではない」になる。check_daily_login の中にも同じ趣旨の注意を
+    # 書いておきながら、その外側で同じ罠を踏んだ。
+    _first_meeting = _is_first_meeting_cli(mood)
+
     if greet:
         # 前回の会話から長期間経過していたら不在への言及を先に表示する
         if mood is not None:
@@ -501,8 +514,15 @@ def run_chat(
                 pass
 
         # デイリームード（その日のアバターの気質を一言で添える）
-        if _get_daily_mood is not None and _mood_description is not None:
+        if (_get_daily_mood is not None and _mood_description is not None
+                and not _first_meeting):
             try:
+                # 初対面ではデイリームードを添えない。ムードの価値は「日ごとに違う」
+                # ことにあるが、初日には比べる昨日が無い。しかも 6 種のうち
+                # melancholy は「そっとしておいてくれると嬉しいかも」で、初対面の
+                # 3 番目の発話がこれになると、個性ではなく拒絶として読まれる。
+                # 日付だけで決まるので、1/6 の新規ユーザーがそれを引く。
+                #
                 # 日付のみで決定（名前 salt は使わない）。可変の呼び名で日中に
                 # 気分が変わったり、ギフト経路と食い違ったりするのを防ぐ。
                 dmood = _get_daily_mood()

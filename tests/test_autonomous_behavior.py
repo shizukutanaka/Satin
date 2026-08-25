@@ -541,11 +541,12 @@ class SpecialDaysIntegrationTests(unittest.TestCase):
             d.start_autonomous()  # must not raise
         self.assertTrue(d.is_autonomous)
 
-    def test_daily_mood_description_appended_to_greeting(self):
-        captured = []
+    def _start_with_daily_mood(self, captured, first_meeting):
         with mock.patch.object(autonomous_behavior, "get_persona",
                                lambda *a, **k: _FakePersona()), \
              mock.patch.object(autonomous_behavior, "_get_mood_tracker", None), \
+             mock.patch.object(autonomous_behavior, "_is_first_meeting_ab",
+                               lambda *a, **k: first_meeting), \
              mock.patch.object(autonomous_behavior, "_yesterday_greeting", lambda **kw: ""), \
              mock.patch.object(autonomous_behavior, "_birthday_greeting", lambda *a, **k: ""), \
              mock.patch.object(autonomous_behavior, "_seasonal_greeting", lambda **kw: ""), \
@@ -554,7 +555,24 @@ class SpecialDaysIntegrationTests(unittest.TestCase):
                                lambda *a, **kw: "DAILY_DESC"):
             d = self._greeting_dummy(captured)
             d.start_autonomous()
+
+    def test_daily_mood_description_appended_to_greeting(self):
+        captured = []
+        self._start_with_daily_mood(captured, first_meeting=False)
         self.assertTrue(any("DAILY_DESC" in t for t in captured))
+
+    def test_daily_mood_is_omitted_on_a_first_meeting(self):
+        """初対面ではデイリームードを添えないこと。
+
+        ムードの価値は「日ごとに違う」ことにあるが、初日には比べる昨日が無い。
+        しかも 6 種のうち melancholy は「そっとしておいてくれると嬉しいかも」で、
+        初対面の 3 番目の発話がこれになると個性ではなく拒絶として読まれる。
+        日付だけで決まるので、新規ユーザーの 1/6 がそれを引く。
+        """
+        captured = []
+        self._start_with_daily_mood(captured, first_meeting=True)
+        self.assertFalse(any("DAILY_DESC" in t for t in captured), captured)
+        self.assertTrue(any(t.strip() for t in captured), "挨拶まで消えている")
 
     def test_daily_mood_failure_does_not_break_start(self):
         with mock.patch.object(autonomous_behavior, "get_persona",

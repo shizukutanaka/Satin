@@ -1374,6 +1374,22 @@ def _is_first_meeting(tracker: "MoodTracker") -> bool:
     )
 
 
+def is_first_meeting(tracker: Optional["MoodTracker"] = None) -> bool:
+    """まだ一度も会っていない状態かどうか（tracker 省略時は共有シングルトン）。
+
+    初対面で「関係がある前提の演出」を出さないための判定。挨拶（おかえり）と
+    デイリームードの両方がこれを見る。トラッカーが利用できない場合は False を
+    返す — 判断できないときは「初対面ではない」側に倒す（相手の記憶を消して
+    しまうより、余計に馴れ馴れしいほうがまだ害が小さい）。
+    """
+    if tracker is None:
+        try:
+            tracker = get_mood_tracker()
+        except Exception:  # pragma: no cover - defensive
+            return False
+    return _is_first_meeting(tracker)
+
+
 def check_daily_login(
     tracker: "MoodTracker",
     today: Optional[str] = None,
