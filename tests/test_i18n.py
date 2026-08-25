@@ -46,10 +46,9 @@ class I18nModuleTests(unittest.TestCase):
         self.assertFalse(hasattr(module, "tk"))
         self.assertTrue(hasattr(module, "I18N"))
 
-    def test_translation_and_font_lookup(self):
+    def test_translation_lookup(self):
         module = _load_i18n_module()
         i = module.I18N(lang="ja")
-        self.assertEqual(i.font, module.FONT_MAP["ja"])
         # missing key falls back to the provided default
         self.assertEqual(i.t("definitely_missing_key", "fallback"), "fallback")
         # missing key with no default falls back to the key itself
@@ -224,8 +223,7 @@ class UnvalidatedLangCacheAndTraversalTests(unittest.TestCase):
     cache without bound (memory-exhaustion DoS), and traversal payloads
     like "../../config/mood_config" could open/parse arbitrary '.json'
     files outside LOCALES_DIR. Fixed by clamping the cache key (not
-    self.lang, which legitimately needs the raw value for FONT_MAP
-    lookups) to the actual locale files present before any path is built.
+    self.lang) to the actual locale files present before any path is built.
     """
 
     def setUp(self):
@@ -247,12 +245,18 @@ class UnvalidatedLangCacheAndTraversalTests(unittest.TestCase):
         self.assertIsInstance(i.translations, dict)
         self.assertIn("en", self._module.I18N._translation_cache.keys() | {"en"})
 
-    def test_self_lang_still_reflects_raw_requested_value(self):
-        # self.lang must stay the raw value (used for FONT_MAP font-matching),
-        # even though the translation cache key underneath is clamped.
+    def test_the_clamp_lives_at_the_cache_key_not_at_self_lang(self):
+        """守りがどこに置かれているかを固定する。
+
+        `self.lang` は要求された生の値のまま。クランプは
+        `load_translation` 内でキャッシュキーとパスを組み立てる**直前**に
+        あり、そこにあることが重要である。入口で値を書き換える方式に
+        「簡素化」すると、パスを組み立てる新しい経路が増えたときに守りが
+        付いてこない。ここが変わったら意図的な変更として説明されるべき。
+        """
         i = self._module.I18N(lang="fr")
         self.assertEqual(i.lang, "fr")
-        self.assertEqual(i.font, self._module.FONT_MAP.get("fr", "Arial"))
+        self.assertNotIn("fr", self._module.I18N._translation_cache)
 
 
 if __name__ == "__main__":

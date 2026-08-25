@@ -1,18 +1,17 @@
+"""Web ダッシュボードの翻訳ロード（`dashboard.py` が唯一の利用者）。
+
+以前はここにデスクトップのフォント名 17 件（`FONT_MAP`: 'Yu Gothic UI' /
+'Malgun Gothic' …）と、tkinter 用のフォントタプルを返す `get_font()` があった。
+使っていたのは**この下にコメントアウトで置かれていた tkinter デモだけ**である。
+Web ではフォント指定は CSS の仕事なので、Flask 専用のこのモジュールに
+デスクトップのフォント表を置く理由が無い。同じ tkinter デモの残骸として
+`main/{ar,bn,…,zh}.json` 14 ファイルが既に削除されている（W-04）。
+"""
 import os
 import json
 import locale
 from typing import Dict
-# NOTE: tkinter is intentionally not imported at module level — it is only used
-# in the commented-out GUI demo below, and importing it unconditionally made this
-# module unimportable in headless environments (no Tk) despite not needing a GUI.
 
-# 100+言語対応のフォントマップ例（必要に応じて拡張）
-FONT_MAP = {
-    'ja': 'Yu Gothic UI', 'en': 'Arial', 'zh': 'Noto Sans SC', 'zh-tw': 'Microsoft JhengHei',
-    'ko': 'Malgun Gothic', 'ru': 'Arial', 'ar': 'Noto Naskh Arabic', 'hi': 'Noto Sans Devanagari',
-    'th': 'Tahoma', 'vi': 'Arial', 'es': 'Arial', 'fr': 'Arial', 'de': 'Arial', 'pt': 'Arial',
-    'id': 'Arial', 'bn': 'Noto Sans Bengali', 'ur': 'Noto Nastaliq Urdu', # ...追加可
-}
 LOCALES_DIR = os.path.join(os.path.dirname(__file__), 'i18n', 'locales')
 
 
@@ -42,15 +41,14 @@ class I18N:
     _translation_cache: Dict[str, Dict] = {}
     def __init__(self, lang=None):
         # self.lang keeps the raw detected/requested value (e.g. "fr" from
-        # SATIN_LANG) — it's used for FONT_MAP.get(self.lang, 'Arial')
-        # font-matching for languages that have a font mapping but no
-        # translation file. Only the *cache key* inside load_translation is
-        # clamped to the small, fixed set of languages that actually have a
-        # locale file, so an arbitrary caller-supplied lang can't grow
-        # _translation_cache without bound.
+        # SATIN_LANG) for diagnostics. Clamping happens where it matters —
+        # the *cache key* inside load_translation — so an arbitrary
+        # caller-supplied lang can neither grow _translation_cache without
+        # bound nor escape LOCALES_DIR. Do not "simplify" by clamping here
+        # instead: the clamp must sit immediately before the path/key is
+        # built, or a future caller reintroduces the hole.
         self.lang = lang or self.detect_language()
         self.translations = self.load_translation(self.lang)
-        self.font = FONT_MAP.get(self.lang, 'Arial')
     def detect_language(self):
         lang = os.environ.get('SATIN_LANG')
         if lang:
@@ -91,14 +89,3 @@ class I18N:
         if val is not None:
             return val
         return key if default is None else default
-    def get_font(self, size=12, weight="normal"):
-        return (self.font, size, weight)
-# --- Flask/Web用: 言語切替はリクエストやセッションから ---
-# --- サンプルGUI統合例 ---
-# if __name__ == "__main__":
-#     i18n = I18N()
-#     root = tk.Tk()
-#     root.title(i18n.t("title", "Satin 多言語デモ"))
-#     tk.Label(root, text=i18n.t("hello", "こんにちは!"), font=i18n.get_font(16)).pack(padx=20, pady=20)
-#     tk.Label(root, text=i18n.t("desc", "このUIは自動で言語・フォントが切り替わります。"), font=i18n.get_font(12)).pack(pady=10)
-#     root.mainloop()

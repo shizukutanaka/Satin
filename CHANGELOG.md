@@ -217,6 +217,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **Three more reachable-but-pointless parts, found by asking what each one
+  does rather than whether it is imported.**
+  - `avatar_event_log_rotate` shipped a standalone daemon (`monitor_and_rotate`
+    + `main`) that polls the log file every 30 seconds and rotates it. Nothing
+    calls it, and `AvatarEventLogger` already rotates on every write — so it was
+    not merely redundant but a hazard: run it alongside the app and two
+    processes rotate the same file concurrently. With write-time rotation there
+    is nothing left to monitor.
+  - `i18n.py` — used by nothing but the Flask dashboard — carried `FONT_MAP`
+    (17 desktop font names: 'Yu Gothic UI', 'Malgun Gothic', …), a `self.font`
+    attribute, and `get_font()` returning a **tkinter** font tuple. The only
+    caller was a commented-out tkinter demo directly beneath it. On the web,
+    font choice is CSS. Same residue that produced the 14 orphan
+    `main/{ar,bn,…,zh}.json` locale files deleted earlier.
+  - `log_retention._gz_event_count`, annotated "for CLI display", which no CLI
+    called.
+
+  Removing `FONT_MAP` also invalidated the stated reason `I18N.lang` keeps the
+  raw requested value. The security behaviour is unchanged — clamping still
+  happens where the cache key and file path are built — but its regression test
+  now says what the invariant actually is (the guard sits immediately before the
+  path is constructed, and moving it earlier would let a future code path bypass
+  it) instead of citing a font lookup that no longer exists.
 - **Deleted a notification subsystem that delivered nothing.** The break
   reminder reaches the user through the avatar — `speak_func` puts the text on
   screen and into TTS, which the GUI always wires up. Behind that sat

@@ -239,16 +239,3 @@ def apply_retention_if_configured(
         logger.debug("保存期間の適用に失敗しました: %s", e)
         return {"pruned": False, "kept": 0, "removed": 0,
                 "archives_removed": 0, "days": 0}
-
-
-def _gz_event_count(path: str) -> int:  # pragma: no cover - 補助（CLI 表示用）
-    """アーカイブ内のイベント行数を数える（表示用。失敗時は 0）。"""
-    count = 0
-    try:
-        with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                if line.strip():
-                    count += 1
-    except Exception:
-        return 0
-    return count

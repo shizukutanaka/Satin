@@ -1,10 +1,20 @@
+"""イベントログのサイズローテーション。
+
+`AvatarEventLogger` が書き込みのたびに `rotate_log()` を呼ぶ。ローテート後の
+アーカイブは ``<logfile>.<YYYYMMDD_HHMMSS>.gz`` で、`conversation_log` の
+検索と `log_retention` の期限切れ削除がこの命名を前提にしている。
+
+**常駐監視デーモンは置かない。** 以前は `monitor_and_rotate()` と `main()` が
+あり、ログファイルを 30 秒ごとにポーリングして必要ならローテートする独立
+プロセスとして起動できた。どこからも呼ばれていなかったが、それ以上に危険で、
+本体と同時に走らせると**同じファイルを 2 つのプロセスが回す**競合になる。
+書き込み時にローテートする方式なら、そもそも監視する対象が無い。
+"""
 import os
 import re
-import time
 import gzip
 import shutil
 from datetime import datetime
-import argparse
 
 
 def _backup_sort_key(fname: str) -> tuple:
@@ -58,24 +68,3 @@ def rotate_log(logfile, max_size=5*1024*1024, max_backups=5, quiet=False):
             pass
     if not quiet:
         print(f"ログローテート: {rotated}")
-
-def monitor_and_rotate(logfile, max_size, max_backups, interval):
-    print(f"{logfile} を監視し、{max_size//1024}KB超でローテート 最大{max_backups}世代保存")
-    while True:
-        try:
-            rotate_log(logfile, max_size, max_backups)
-        except Exception as e:
-            print(f"ローテートエラー: {e}")
-        time.sleep(interval)
-
-def main():
-    parser = argparse.ArgumentParser(description='アバターイベントログ自動ローテーション')
-    parser.add_argument('logfile', help='監視対象ログファイル')
-    parser.add_argument('--max_size', type=int, default=5*1024*1024, help='最大サイズ(byte)')
-    parser.add_argument('--max_backups', type=int, default=5, help='保存世代数')
-    parser.add_argument('--interval', type=int, default=30, help='監視間隔(秒)')
-    args = parser.parse_args()
-    monitor_and_rotate(args.logfile, args.max_size, args.max_backups, args.interval)
-
-if __name__ == '__main__':
-    main()
