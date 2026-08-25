@@ -119,13 +119,6 @@ class BreakReminder:
         self._running = False
         self._lock = threading.Lock()
 
-        # Try to import NotificationSystem; fall back to logging
-        try:
-            from notification_system import NotificationSystem
-            self._ns: Optional[object] = NotificationSystem(app_name="Satin")
-        except Exception:
-            self._ns = None
-
         self._history: List[dict] = []
 
     # ------------------------------------------------------------------
@@ -270,12 +263,22 @@ class BreakReminder:
     # ------------------------------------------------------------------
 
     def _notify(self, title: str, body: str) -> None:
+        """リマインダーを届ける。
+
+        届け先は 2 つだけ:
+          - `speak_func`: アバターが画面に表示し TTS で読み上げる。GUI が必ず
+            渡すので、これが実際にユーザーへ届く経路である。
+          - `notify_func`: 呼び出し側が (title, body) を受け取る拡張点。
+
+        以前はここに `notification_system`（plyer / notify2 / logging の 3 段
+        フォールバック、173 行 + テスト 331 行）を挟んでいたが、**出荷構成では
+        何も届けていなかった**: plyer も notify2 も setup/requirements.txt に
+        無いため利用可能なバックエンドは logging だけで、その 1 行は直下で
+        既に出している。アバターが画面表示と音声で伝えているので、見えない
+        3 本目の経路に 500 行を割く理由が無かった。デスクトップ通知が要る
+        場合は `notify_func` に渡せばよい（依存は呼び出し側が持つ）。
+        """
         logger.info("[BreakReminder] %s: %s", title, body)
-        if self._ns is not None:
-            try:
-                self._ns.send_notification(title, body)  # type: ignore[attr-defined]
-            except Exception as e:
-                logger.debug("notification failed: %s", e)
         if self._notify_func is not None:
             try:
                 self._notify_func(title, body)

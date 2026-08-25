@@ -248,13 +248,30 @@ class ModuleWideDialogueIntegrityTests(unittest.TestCase):
     （こちらも一度取りこぼした）。
     """
 
-    #: 台詞を持つモジュール。安全機構そのものも含める（自分だけ例外にしない）。
-    MODULES = (
-        "gifts", "special_days", "daily_summary", "break_reminder", "daily_mood",
-        "profile_questions", "user_wellbeing", "usage_guardrails",
-        "notification_system", "crisis_support", "everyday_distress",
-        "mood", "persona",
-    )
+    #: 走査から外すモジュール。GUI/Web/CLI の枠組みは import に副作用があり、
+    #: 台詞データは持たない（台詞は下の対象モジュールが持つ）。
+    SKIP = frozenset({
+        "avatar_3d_autonomous_tts", "dashboard", "manage_satin", "persona_cli",
+        "satin_launcher", "avatar_loader", "gl_widget_base", "optional_deps",
+        "tts_thread", "autonomous_behavior", "i18n",
+    })
+
+    def _modules(self):
+        """main/ に実在するモジュールから対象を導く。
+
+        以前は一覧をハードコードしていたが、モジュールを 1 つ削除しただけで
+        このテストが ModuleNotFoundError で落ちた。より悪いのは逆方向で、
+        **新しく台詞を持つモジュールが増えても一覧に足し忘れれば黙って
+        検査対象外になる** — mypy.ini の免除リストで避けたのと同じ失敗である。
+        実在から導けば、その穴は開かない。
+        """
+        import os
+        main_dir = os.path.join(_ROOT, "main")
+        return sorted(
+            f[:-3] for f in os.listdir(main_dir)
+            if f.endswith(".py") and not f.startswith("_")
+            and f[:-3] not in self.SKIP
+        )
 
     #: 場面を問わず操作にあたる型。
     CONTEXT_FREE_TACTICS = ("emotional_neglect", "coercive_restraint", "fomo")
@@ -269,7 +286,7 @@ class ModuleWideDialogueIntegrityTests(unittest.TestCase):
 
     def _iter_dialogue(self):
         import importlib
-        for name in self.MODULES:
+        for name in self._modules():
             module = importlib.import_module(name)
             for attr in dir(module):
                 if attr.startswith("__"):

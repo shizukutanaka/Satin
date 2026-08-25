@@ -217,6 +217,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **Deleted a notification subsystem that delivered nothing.** The break
+  reminder reaches the user through the avatar — `speak_func` puts the text on
+  screen and into TTS, which the GUI always wires up. Behind that sat
+  `notification_system`: 173 lines implementing a three-tier desktop-notification
+  fallback (plyer → notify2 → logging), plus 331 lines of tests. Neither `plyer`
+  nor `notify2` is in `setup/requirements.txt`, so in every shipped
+  configuration the only available backend was `logging` — and that log line is
+  already emitted by the caller, immediately above. A third delivery channel
+  that delivered nothing, with 38 green tests lending it the appearance of
+  working.
+
+  This is the harder half of "delete the part": the first sweep removed 59
+  *unreachable* modules, which is the easy case. This one was reachable, tested,
+  and imported — and still earned removal, because reaching it changed nothing.
+  The `notify_func` injection point stays: it is a real seam, it is tested, and
+  it carries no dependencies, so anyone who wants desktop notifications can pass
+  one in and own the dependency themselves.
+
+  The module-wide dialogue sweep added in the previous commit caught its own
+  staleness here — its module list was hardcoded and broke on the deletion. It
+  now derives the list from what is actually in `main/`, which also closes the
+  more dangerous direction: a newly added module with dialogue in it can no
+  longer be silently skipped. Coverage went from 13 modules to 27 as a result —
+  the same mistake `mypy.ini` was inverted to avoid.
 - **A repo-wide sweep for the same pattern.** Having fixed retention pressure at
   the farewell, the greeting, the moment of distress, the confession and the
   level transitions one at a time, `tests/test_greeting_integrity.py` now sweeps
