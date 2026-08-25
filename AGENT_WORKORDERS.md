@@ -55,7 +55,7 @@
 | # | 長所 | 根拠 |
 |---|------|------|
 | S1 | **no-LLM / オフライン / プライバシー第一**を貫いた決定論的な対話・感情・記憶 | `mood.py` / `conversation_log.py` / `user_wellbeing.py` |
-| S2 | **研究駆動の安全設計**: 感情依存ガードレール・否定/強度対応感情判定・BM25 記憶想起・変化点検知・概日トーン・**別れぎわの引き止め文句ゼロ**・**危機表明への相談先案内**・**AI であることの定期開示**・**好感度の向き先補正** | `usage_guardrails.py`, `mood.py`, `conversation_log.search_relevant`, `user_wellbeing.wellbeing_shift`, `persona.py`, `farewell_integrity.py`, `crisis_support.py`, `ai_disclosure.py`, `sentiment_target.py`。詳細は `RESEARCH_DRIVEN_IMPROVEMENTS_PY.md` |
+| S2 | **研究駆動の安全設計**: 感情依存ガードレール・否定/強度対応感情判定・BM25 記憶想起・変化点検知・概日トーン・**別れぎわの引き止め文句ゼロ**・**再会時に不在を責めない**・**危機表明への相談先案内**・**日常のつらさへの共感**・**AI であることの定期開示**・**好感度の向き先補正**・**告白に実体のある関係を要求** | `usage_guardrails.py`, `mood.py`, `conversation_log.search_relevant`, `user_wellbeing.wellbeing_shift`, `persona.py`, `farewell_integrity.py`, `crisis_support.py`, `everyday_distress.py`, `ai_disclosure.py`, `sentiment_target.py`, `tests/test_greeting_integrity.py`。一覧は SPECIFICATION §3.8、詳細は `RESEARCH_DRIVEN_IMPROVEMENTS_PY.md` |
 | S3 | **完全なデータ消去経路 + 保存期間**（プライバシーの実効性）: GUI `/forget-all` と CLI `data purge` が会話・好感度・プロフィール・アバター履歴を一括消去。加えて `conversation_retention_days` で時間軸の保持上限（既定 0 = 無期限） | `avatar_3d_autonomous_tts._erase_all_user_data`, `manage_satin.cmd_data_purge`, `log_retention.py` |
 | S4 | **強固なテスト文化**: 2,939 件、revert-verify 規約、conftest によるデータ隔離、optional-import フォールバック様式 | `tests/`, `tests/conftest.py` |
 | S5 | **セキュリティ修正済み**: CSRF・SSRF・CSV 式インジェクション・Zip Slip・原子的書き込み・0600 権限 | `dashboard.py`, `fsutil.py` ほか（CHANGELOG / SPECIFICATION 参照） |
@@ -320,6 +320,30 @@ import グラフ（AST ベース）で到達不能なモジュールを判定し
 実装方針 / テスト / 完了条件 / 触るな）で追記すること。カードが完了したら
 本文を未来形のまま残さず、**何をしたかの記録に畳む**（W-01 〜 W-05 がその形）。
 未来形の指示が残っていると、次のエージェントが済んだ作業をやり直す。
+
+### ギャップの見つけ方（実績のある手順）
+
+コードを読むだけでは見つからない欠陥がある。**まっさらな状態から実際に起動し、
+ユーザーが通る道を一行ずつ読む**と出てくる。この方法で見つかったもの:
+
+- 一度も会ったことのない相手への「おかえり！」（初回起動）
+- 「またね！ところでストレス発散は？」（別れに質問を連結）
+- 悪い知らせへの「そっか、いいね。」（フォールバックが一律で明るい）
+- 出会って 3 メッセージでの愛の告白（好感度だけが条件だった）
+- close レベルの挨拶 3 択すべてが不在を責める型
+- /stats の「今回: 0 / 累計: 4」（同じ語で違う定義の数を並べていた）
+- /summary だけ好感度が空欄（/mood には出ている）
+
+手順:
+1. `check.py` の `_personal_data_preserved()` で個人データを退避してから、
+   `config/` の好感度・履歴を消して**新規ユーザーの状態**を作る。
+2. `--chat` を日英それぞれで起動し、出力を一行ずつ読む。速く動かさない。
+3. ダッシュボードは全ルートを両言語でレンダリングし、内部キー（`friendly` 等）や
+   テンプレートの波括弧が漏れていないか見る。
+4. 好感度を上げ切って高レベルの応答も読む。**最も熱心なユーザーが見る画面**は
+   検証が手薄になりやすく、実際そこに集中して欠陥があった。
+5. 特別イベント（告白・記念日・レベル節目）は自然には発火しないので、
+   条件を作って明示的に発火させる。
 
 各カードは 1 機能 = 1 コミット、revert-verify、`python check.py` が緑、
 PR → master merge の規約（§0.2）で進めること。

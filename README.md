@@ -252,6 +252,33 @@ game stops there. Detection is keyword-based and offline like everything else,
 with common intensifier idioms (「死ぬほど眠い」, "dying to see it") excluded — and
 it is a safety net, not a clinical risk assessment.
 
+#### A bad day gets an answer, not a cheerful noise
+
+Crisis is one end of a spectrum; the far more common disclosure is simply that
+today was hard. That case used to fall between the guardrails — `crisis_support`
+is deliberately narrow, and the affinity classifier measures how you feel about
+*the avatar*, not how you are. Anything outside the small keyword dictionary
+reached the generic fallback, and every generic fallback was cheerful:
+
+```text
+You: 今日はしんどかった
+Satin: そっか、いいね。            ← before
+Satin: そっか…、大変だったね。      ← now
+
+You: I feel lonely
+Satin: Nice, sounds good.          ← before
+Satin: That sounds like a lot to carry.   ← now
+```
+
+`everyday_distress.py` matches natural phrasings in both languages — including
+Japanese inflections (「しんど」→「しんどかった」), which were much of the miss —
+while excluding negations (「疲れてない」, "not stressed") and days that end well
+(「疲れたけど楽しかった」, "long day but it was great"). It offers no advice and
+never quotes a hotline: answering 「疲れた」 with a crisis line would be an
+overreaction that cheapens the real referral. If you are saying goodbye at the
+same time (「疲れたからもう寝るね」), the goodbye wins — sympathy is not a reason
+to keep you talking.
+
 #### Venting doesn't cost you the relationship
 
 Affinity measures how you treat the avatar; the wellbeing check-in measures how
