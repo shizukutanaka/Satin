@@ -275,6 +275,51 @@ _COMMAND_USAGE = {
 }
 
 
+#: 破壊的操作の二段階確認。GUI・CLI の両方が同じ文言を使う。
+#
+# GUI は「もう一度 /clear-log と**言って**ください」/ "Say ... again" だった。
+# どちらのインターフェースでもユーザーは**打ち込む**のだから、これは単なる
+# ドリフトではなく誤った指示である。しかも破壊的操作の確認で出るので、
+# 言われたとおり「言おう」とした人には削除が進まない理由が分からない。
+_CONFIRM_PROMPTS = {
+    "clear-log": {
+        "ja": ("会話履歴を（アーカイブも含めて）すべて消去します。"
+               "本当によければ、もう一度 /clear-log を入力してください。"),
+        "en": ("This will erase the ENTIRE conversation history (including "
+               "archives). Type /clear-log again to confirm."),
+    },
+    "reset-mood": {
+        "ja": ("好感度をニュートラルにリセットします。"
+               "本当によければ、もう一度 /reset-mood を入力してください。"),
+        "en": ("This will reset our relationship to neutral. "
+               "Type /reset-mood again to confirm."),
+    },
+    "forget-all": {
+        "ja": ("あなたに関するデータを全部消します — プロフィール・会話履歴"
+               "（アーカイブ含む）・好感度・アバター選択。本当によければ、"
+               "もう一度 /forget-all を入力してください。"),
+        "en": ("This erases EVERYTHING I know about you — profile, the entire "
+               "conversation history (and archives), our affinity, and your "
+               "avatar selection. Type /forget-all again to confirm."),
+    },
+    "forget-me": {
+        "ja": ("覚えている個人情報（呼び名・誕生日・趣味・会話で覚えたこと）を"
+               "すべて消去します。本当によければ、もう一度 /forget-me を"
+               "入力してください。"),
+        "en": ("This will erase everything I remember about you (name, birthday, "
+               "interests, and answers). Type /forget-me again to confirm."),
+    },
+}
+
+
+def confirmation_prompt(command: str, lang: str = "ja") -> str:
+    """破壊的操作の二段階確認メッセージを返す（GUI / CLI 共通）。"""
+    entry = _CONFIRM_PROMPTS.get(command)
+    if not entry:
+        return ""
+    return entry["en" if str(lang).lower().startswith("en") else "ja"]
+
+
 def command_usage(command: str, lang: str = "ja") -> str:
     """コマンドの使い方の一行を返す（GUI / CLI 共通）。
 
@@ -529,13 +574,7 @@ def run_chat(
         # /forget-me は /forget より具体的なので先に判定する（前方一致の誤爆防止）
         if text.lower() in _FORGET_ME_COMMANDS:
             if not _forget_me_pending:
-                if lang == "en":
-                    output_fn(f"{name}: This will erase everything I remember about you "
-                              "(name, birthday, interests, and answers). "
-                              "Type /forget-me again to confirm.")
-                else:
-                    output_fn(f"{name}: 覚えている個人情報（呼び名・誕生日・趣味・会話で覚えたこと）を"
-                              "すべて消去します。本当によければ、もう一度 /forget-me を入力してください。")
+                output_fn(f"{name}: {confirmation_prompt('forget-me', lang)}")
                 _forget_me_pending = True
             else:
                 _forget_me(profile, lang, output_fn)
@@ -565,12 +604,7 @@ def run_chat(
             continue
         if text.lower() in _MOOD_RESET_COMMANDS:
             if not _reset_mood_pending:
-                if lang == "en":
-                    output_fn(f"{name}: This will reset our relationship to neutral. "
-                              "Type /reset-mood again to confirm.")
-                else:
-                    output_fn(f"{name}: 好感度をニュートラルにリセットします。"
-                              "本当によければ、もう一度 /reset-mood を入力してください。")
+                output_fn(f"{name}: {confirmation_prompt('reset-mood', lang)}")
                 _reset_mood_pending = True
             else:
                 _reset_mood(mood, lang, output_fn)
@@ -595,12 +629,7 @@ def run_chat(
             continue
         if text.lower() in _CLEAR_LOG_COMMANDS:
             if not _clear_log_pending:
-                if lang == "en":
-                    output_fn(f"{name}: This will erase the ENTIRE conversation history "
-                              "(including archives). Type /clear-log again to confirm.")
-                else:
-                    output_fn(f"{name}: 会話履歴を（アーカイブも含めて）すべて消去します。"
-                              "本当によければ、もう一度 /clear-log を入力してください。")
+                output_fn(f"{name}: {confirmation_prompt('clear-log', lang)}")
                 _clear_log_pending = True
             else:
                 _clear_log(conv_log, lang, output_fn)

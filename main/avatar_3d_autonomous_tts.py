@@ -81,12 +81,18 @@ except Exception:  # pragma: no cover - defensive
 try:
     from persona_cli import _detect_ritual_event as _detect_ritual_event_gui
     from persona_cli import command_usage as _command_usage_gui
+    from persona_cli import confirmation_prompt as _confirmation_prompt_gui
 except Exception:  # pragma: no cover - defensive
     _detect_ritual_event_gui = None  # type: ignore[assignment]
 
     def _command_usage_gui(command, lang="ja"):  # type: ignore[misc]
         """persona_cli を読めない場合のフォールバック（空文字で無害に縮退）。"""
         return ""
+
+    def _confirmation_prompt_gui(command, lang="ja"):  # type: ignore[misc]
+        """同上。確認文言が空だと危険なので、汎用の確認文を返す。"""
+        return ("Type the command again to confirm." if str(lang).startswith("en")
+                else "もう一度同じコマンドを入力すると実行します。")
 
 try:
     from user_profile import (
@@ -341,6 +347,22 @@ def make_reminder_speak(viewer, tts_queue):
     return _speak
 
 
+#: 破壊的コマンドの二段階確認。属性名 → その確認を継続できる入力の集合。
+#
+# ここに載っていないコマンドは確認を持たない。**逆に言えば、破壊的なのに
+# ここに無ければそれが欠陥である**: 実際 /forget-me は確認そのものが無く、
+# 打ち間違い 1 回で呼び名・誕生日・趣味・覚えた事実が復元不能に消えていた。
+# /forget-all は確認はあったが取り消し処理が書かれておらず、雑談を挟んだ
+# あとの単独入力でいきなり実行された。1 コマンドずつ手で書くのをやめて
+# 表にすることで、追加時の書き忘れが起きにくくなる。
+_PENDING_CONFIRMATIONS = {
+    "_clear_log_pending": ("/clear-log", "/clearlog"),
+    "_reset_mood_pending": ("/reset-mood", "/resetmood"),
+    "_forget_all_pending": ("/forget-all", "/forgetall", "/delete-all", "/erase-all"),
+    "_forget_me_pending": ("/forget-me", "/forgetme"),
+}
+
+
 class AutonomousAvatarViewer(
         AutonomousBehaviorMixin, GLViewportMixin,
         QOpenGLWidget if QOpenGLWidget is not None else object):  # type: ignore[misc]
@@ -369,9 +391,9 @@ class AutonomousAvatarViewer(
         ]
         self.tts_queue = None
         self.pending_fact_key = None  # 一問一答: 回答待ちの質問キー
-        self._clear_log_pending = False  # /clear-log の二段階確認フラグ
-        self._reset_mood_pending = False  # /reset-mood の二段階確認フラグ
-        self._forget_all_pending = False  # /forget-all の二段階確認フラグ
+        # 破壊的コマンドの二段階確認フラグ（_PENDING_CONFIRMATIONS 参照）
+        for _attr in _PENDING_CONFIRMATIONS:
+            setattr(self, _attr, False)
         # --avatar-loader で選んだアバターモデルの頂点（無ければ球体を描画）
         self.avatar_model_vertices = None
         # 三角形インデックス (M, 3) と面ごとのフラット法線 (M, 3)。
@@ -429,22 +451,17 @@ class AutonomousAvatarViewer(
         persona = self.persona
         lang = getattr(persona, 'lang', 'ja') if persona is not None else 'ja'
 
-        # /clear-log の確認待ちが他の発話（スラッシュ・非スラッシュ問わず）で
-        # キャンセルされた場合。persona_cli.py の同種フラグ処理と同じロジック。
+        # 確認待ちが他の発話（スラッシュ・非スラッシュ問わず）で挟まれたら
+        # 取り消す。persona_cli.py の同種フラグ処理と同じロジック。
+        # 表にまとめてあるのは、以前これを 1 コマンドずつ書いており
+        # /forget-all のぶんが**書かれないまま**だったため — 確認が取り消され
+        # ないと、雑談を何度挟んだあとの単独の /forget-all がいきなり実行される。
         # getattr の既定値 False は、__init__ を経由しないテスト用インスタンス
-        # （object.__new__ 経由）で属性未設定でも落ちないようにするための防御。
-        if getattr(self, "_clear_log_pending", False) \
-                and comment.strip().lower() not in ("/clear-log", "/clearlog"):
-            self._clear_log_pending = False
-
-        # /reset-mood も同様の二段階確認。以前は確認無しで即座に好感度を
-        # 全リセットしており、テキスト入力欄への誤操作（誤爆・貼り付け・
-        # Enter の押し間違い）1回で関係進捗が丸ごと消えた
-        # （persona_cli.py は同じコマンドに対して既にこの確認を持っていた
-        # ——GUI 側だけこのガードが抜け落ちていた）。
-        if getattr(self, "_reset_mood_pending", False) \
-                and comment.strip().lower() not in ("/reset-mood", "/resetmood"):
-            self._reset_mood_pending = False
+        # で属性未設定でも落ちないようにするための防御。
+        _typed = comment.strip().lower()
+        for _attr, _aliases in _PENDING_CONFIRMATIONS.items():
+            if getattr(self, _attr, False) and _typed not in _aliases:
+                setattr(self, _attr, False)
 
         # ---------- スラッシュコマンド (/gift, /callme) ----------
         if isinstance(comment, str) and comment.lstrip().startswith("/"):
@@ -780,7 +797,8 @@ class AutonomousAvatarViewer(
         result = _lookup_gift_gui(item, lang=lang, level=level)
         if result is None:
             if lang == "en":
-                reply = f"Hmm, I'm not sure about {item}. Try /gift list."
+                reply = (f"Hmm, I'm not sure about {item}. "
+                         "Try /gift list to see options.")
             else:
                 reply = f"「{item}」はよく分からないな。/gift list で確認してね。"
             self._speak_reply(reply)
@@ -971,7 +989,18 @@ class AutonomousAvatarViewer(
         呼び名・誕生日・趣味・会話で覚えた事実（プロフィール）を消す。会話履歴は
         /clear-log、好感度は /reset-mood が担当。会話履歴・好感度も含めて**全部**
         消したい場合は /forget-all を使う。
+
+        **二段階確認する。** 以前はここだけ確認が無く、`/forget-me` を一度
+        打っただけで呼び名・誕生日・趣味・覚えた事実が復元不能に消えていた。
+        兄弟の破壊的コマンド（/clear-log・/reset-mood・/forget-all）と CLI 側の
+        同名コマンドはいずれも確認を持っており、ここだけが抜けていた。
+        打ち間違いで人の記憶が消える経路を残さない。
         """
+        if not getattr(self, "_forget_me_pending", False):
+            self._forget_me_pending = True
+            self._speak_reply(_confirmation_prompt_gui("forget-me", lang))
+            return
+        self._forget_me_pending = False
         if _get_user_profile_gui is None:
             self._speak_reply("(プロファイルは利用できません)" if lang != "en"
                               else "(Profile unavailable)")
@@ -1004,13 +1033,7 @@ class AutonomousAvatarViewer(
         """
         is_en = lang.startswith("en")
         if not getattr(self, "_forget_all_pending", False):
-            reply = ("This erases EVERYTHING I know about you — profile, the "
-                     "entire conversation history (and archives), our affinity, "
-                     "and your avatar selection. Say /forget-all again to confirm."
-                     if is_en else
-                     "あなたに関するデータを全部消します — プロフィール・会話履歴"
-                     "（アーカイブ含む）・好感度・アバター選択。本当によければ、"
-                     "もう一度 /forget-all と言ってください。")
+            reply = _confirmation_prompt_gui("forget-all", lang)
             self._forget_all_pending = True
             self._speak_reply(reply)
             return
@@ -1132,10 +1155,7 @@ class AutonomousAvatarViewer(
             return
 
         if not getattr(self, "_reset_mood_pending", False):
-            reply = ("This will reset our relationship to neutral. "
-                     "Type /reset-mood again to confirm." if lang == "en"
-                     else "好感度をニュートラルにリセットします。"
-                          "本当によければ、もう一度 /reset-mood と言ってください。")
+            reply = _confirmation_prompt_gui("reset-mood", lang)
             self._reset_mood_pending = True
             self._speak_reply(reply)
             return
@@ -1202,10 +1222,7 @@ class AutonomousAvatarViewer(
         /forget-me と異なり明示的な二段階確認を行う。
         """
         if not getattr(self, "_clear_log_pending", False):
-            reply = ("This will erase the ENTIRE conversation history (including "
-                     "archives). Say /clear-log again to confirm." if lang == "en"
-                     else "会話履歴を（アーカイブも含めて）すべて消去します。"
-                          "本当によければ、もう一度 /clear-log と言ってください。")
+            reply = _confirmation_prompt_gui("clear-log", lang)
             self._clear_log_pending = True
             self._speak_reply(reply)
             return
@@ -1468,7 +1485,7 @@ class AutonomousAvatarViewer(
                 logger.debug("/birthday プロフィール保存に失敗（GUI）: %s", e)
 
         if saved:
-            reply = (f"Got it! Your birthday is {saved}. I won't forget!" if lang == "en"
+            reply = (f"Got it — your birthday is {saved}. I won't forget it!" if lang == "en"
                      else f"覚えた、誕生日は{saved}だね。忘れないよ！")
             if get_conversation_log is not None:
                 try:

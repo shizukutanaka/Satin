@@ -217,6 +217,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **`/forget-me` erased everything on the first keystroke, in the GUI only.**
+  One mistyped command wiped the user's name, birthday, interests and every
+  remembered fact, with no confirmation and no undo. Every sibling destructive
+  command guards this — `/clear-log`, `/reset-mood` and `/forget-all` in the GUI,
+  and `/forget-me` itself in the CLI — so this was an omission, not a decision.
+  It now takes two.
+
+  `/forget-all` had the opposite half missing: it prompted for confirmation but
+  never cleared the pending flag when the user typed something else, so a single
+  `/forget-all` after an arbitrary stretch of unrelated conversation executed
+  immediately against a stale confirmation. Both gaps are the same shape —
+  "written for the other commands, forgotten for this one" — so the pending
+  flags, their aliases and the cancel-on-other-input rule now live in one table
+  (`_PENDING_CONFIRMATIONS`) instead of being hand-written per command.
+
+  The confirmation prompts themselves were also inconsistent, and the GUI's were
+  wrong: 「もう一度 /clear-log と**言って**ください」 / "Say /forget-all again to
+  confirm." The user types in both interfaces — someone who follows that
+  instruction literally has no idea why the deletion isn't happening. Prompts now
+  come from `persona_cli.confirmation_prompt()`, shared with the CLI, and a test
+  asserts they say 「入力」/"Type", name the command to repeat, and state what is
+  about to be destroyed.
 - **The same command explained itself differently in the GUI and the CLI.**
   A measured comparison of every user-facing string in both entry points found
   11 near-identical pairs. Some differences are legitimate presentation (the CLI

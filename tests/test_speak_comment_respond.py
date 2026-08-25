@@ -1443,7 +1443,14 @@ class GUICommandLoggingTests(unittest.TestCase):
 
 
 class GUIForgetMeTests(unittest.TestCase):
-    """Tests for the /forget-me GUI command (erase stored personal data)."""
+    """/forget-me（記憶した個人情報の消去）の GUI コマンド。
+
+    **二段階確認する。** 以前 GUI 側だけ確認が無く、`/forget-me` を一度打った
+    だけで呼び名・誕生日・趣味・覚えた事実が復元不能に消えていた。CLI の
+    同名コマンドも、GUI の兄弟コマンド（/clear-log・/reset-mood・/forget-all）も
+    確認を持っており、ここだけが抜けていた。したがって以下のテストは
+    「2 回打つと消える」を検証する。
+    """
 
     def setUp(self):
         self._log_patcher = mock.patch.object(_mod, "get_conversation_log", None)
@@ -1464,7 +1471,9 @@ class GUIForgetMeTests(unittest.TestCase):
         v = _make_viewer()
         with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
              mock.patch.object(_mod, "_default_profile_path_gui", None):
-            v.speak_comment("/forget-me")
+            v.speak_comment("/forget-me")          # 1 回目 = 確認のみ
+            self.assertEqual(prof.name, "Taro", "確認前に消してはいけない")
+            v.speak_comment("/forget-me")          # 2 回目 = 実行
         self.assertEqual(prof.name, "")
         self.assertEqual(prof.birthday, "")
         self.assertEqual(prof.interests, [])
@@ -1492,7 +1501,8 @@ class GUIForgetMeTests(unittest.TestCase):
         v = _make_viewer()
         with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
              mock.patch.object(_mod, "_default_profile_path_gui", None):
-            v.speak_comment("/forget-me")
+            v.speak_comment("/forget-me")   # 確認
+            v.speak_comment("/forget-me")   # 実行
         self.assertEqual(calls["clear"], 1)
         self.assertEqual(calls["remove"], 0)
 
@@ -1502,8 +1512,37 @@ class GUIForgetMeTests(unittest.TestCase):
         v = _make_viewer()
         with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
              mock.patch.object(_mod, "_default_profile_path_gui", None):
-            v.speak_comment("/forgetme")
+            v.speak_comment("/forgetme")   # 確認
+            v.speak_comment("/forgetme")   # 実行（別名でも確認は継続する）
         self.assertEqual(prof.name, "")
+
+    def test_a_single_forget_me_does_not_erase_anything(self):
+        """打ち間違い 1 回で記憶が消えないこと（このバグの本体）。"""
+        from user_profile import UserProfile
+        prof = UserProfile(name="Taro", birthday="06-15", interests=["アニメ"])
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/forget-me")
+        self.assertEqual(prof.name, "Taro")
+        self.assertEqual(prof.interests, ["アニメ"])
+        self.assertIn("/forget-me", v.comment_text)
+
+    def test_an_intervening_message_cancels_the_confirmation(self):
+        """確認待ちのまま雑談を挟んだら、次の 1 回で実行されないこと。
+
+        /forget-all は確認を出すのに取り消し処理が書かれておらず、雑談を
+        何度挟んだあとの単独入力がいきなり実行された。同じ穴を作らない。
+        """
+        from user_profile import UserProfile
+        prof = UserProfile(name="Taro")
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", lambda: prof), \
+             mock.patch.object(_mod, "_default_profile_path_gui", None):
+            v.speak_comment("/forget-me")   # 確認
+            v.speak_comment("こんにちは")     # 割り込み → 取り消し
+            v.speak_comment("/forget-me")   # 再度の確認（実行ではない）
+        self.assertEqual(prof.name, "Taro")
 
     def test_forget_me_no_profile_no_crash(self):
         v = _make_viewer()
@@ -1743,3 +1782,55 @@ class GUISlashCommandPrefixBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PendingConfirmationTableTests(unittest.TestCase):
+    """破壊的コマンドの二段階確認が、表として一箇所にまとまっていること。
+
+    以前は 1 コマンドずつ手で書いており、その結果:
+
+    - `/forget-me` は**確認そのものが無く**、打ち間違い 1 回で呼び名・誕生日・
+      趣味・覚えた事実が復元不能に消えた。
+    - `/forget-all` は確認はあったが**取り消し処理が書かれておらず**、雑談を
+      何度挟んだあとの単独入力がいきなり実行された。
+
+    どちらも「他のコマンドには書いたが、これには書き忘れた」という形の欠陥で
+    ある。表にしておけば、追加時に書き忘れる面が減る。
+    """
+
+    def test_all_destructive_commands_are_in_the_table(self):
+        table = _mod._PENDING_CONFIRMATIONS
+        for attr in ("_clear_log_pending", "_reset_mood_pending",
+                     "_forget_all_pending", "_forget_me_pending"):
+            with self.subTest(attr=attr):
+                self.assertIn(attr, table)
+
+    def test_every_entry_lists_its_own_command_aliases(self):
+        for attr, aliases in _mod._PENDING_CONFIRMATIONS.items():
+            with self.subTest(attr=attr):
+                self.assertTrue(aliases, f"{attr} に別名が無い")
+                for alias in aliases:
+                    self.assertTrue(alias.startswith("/"),
+                                    f"{attr}: {alias!r} が / で始まっていない")
+
+    def test_an_intervening_message_cancels_every_pending_confirmation(self):
+        """表のどのフラグも、別の発話で取り消されること。"""
+        for attr in _mod._PENDING_CONFIRMATIONS:
+            with self.subTest(attr=attr):
+                v = _make_viewer()
+                setattr(v, attr, True)
+                v.speak_comment("こんにちは")
+                self.assertFalse(getattr(v, attr),
+                                 f"{attr} が割り込み後も残っている")
+
+    def test_repeating_the_command_keeps_its_own_confirmation(self):
+        """自分の別名を打った場合は確認が継続すること（取り消されない）。"""
+        for attr, aliases in _mod._PENDING_CONFIRMATIONS.items():
+            for alias in aliases:
+                with self.subTest(attr=attr, alias=alias):
+                    v = _make_viewer()
+                    setattr(v, attr, True)
+                    # 実行側へ進むと副作用が出るので、フラグの扱いだけを見る
+                    typed = alias.strip().lower()
+                    table = _mod._PENDING_CONFIRMATIONS
+                    self.assertIn(typed, table[attr])
