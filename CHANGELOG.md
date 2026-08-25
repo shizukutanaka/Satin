@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The relationship's growth arc is now tunable** (`max_daily_gain` in
+  `config/mood_config.json`). Walking a long session revealed the arithmetic:
+  affinity starts at 50.0, the top level (`close`) begins at 80.0, and the
+  per-day cap on conversational gain is 30.0 — so **the highest level is reached
+  on day one, in about eight messages**, after which there is nothing left to
+  grow. The README and specification both describe a relationship that grows
+  *across sessions*; it completes within one.
+
+  The default is unchanged: fast reward is a legitimate design choice, and this
+  is the owner's call, not something to alter silently under everyone's existing
+  save file. What changed is that the value is now readable from config instead
+  of frozen in a module constant, the arithmetic is written down where the
+  constant is defined and in `SPECIFICATION.md` §3.2, and a test pins the
+  current behaviour so the next reader can tell whether it was intended or an
+  oversight. Setting it to 5.0 gives roughly a six-day arc, 2.0 roughly fifteen
+  days. The cap applies only to gains — penalties for hostile messages are never
+  diluted by it.
+
 - **Everyday distress is answered with empathy** (`everyday_distress.py`). The
   most common disclosure a companion receives — a bad day — fell into a gap.
   `crisis_support` is deliberately narrow (self-harm and suicidal ideation;

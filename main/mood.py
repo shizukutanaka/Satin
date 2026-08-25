@@ -107,6 +107,15 @@ _MAX_DELTA_PER_MESSAGE = 10.0
 # 贈った場合の合計 ≈30.5）と同程度の水準に設定。減少（ネガティブな発言への
 # ペナルティ）はこの上限の対象外 — 上限は「稼ぎすぎ」だけを防ぎ、正当な
 # マイナス影響は薄めない。
+#
+# **この値が関係の成長弧の長さを決める。** 算術を明示しておく:
+#   開始 50.0（neutral）→ close（最高レベル）の閾値 80.0 = 差 30.0
+#   → 既定の 30.0/日では、**初日の 8 メッセージほどで最高レベルに到達する**。
+# 「セッションを跨いで育つ関係」を謳う一方で、実際の成長は 1 セッションで
+# 終わる。速い報酬を良しとする設計判断でもありうるので既定は変えていないが、
+# 長い弧が欲しい場合はここを下げること（例: 5.0 なら 6 日、2.0 なら 15 日）。
+# コードを編集せずとも config/mood_config.json の `max_daily_gain` で
+# 上書きできる。
 _MAX_DAILY_CONVERSATION_GAIN = 30.0
 
 # 非活動時の好感度低下レート（ポイント/時間）。長期離席で関係が冷える。
@@ -402,6 +411,7 @@ class MoodTracker:
         negative: Optional[Dict[str, List[str]]] = None,
         positive_delta: float = _DEFAULT_POSITIVE_DELTA,
         negative_delta: float = _DEFAULT_NEGATIVE_DELTA,
+        max_daily_gain: float = _MAX_DAILY_CONVERSATION_GAIN,
         interactions: int = 0,
         last_interaction_time: float = 0.0,
         first_interaction_time: float = 0.0,
@@ -430,6 +440,9 @@ class MoodTracker:
         self._negative = negative if negative else _DEFAULT_NEGATIVE
         self.positive_delta = float(positive_delta)
         self.negative_delta = float(negative_delta)
+        # 会話由来の 1 日あたり上昇上限（成長弧の長さを決める。上の定数の
+        # コメントに算術あり）。負値は上限なしではなく 0 と解釈する。
+        self.max_daily_gain = max(0.0, float(max_daily_gain))
         self._last_interaction_time = float(last_interaction_time)
         # 関係が始まった時刻（初回 register 時に記録）。0.0 = 未交流。
         self._first_interaction_time = float(first_interaction_time)
@@ -512,7 +525,7 @@ class MoodTracker:
         if self._daily_gain_date != today:
             self._daily_gain_date = today
             self._daily_gain_total = 0.0
-        remaining = max(0.0, _MAX_DAILY_CONVERSATION_GAIN - self._daily_gain_total)
+        remaining = max(0.0, self.max_daily_gain - self._daily_gain_total)
         effective = min(delta, remaining)
         self._daily_gain_total += effective
         return effective
@@ -755,6 +768,8 @@ def _kwargs_from_mood_config(mood_config: Optional[Dict]) -> Dict:
         kwargs["positive_delta"] = float(mood_config["positive_delta"])
     if isinstance(mood_config.get("negative_delta"), (int, float)):
         kwargs["negative_delta"] = float(mood_config["negative_delta"])
+    if isinstance(mood_config.get("max_daily_gain"), (int, float)):
+        kwargs["max_daily_gain"] = float(mood_config["max_daily_gain"])
     return kwargs
 
 

@@ -113,6 +113,14 @@ satin_launcher.py
 
 - 0–100 のスコアを 5 レベルへ写像: distant / reserved / neutral / friendly / close。
 - `register(text)` で肯定/否定語を検出し ±delta（1 回あたり最大 ±10、0–100 にクランプ）。
+- **成長弧の長さ**: 開始 50.0（neutral）から最高レベル close の閾値 80.0 までは
+  30.0。会話由来の上昇には日次上限（既定 30.0）が掛かるので、**既定のままだと
+  初日の 8 メッセージほどで最高レベルに到達する**。README・本仕様書ともに
+  「セッションを跨いで育つ関係」を謳っているが、実際の成長は 1 セッションで
+  終わる。速い報酬を良しとする設計判断でもありうるため既定は変えていないが、
+  長い弧が欲しい場合は `config/mood_config.json` の `max_daily_gain` を下げる
+  （5.0 で約 6 日、2.0 で約 15 日。コード編集は不要）。この上限は上昇のみに
+  掛かり、ネガティブな発言のペナルティは薄めない。
 - `config/mood.json` に永続化、日次スナップショットを `config/mood_history.jsonl` に追記。
 - 記念日（出会いから 7/30/100/180 日、以降毎年）を 1 回だけ祝う。
 - ログインストリーク・最終ログイン日も追跡。
@@ -160,8 +168,11 @@ satin_launcher.py
 
 - Flask 製。ポート **5003**（`__main__` 実行時）。
 - 提供ページ: イベントログ `/logs`・会話履歴（検索・CSV/テキスト DL）・
-  バックアップ・クラウド同期・好感度（履歴チャート）・統計・日次サマリ・
-  ヘルスチェック `/healthz`。
+  バックアップ一覧 `/backups`・バックアップ作成 `/sync`・好感度（履歴チャート）・
+  統計・日次サマリ・ヘルスチェック `/healthz`。
+- `/sync` は `config/` と会話ログをローカルの zip にまとめるだけで、
+  ネットワークには一切触れない（URL とキー名は `sync_to_cloud` が存在した
+  頃の名残。表示ラベルは実態に合わせて「バックアップを作成」へ改めた）。
 - プライバシー保護のため会話・好感度ページは `no-store`。
 
 ### 3.7 管理 CLI (`manage_satin.py`)
@@ -189,7 +200,7 @@ YouTube / arXiv / Web スクレイピングの統合層（`youtube_integrator` /
 |----------|------|------|
 | `config/config.json` | アプリ基底設定（version / settings） | 設定 |
 | `config/persona.json` | 人格・対話・応答ルール・好感度語 | 設定 |
-| `config/mood_config.json` | 感情語・delta 上書き | 設定 |
+| `config/mood_config.json` | 感情語・delta・`max_daily_gain` の上書き | 設定 |
 | `config/user_profile.json` | 呼び名・誕生日・趣味（**git-ignore / 個人情報**） | 記憶 |
 | `config/mood.json` | 好感度状態（**個人情報**） | 記憶 |
 | `config/mood_history.jsonl` | 日次好感度履歴（**個人情報**） | 記憶 |

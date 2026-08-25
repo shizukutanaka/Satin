@@ -16,6 +16,7 @@ import pytest
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
+import mood  # noqa: E402
 from mood import (  # noqa: E402
     AFFINITY_MAX,
     AFFINITY_MIN,
@@ -1731,3 +1732,64 @@ class NegationAndEmojiSentimentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DailyGainCapConfigTests(unittest.TestCase):
+    """会話由来の日次上昇上限が設定可能であること。
+
+    この値が関係の成長弧の長さを決める。開始 50.0 から close の閾値 80.0 まで
+    は 30.0 で、既定の上限も 30.0/日 — つまり**初日の 8 メッセージほどで最高
+    レベルに到達し、「セッションを跨いで育つ関係」は 1 セッションで終わる**。
+
+    速い報酬を良しとする設計判断でもありうるので既定は変えていない。ただし
+    コードを編集しないと変えられない状態ではオーナーが選べないので、
+    config/mood_config.json から上書きできるようにした。
+    """
+
+    def test_default_is_unchanged(self):
+        """既定値を変えていないこと（この変更は選択肢を増やすだけである）。"""
+        self.assertEqual(MoodTracker().max_daily_gain, 30.0)
+        self.assertEqual(mood._MAX_DAILY_CONVERSATION_GAIN, 30.0)
+
+    def test_default_reaches_the_top_level_on_day_one(self):
+        """既定のままなら初日に最高レベルへ到達することを、事実として固定する。
+
+        意図してこうなっているのか、算術を見落としていたのかを次に読む人が
+        判断できるよう、挙動をテストに書き残しておく。
+        """
+        t = MoodTracker()
+        for _ in range(30):
+            t.register("ありがとう")
+        self.assertEqual(t.level, "close")
+
+    def test_a_lower_cap_lengthens_the_arc(self):
+        t = MoodTracker(max_daily_gain=5.0)
+        for _ in range(30):
+            t.register("ありがとう")
+        self.assertLess(t.affinity, 60.0)
+        self.assertEqual(t.level, "neutral")
+
+    def test_cap_is_read_from_mood_config(self):
+        kwargs = mood._kwargs_from_mood_config({"max_daily_gain": 7.5})
+        self.assertEqual(kwargs["max_daily_gain"], 7.5)
+
+    def test_non_numeric_cap_in_config_is_ignored(self):
+        for bad in ("lots", None, [], {}):
+            with self.subTest(value=bad):
+                self.assertNotIn("max_daily_gain",
+                                 mood._kwargs_from_mood_config({"max_daily_gain": bad}))
+
+    def test_negative_cap_means_no_conversational_gain(self):
+        """負値は「上限なし」ではなく 0 と解釈すること。"""
+        t = MoodTracker(max_daily_gain=-5.0)
+        before = t.affinity
+        t.register("ありがとう")
+        self.assertEqual(t.affinity, before)
+
+    def test_penalties_ignore_the_cap(self):
+        """上限は「稼ぎすぎ」だけを防ぎ、正当なマイナス影響は薄めないこと。"""
+        t = MoodTracker(max_daily_gain=0.0)
+        before = t.affinity
+        t.register("嫌い")
+        self.assertLess(t.affinity, before)
+
