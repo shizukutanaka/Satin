@@ -217,6 +217,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The GUI/CLI comparison is now a test, not a habit**
+  (`tests/test_interface_parity.py`). Every command that exists in both entry
+  points is driven through both and the replies compared. Doing this comparison
+  by hand, once, produced three of the fixes in this release — the missing
+  `/forget-me` confirmation, the missing CLI `/forget-all`, and eleven drifted
+  strings. A check performed only when someone thinks to perform it leaves the
+  next divergence sitting until the next person notices.
+
+  It compares what must match — usage lines, confirmation prompts, the unknown
+  command reply — and states the differences that are legitimate: the CLI
+  prefixes replies with the avatar's name (stripped before comparing), `/avatar`
+  is GUI-only, `/quit` and `/name` are CLI-only. Reverting either the `/like`
+  usage line or the `/forget-me` confirmation makes it fail, which is how it was
+  verified.
+
 - **`/forget-all` did nothing in the headless CLI.** The product's strongest
   privacy promise — one command that erases profile, conversation history,
   affinity and avatar selection — existed only in the 3D GUI. Typing it into
