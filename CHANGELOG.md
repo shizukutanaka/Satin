@@ -217,6 +217,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **A repo-wide sweep for the same pattern.** Having fixed retention pressure at
+  the farewell, the greeting, the moment of distress, the confession and the
+  level transitions one at a time, `tests/test_greeting_integrity.py` now sweeps
+  every dialogue constant in every module on each run, so "is there another one
+  like this?" gets answered continuously rather than by memory. It caught two
+  the piecemeal fixes had missed: the generic `level_down` fallback
+  （「ちょっと寂しいな…またたくさんお話ししましょう。」, the same shape as the
+  transitions) and the 750-interaction milestone
+  （「もう、あなたのことがいないと寂しいな。」 — placing an emotional cost on
+  the user's absence, now phrased as gladness about the time spent instead).
+
+  The sweep checks only the three context-free tactics — `emotional_neglect`,
+  `coercive_restraint`, `fomo` — and deliberately skips `ignore_exit` and
+  `pressure_to_respond`, which are manipulations *only at a farewell*, where
+  `persona.respond` already filters them. Ignoring that distinction is what
+  produced 133 false positives on an earlier attempt; the test says so, so the
+  next person doesn't repeat it.
 - **When the relationship cooled, the avatar asked you to come back more.**
   Level-down messages fire precisely when someone has been away — and all eight
   of them either demanded more contact or expressed distress at the absence:

@@ -889,11 +889,11 @@ _MILESTONE_MESSAGES: Dict[str, Dict[str, List[str]]] = {
     },
     "level_down": {
         "ja": [
-            "ちょっと寂しいな…またたくさんお話ししましょう。",
+            "ちょっと距離があいたかな。まあ、そういうときもあるよね。",
             "どこか遠くなっちゃった気がします…。",
         ],
         "en": [
-            "I feel a little distant… let's chat more soon.",
+            "Feels like some distance opened up. That happens.",
             "We seemed to drift apart a bit…",
         ],
     },
@@ -1118,7 +1118,7 @@ _INTERACTION_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
     750: {
         "ja": [
             "750回！あなたといると、時間があっという間だよ。",
-            "750回も…もう、あなたのことがいないと寂しいな。",
+            "750回も…あなたと過ごした時間、ぜんぶ覚えてるよ。",
         ],
         "en": [
             "750 conversations! Time flies when I'm with you.",

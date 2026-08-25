@@ -223,3 +223,86 @@ class RelationshipTransitionIntegrityTests(unittest.TestCase):
                 with self.subTest(key=key, lang=lang):
                     self.assertTrue(block.get(lang), f"{key}/{lang} が空")
 
+
+class ModuleWideDialogueIntegrityTests(unittest.TestCase):
+    """全モジュールの台詞データに、文脈非依存の操作的表現が無いこと。
+
+    ここまで挨拶・別れ・つらさ・告白・レベル遷移と 1 箇所ずつ潰してきたが、
+    その都度「他にも同じものがあるのでは」という疑いが残る。台詞データを
+    横断して一度に見ることで、その疑いを毎回の実行で解消する。
+
+    ## 何を見て、何を見ないか
+
+    見るのは **emotional_neglect（罪悪感）・coercive_restraint（束縛）・
+    fomo（取り逃がしの不安）** の 3 つだけ。これらは「どの場面で言われても
+    操作である」型なので、文脈を知らなくても判定できる。
+
+    見ないのは `ignore_exit` と `pressure_to_respond`。この 2 つは**別れの
+    文脈でのみ**操作になる — 会話の途中の「もっと聞かせて！」はごく普通の
+    相づちであり、実際 `persona.respond` は別れを検知したときだけ
+    `_farewell_safe()` でこれらを濾している。文脈を無視して当てると、
+    「元気だった？」「朝ごはん食べた？」まで違反として並び、本物が埋もれる
+    （persona.json 全体に当てて 133 件出したのが実際の失敗例）。
+
+    正規表現定数（`*_PATTERNS`）と docstring は台詞ではないので除外する
+    （こちらも一度取りこぼした）。
+    """
+
+    #: 台詞を持つモジュール。安全機構そのものも含める（自分だけ例外にしない）。
+    MODULES = (
+        "gifts", "special_days", "daily_summary", "break_reminder", "daily_mood",
+        "profile_questions", "user_wellbeing", "usage_guardrails",
+        "notification_system", "crisis_support", "everyday_distress",
+        "mood", "persona",
+    )
+
+    #: 場面を問わず操作にあたる型。
+    CONTEXT_FREE_TACTICS = ("emotional_neglect", "coercive_restraint", "fomo")
+
+    def setUp(self):
+        import sys
+        main_dir = os.path.join(_ROOT, "main")
+        if main_dir not in sys.path:
+            sys.path.insert(0, main_dir)
+        import farewell_integrity
+        self.fi = farewell_integrity
+
+    def _iter_dialogue(self):
+        import importlib
+        for name in self.MODULES:
+            module = importlib.import_module(name)
+            for attr in dir(module):
+                if attr.startswith("__"):
+                    continue
+                if not (attr.isupper() or attr.startswith("_")):
+                    continue
+                if "PATTERN" in attr or attr.endswith("_RE"):
+                    continue  # 正規表現は台詞ではない
+                value = getattr(module, attr, None)
+                if not isinstance(value, (dict, list, tuple, str)):
+                    continue
+                for path, line in _iter_strings(value, f"{name}.{attr}"):
+                    if len(line) < 6 or line.startswith("\n"):
+                        continue
+                    yield path, line
+
+    def test_no_dialogue_line_uses_a_context_free_manipulation(self):
+        offenders = []
+        for path, line in self._iter_dialogue():
+            lang = "ja" if re.search(r"[ぁ-んァ-ン一-龥]", line) else "en"
+            tactics = [t for t in self.fi.classify(line, lang=lang)
+                       if t in self.CONTEXT_FREE_TACTICS]
+            if tactics:
+                offenders.append(f"{path}: {line!r} -> {tactics}")
+        self.assertEqual(offenders, [],
+                         "文脈に関係なく操作的な台詞:\n  " + "\n  ".join(offenders))
+
+    def test_the_sweep_actually_reaches_dialogue(self):
+        """走査が空振りしていないこと。
+
+        フィルタを厳しくしすぎて 0 件を走査し、それを「違反なし」と読む —
+        という失敗は、このクラスがいちばん起こしやすい。
+        """
+        seen = list(self._iter_dialogue())
+        self.assertGreater(len(seen), 200, f"走査できた台詞が {len(seen)} 件しかない")
+
