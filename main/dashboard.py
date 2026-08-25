@@ -1052,12 +1052,29 @@ def summary(i18n):
 
         peak = s['peak_hour']
         peak_str = f'{peak:02d}:00–{peak:02d}:59' if peak is not None else '—'
+
+        # daily_summary は mood_history.jsonl の「今日のスナップショット」から
+        # 好感度を取るが、スナップショットはその日最初の起動時にしか書かれない。
+        # まだ書かれていない時点でダッシュボードを開くと、/mood には 54/100 と
+        # 出ているのに /summary だけ空欄（—）になっていた。現在値はそのまま
+        # 「今日の好感度」なので、履歴が無いときは生きているトラッカーから補う。
+        # （前日比 affinity_change は履歴が要るので、こちらは補わない。）
+        affinity_val = s['affinity']
+        affinity_level = s['affinity_level']
+        if affinity_val is None and _get_mood_tracker is not None:
+            try:
+                tracker = _get_mood_tracker()
+                affinity_val = float(tracker.affinity)
+                affinity_level = tracker.level
+            except Exception:  # pragma: no cover - defensive: 表示で落とさない
+                affinity_val = None
+
         # daily_summary の affinity_level は mood_history の生キー
         # （"friendly" 等）なので、表示前にラベル化する。
         affinity_str = (
-            f'{s["affinity"]:.1f} '
-            f'({_html.escape(_localized_level(str(s["affinity_level"]), lang))})'
-            if s['affinity'] is not None else '—'
+            f'{affinity_val:.1f} '
+            f'({_html.escape(_localized_level(str(affinity_level), lang))})'
+            if affinity_val is not None else '—'
         )
         rows = [
             (date_lbl, _html.escape(s['date'])),

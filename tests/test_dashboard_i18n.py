@@ -329,3 +329,43 @@ class BackupPageHonestyTests(_RenderBase):
                           "boto3", "google.cloud"):
             with self.subTest(api=forbidden):
                 self.assertNotIn(forbidden, source)
+
+
+@unittest.skipUnless(_HAS_FLASK, "flask is not installed")
+class SummaryAffinityFallbackTests(_RenderBase):
+    """/summary の好感度が /mood と食い違わないこと。
+
+    daily_summary は mood_history.jsonl の「今日のスナップショット」から
+    好感度を取るが、スナップショットはその日の最初の起動時にしか書かれない。
+    まだ書かれていない時点でダッシュボードを開くと、/mood には値が出ているのに
+    /summary だけ空欄（—）になっていた。同じ画面群で同じ数字が片方だけ
+    消えているのは、単に不親切なだけでなく壊れて見える。
+    """
+
+    def _summary_with_no_snapshot_today(self, lang="ja"):
+        # 今日のエントリを含まない履歴に差し替える（過去日だけ）。
+        with open(self.hist, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "date": "2020-01-01", "affinity": 41.0, "level": "neutral"}) + "\n")
+        return self._body("/summary", lang)
+
+    def test_falls_back_to_the_live_tracker_when_today_has_no_snapshot(self):
+        with mock.patch.object(dashboard, "_get_mood_tracker", create=True) as gm:
+            gm.return_value = mock.Mock(affinity=72.0, level="friendly")
+            body = self._summary_with_no_snapshot_today("en")
+        self.assertIn("72.0", body)
+        self.assertNotIn(">—<", body.replace(" ", ""))
+
+    def test_localizes_the_level_from_the_live_tracker(self):
+        with mock.patch.object(dashboard, "_get_mood_tracker", create=True) as gm:
+            gm.return_value = mock.Mock(affinity=72.0, level="friendly")
+            body = self._summary_with_no_snapshot_today("ja")
+        self.assertIn("なかよし", body)
+        self.assertNotIn("(friendly)", body)
+
+    def test_a_broken_tracker_does_not_break_the_page(self):
+        """トラッカーが例外を投げても 500 にしない（従来どおり — で表示）。"""
+        with mock.patch.object(dashboard, "_get_mood_tracker", create=True) as gm:
+            gm.side_effect = RuntimeError("mood file corrupt")
+            body = self._summary_with_no_snapshot_today("en")
+        self.assertIn("Affinity", body)

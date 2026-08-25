@@ -220,6 +220,28 @@ class RunChatTests(unittest.TestCase):
         n, out = self._run(["/stats"], greet=False)
         self.assertEqual(n, 0)
 
+    def test_stats_labels_say_which_count_includes_commands(self):
+        """2 つの数の定義の違いがラベルから読み取れること。
+
+        セッション側はスラッシュコマンドを数えず、累計側（会話ログ由来）は
+        数える。同じ「発言数」という語で並べていたため、コマンドだけ打った
+        セッションで「今回のセッション: 0件 / 累計ユーザー発言数: 4件」と
+        表示され、カウンタが壊れているようにしか見えなかった。
+        """
+        n, out = self._run(["/callme yuki", "hello", "/stats"], greet=False)
+        blob = "\n".join(out)
+        self.assertIn("commands excluded", blob)
+        self.assertIn("commands included", blob)
+        # 実際の数も食い違ったまま並ばないこと: コマンド 1 + 会話 1 なので
+        # セッション 1 / 累計 2 になり、差はラベルで説明がつく。
+        self.assertIn("this session (commands excluded): 1", blob)
+
+    def test_stats_labels_are_localized_for_japanese(self):
+        from persona_cli import _print_stats
+        lines = []
+        _print_stats(None, 3, "ja", lines.append)
+        self.assertIn("コマンドは含みません", "\n".join(lines))
+
     def test_feeling_command_outputs_and_is_not_an_exchange(self):
         # /feeling reflects the user's recent mood; like /stats it must produce
         # output and must NOT be counted as a conversational exchange.

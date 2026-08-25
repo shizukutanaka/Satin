@@ -199,6 +199,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **`/summary` showed a blank affinity while `/mood` showed the number.**
+  `daily_summary` reads the day's affinity from `mood_history.jsonl`, but that
+  snapshot is only written on the first launch of the day — so opening the
+  dashboard before starting a session left the summary's affinity row as an em
+  dash while the mood page, two clicks away, displayed 54/100. The route now
+  falls back to the live tracker when today has no snapshot yet; the current
+  value *is* today's affinity. The day-over-day change still requires history and
+  is left empty, and a tracker that raises still degrades to the em dash rather
+  than a 500.
+- **`/stats` reported "this session: 0" next to "total: 4" in the same session.**
+  The session counter deliberately skips slash commands (it also paces the
+  avatar's follow-up questions, which shouldn't fire after `/mood`), while the
+  all-time counts come from the conversation log, which records commands. Two
+  different definitions were presented under the same word, so a session of pure
+  commands looked like a broken counter. Both labels now say which is which.
 - **Satin said "welcome back" to people it had never met.** On a genuinely first
   run — no affinity file, no history — the daily-login greeting fired with
   `streak = 1` and produced 「おかえり！今日も会いに来てくれてうれしいな。」

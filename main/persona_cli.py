@@ -1260,12 +1260,21 @@ def _print_feeling(lang: str, output_fn: Callable[[str], None]) -> None:
 
 
 def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callable[[str], None]) -> None:
-    """現在セッションおよび全体の会話統計を表示する。"""
+    """現在セッションおよび全体の会話統計を表示する。
+
+    `session_exchanges` はスラッシュコマンドを含まない「会話のやりとり」の数で、
+    累計側（会話ログ由来）はコマンドも記録に含む。定義が違う 2 つの数を
+    「発言数」という同じ語で並べると、コマンドだけ打ったセッションで
+    「今回: 0 / 累計: 4」となり、カウンタが壊れているように見える。
+    ラベルで区別する。
+    """
     is_en = lang.startswith("en")
     if is_en:
-        output_fn(f"Session exchanges: {session_exchanges}")
+        output_fn(f"Conversation turns this session (commands excluded): "
+                  f"{session_exchanges}")
     else:
-        output_fn(f"今回のセッション: {session_exchanges}件")
+        output_fn(f"今回のセッションの会話: {session_exchanges}件"
+                  f"（/ で始まるコマンドは含みません）")
     if conv_log is None:
         return
     try:
@@ -1274,11 +1283,13 @@ def _print_stats(conv_log, session_exchanges: int, lang: str, output_fn: Callabl
         user_msgs = sum(1 for ev in all_events if ev.get("event_type") in USER_EVENT_TYPES)
         avatar_msgs = len(all_events) - user_msgs
         if is_en:
-            output_fn(f"Total user messages (all time): {user_msgs}")
-            output_fn(f"Total avatar replies (all time): {avatar_msgs}")
+            output_fn(f"Total messages you've sent, all sessions "
+                      f"(commands included): {user_msgs}")
+            output_fn(f"Total replies from the avatar: {avatar_msgs}")
         else:
-            output_fn(f"累計ユーザー発言数: {user_msgs}件")
-            output_fn(f"累計アバター返答数: {avatar_msgs}件")
+            output_fn(f"全セッション累計のあなたの発言: {user_msgs}件"
+                      f"（コマンドを含みます）")
+            output_fn(f"全セッション累計のアバターの返答: {avatar_msgs}件")
     except Exception:  # pragma: no cover - defensive
         pass
 
