@@ -117,6 +117,11 @@ except Exception:  # pragma: no cover - defensive
     _crisis_reply = None  # type: ignore
 
 try:
+    from data_erasure import erase_all_user_data as _erase_all_user_data
+except Exception:  # pragma: no cover - defensive
+    _erase_all_user_data = None  # type: ignore
+
+try:
     from farewell_integrity import is_farewell as _is_farewell
 except Exception:  # pragma: no cover - defensive
     _is_farewell = None  # type: ignore
@@ -170,6 +175,8 @@ _HISTORY_DEFAULT = 10
 _MOOD_RESET_COMMANDS = {"/reset-mood", "/resetmood"}
 # 個人情報（呼び名・誕生日・趣味・記憶）を消去するプライバシーコマンド
 _FORGET_ME_COMMANDS = {"/forget-me", "/forgetme"}
+# 全消去。GUI の _PENDING_CONFIRMATIONS と別名を揃えてある。
+_FORGET_ALL_COMMANDS = {"/forget-all", "/forgetall", "/delete-all", "/erase-all"}
 
 _CLEAR_LOG_COMMANDS = {"/clear-log", "/clearlog"}
 # N 回ごとにアバターから「聞き返し」質問を添えて会話を続けやすくする
@@ -312,6 +319,31 @@ _CONFIRM_PROMPTS = {
 }
 
 
+def unknown_command_reply(command: str, lang: str = "ja") -> str:
+    """認識できないスラッシュコマンドへの案内（GUI / CLI 共通）。
+
+    以前は `/` で始まる入力が、どのハンドラにも一致しなければそのまま**通常の
+    会話**として扱われていた。`/nonexistent` に「へえ、それは興味深い！」と
+    返す形である。害は 3 つある:
+
+    1. 打ち間違い（`/mod` と `/mood`）が黙って無視され、実行されたのか
+       されなかったのかユーザーに分からない。
+    2. **片方のインターフェースにしか無いコマンドが沈黙で失敗する。**
+       実際 `/forget-all`（全データ消去）は GUI にしか実装が無く、CLI では
+       雑談として流れていた。プライバシー第一の製品で「全部消して」と言った
+       人のデータが黙って残る、という最悪の形である。この沈黙が欠落を
+       隠していた。
+    3. 明らかにコマンドを打った相手に、会話の相づちを返すのは単純に不親切。
+
+    コマンド名は表示しない（そのまま出すと、ユーザーの入力を画面へ反射させる
+    経路になる）。
+    """
+    if str(lang).lower().startswith("en"):
+        return ("Sorry, I don't know that command. "
+                "Type /help to see what I can do.")
+    return "ごめん、そのコマンドは分からないな。/help で一覧が見られるよ。"
+
+
 def confirmation_prompt(command: str, lang: str = "ja") -> str:
     """破壊的操作の二段階確認メッセージを返す（GUI / CLI 共通）。"""
     entry = _CONFIRM_PROMPTS.get(command)
@@ -350,6 +382,7 @@ def _help_text(lang: str = "ja", *, with_disclosure: bool = True) -> str:
         "/like <好きなもの> 趣味記憶 | /forget <好きなもの> 忘れる | "
         "/forget-fact <内容> 覚えた事実を忘れる | "
         "/gift <プレゼント> 贈る | /whoami 確認 | /forget-me 記憶を全消去 | "
+        "/forget-all 全データ消去 | "
         "/mood 好感度 | /reset-mood リセット | /recap 今日のまとめ | /feeling 気分 | /stats 統計 | /name 名前 | /quit 終了"
         + tail
     )
@@ -512,6 +545,8 @@ def run_chat(
     _forget_me_pending: bool = False
     # /clear-log の二段階確認フラグ（誤操作による会話履歴全消去を防ぐ）
     _clear_log_pending: bool = False
+    # /forget-all の二段階確認フラグ（全個人データの消去を防ぐ）
+    _forget_all_pending: bool = False
     while True:
         try:
             raw = input_fn("You: ")
@@ -535,6 +570,8 @@ def run_chat(
         # /clear-log の確認待ちが他のコマンド/テキストでキャンセルされた場合
         if _clear_log_pending and text.lower() not in _CLEAR_LOG_COMMANDS:
             _clear_log_pending = False
+        if _forget_all_pending and text.lower() not in _FORGET_ALL_COMMANDS:
+            _forget_all_pending = False
 
         # コマンド処理
         if text.lower() in _QUIT_COMMANDS:
@@ -634,6 +671,27 @@ def run_chat(
             else:
                 _clear_log(conv_log, lang, output_fn)
                 _clear_log_pending = False
+            continue
+
+        # /forget-all: プロフィール・会話履歴・好感度・アバター履歴を一括消去。
+        # GUI と**同じ関数**（data_erasure.erase_all_user_data）を呼ぶ。以前は
+        # 実装が GUI モジュールの中にあり CLI から呼べず、CLI で打つと会話に
+        # 流れて何も消えなかった。入口によって消える範囲が違ってはいけない。
+        if text.lower() in _FORGET_ALL_COMMANDS:
+            if not _forget_all_pending:
+                output_fn(f"{name}: {confirmation_prompt('forget-all', lang)}")
+                _forget_all_pending = True
+            else:
+                _forget_all_pending = False
+                _forget_all(lang, output_fn, name)
+            continue
+
+        # ここまでで一致しなかった "/..." は未知のコマンドである。会話として
+        # 扱わない — 打ち間違いも、片方の UI にしか無いコマンドも、黙って
+        # 流れると「実行された」と誤解される。実際 /forget-all（全データ消去）は
+        # GUI にしか実装が無く、CLI では雑談として消えていた。
+        if text.lstrip().startswith("/"):
+            _say(unknown_command_reply(text.lstrip()[1:], lang))
             continue
 
         # ---------- 危機表明（自傷・自殺念慮）----------
@@ -959,6 +1017,37 @@ def _reset_mood(mood, lang: str, output_fn: Callable[[str], None]) -> None:
             output_fn(f"好感度をニュートラル（{int(AFFINITY_START)}/100）にリセットしました。")
     except Exception:  # pragma: no cover - defensive
         output_fn("(好感度のリセットに失敗しました)")
+
+
+def _forget_all(lang: str, output_fn: Callable[[str], None],
+                avatar_name: str = "") -> None:
+    """個人データを一括消去する（プロフィール・会話履歴・好感度・アバター履歴）。
+
+    GUI の /forget-all と**同じ** `data_erasure.erase_all_user_data()` を呼ぶ。
+    どの入口から消しても同じ範囲が消えることが、この機能の唯一の価値である。
+    """
+    is_en = str(lang).lower().startswith("en")
+    prefix = f"{avatar_name}: " if avatar_name else ""
+    if _erase_all_user_data is None:
+        output_fn("(データ消去は利用できません)" if not is_en
+                  else "(Data erasure unavailable)")
+        return
+    try:
+        report = _erase_all_user_data()
+    except Exception:  # pragma: no cover - defensive
+        output_fn("(データの消去に失敗しました)" if not is_en
+                  else "(Failed to erase your data)")
+        return
+    if not any(report.values()):
+        output_fn("(消すデータはありませんでした)" if not is_en
+                  else "(Nothing to erase)")
+        return
+    output_fn(prefix + (
+        "Done — I've erased everything personal: profile, conversation "
+        "history, affinity, and avatar selection. We can start fresh."
+        if is_en else
+        "全部消したよ — プロフィール・会話履歴・好感度・アバター選択。"
+        "また一から始めよう。"))
 
 
 def _forget_me(profile, lang: str, output_fn: Callable[[str], None]) -> None:

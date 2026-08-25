@@ -82,6 +82,7 @@ try:
     from persona_cli import _detect_ritual_event as _detect_ritual_event_gui
     from persona_cli import command_usage as _command_usage_gui
     from persona_cli import confirmation_prompt as _confirmation_prompt_gui
+    from persona_cli import unknown_command_reply as _unknown_command_reply_gui
 except Exception:  # pragma: no cover - defensive
     _detect_ritual_event_gui = None  # type: ignore[assignment]
 
@@ -93,6 +94,12 @@ except Exception:  # pragma: no cover - defensive
         """同上。確認文言が空だと危険なので、汎用の確認文を返す。"""
         return ("Type the command again to confirm." if str(lang).startswith("en")
                 else "もう一度同じコマンドを入力すると実行します。")
+
+    def _unknown_command_reply_gui(command, lang="ja"):  # type: ignore[misc]
+        """同上。"""
+        return ("Sorry, I don't know that command. Type /help to see what I can do."
+                if str(lang).startswith("en")
+                else "ごめん、そのコマンドは分からないな。/help で一覧が見られるよ。")
 
 try:
     from user_profile import (
@@ -189,88 +196,10 @@ except Exception:  # pragma: no cover - defensive
 _FOLLOW_UP_EVERY = 4
 
 
-def _erase_all_user_data():
-    """ユーザーの個人データを可能な限りすべて消去し、消したものの要約を返す。
-
-    プライバシー優先の製品として「私に関するデータを全部消して」を一括で叶える。
-    各ストアは独立してガードし、一部が失敗しても残りは消す（best-effort）。
-    消去対象:
-      - プロフィール（呼び名・誕生日・趣味・覚えた事実）: config/user_profile.json
-      - 会話履歴: avatar_event_log.jsonl + gzip アーカイブ
-      - 好感度: config/mood.json をニュートラルへ + config/mood_history.jsonl 削除
-      - アバター選択履歴: config/avatar_history.json
-    （daily_mood は日付から決定的に導かれ永続状態を持たないため対象外。）
-
-    戻り値は {"profile": bool, "conversation": bool, "mood": bool,
-              "avatar": bool} で、各項目を実際に消去できたかを表す。
-    """
-    import os as _os
-    report = {"profile": False, "conversation": False, "mood": False, "avatar": False}
-
-    # 1) プロフィール
-    if _get_user_profile_gui is not None:
-        try:
-            prof = _get_user_profile_gui()
-            if prof is not None:
-                prof.clear()
-                if _default_profile_path_gui is not None:
-                    prof.save(_default_profile_path_gui())
-                report["profile"] = True
-        except Exception as e:  # pragma: no cover - defensive
-            logger.debug("全消去: プロフィール消去に失敗: %s", e)
-
-    # 2) 会話履歴（ライブ + アーカイブ）
-    if get_conversation_log is not None:
-        try:
-            from conversation_log import _find_archives
-            conv_log = get_conversation_log()
-            path = conv_log.logfile
-            if _os.path.exists(path):
-                open(path, "w", encoding="utf-8").close()
-            for gz in _find_archives(path):
-                try:
-                    _os.remove(gz)
-                except OSError:
-                    pass
-            report["conversation"] = True
-        except Exception as e:  # pragma: no cover - defensive
-            logger.debug("全消去: 会話履歴消去に失敗: %s", e)
-
-    # 3) 好感度（ニュートラルへ + 履歴ファイル削除）
-    if get_mood_tracker is not None:
-        try:
-            from mood import AFFINITY_START
-            tracker = get_mood_tracker()
-            tracker.affinity = AFFINITY_START
-            tracker.interactions = 0
-            tracker._last_interaction_time = 0.0
-            tracker._first_interaction_time = 0.0
-            tracker._last_anniversary_days = 0
-            tracker._last_login_date = ""
-            tracker._login_streak = 0
-            tracker._confession_done = False
-            if _default_mood_path is not None:
-                tracker.save(_default_mood_path())
-            if _default_mood_history_path is not None:
-                hist = _default_mood_history_path()
-                if _os.path.exists(hist):
-                    try:
-                        _os.remove(hist)
-                    except OSError:
-                        pass
-            report["mood"] = True
-        except Exception as e:  # pragma: no cover - defensive
-            logger.debug("全消去: 好感度消去に失敗: %s", e)
-
-    # 4) アバター選択履歴
-    if _avatar_model_store is not None:
-        try:
-            _avatar_model_store.clear()
-            report["avatar"] = True
-        except Exception as e:  # pragma: no cover - defensive
-            logger.debug("全消去: アバター履歴消去に失敗: %s", e)
-
-    return report
+try:
+    from data_erasure import erase_all_user_data as _erase_all_user_data
+except Exception:  # pragma: no cover - defensive
+    _erase_all_user_data = None  # type: ignore[assignment]
 
 
 def _load_model_vertices(path):
@@ -468,6 +397,12 @@ class AutonomousAvatarViewer(
             if self._handle_slash_command_gui(comment.lstrip()[1:], lang, level):
                 self.pending_fact_key = None  # コマンドで Q&A フローを中断
                 return
+            # 一致しなかった "/..." は未知のコマンド。会話として扱わない
+            # （persona_cli の同じ箇所と対。理由は unknown_command_reply の
+            # docstring）。
+            self.pending_fact_key = None
+            self._speak_reply(_unknown_command_reply_gui(comment.lstrip()[1:], lang))
+            return
 
         # ---------- 危機表明（自傷・自殺念慮）----------
         # 他のどの処理よりも先に扱う。ここで打ち切ることで、危機の開示が

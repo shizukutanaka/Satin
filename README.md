@@ -160,16 +160,26 @@ call you), `/birthday MM-DD` (teach your birthday), `/like <thing>` /
 `/forget <thing>` (remember/forget an interest), `/gift <item>` (give a gift —
 `/gift list` shows the catalog), `/whoami` (show what the avatar remembers),
 `/forget-me` (erase all stored personal data — name, birthday, interests, and
-remembered facts; two-step confirm), `/mood` (current affinity),
-`/reset-mood` (reset to neutral), `/recap` (today's summary), `/stats`
-(conversation totals), `/name`, `/quit` (`/exit`, `/q`). EOF (Ctrl-D) or Ctrl-C
-also ends the session cleanly. The loop accepts injectable input/output
-functions, so it is fully unit-testable. The 3D GUI accepts the same slash
-commands typed as comments (`/gift`, `/callme`, `/birthday`, `/like`,
-`/forget`, `/whoami`, `/forget-me`, `/forget-all` (erase everything —
+remembered facts; two-step confirm), `/forget-all` (erase *everything* —
 profile, conversation history, affinity, and avatar selection; two-step
-confirm), `/mood`, `/reset-mood`, `/clear-log`, `/history`, `/search`,
-`/recap`, `/feeling`, `/avatar`, `/stats`, `/help`).
+confirm), `/mood` (current affinity), `/reset-mood` (reset to neutral),
+`/recap` (today's summary), `/stats` (conversation totals), `/name`,
+`/quit` (`/exit`, `/q`). EOF (Ctrl-D) or Ctrl-C also ends the session cleanly.
+The loop accepts injectable input/output functions, so it is fully
+unit-testable.
+
+The 3D GUI accepts the same commands typed as comments, plus `/avatar` (pick a
+model) and minus the CLI-only ones (`/quit`, `/name` — you close the window
+instead). Both entry points share one implementation of the erasure itself
+(`data_erasure.py`), so "erase everything" means the same thing whichever door
+you use, and one table of usage lines and confirmation prompts, so the same
+command doesn't explain itself two different ways.
+
+A slash command neither interface recognises is answered as an unknown command
+pointing at `/help` — never treated as conversation. That matters beyond typos:
+`/forget-all` used to exist only in the GUI, and typing it in the CLI produced a
+cheerful "Mhm, I see" while nothing was erased. Silence is how a missing
+privacy feature stays missing.
 
 #### The avatar remembers who you are
 

@@ -2099,17 +2099,23 @@ class SlashCommandPrefixBoundaryTests(unittest.TestCase):
         )
         self.assertIn("ゲーム", prof.interests)
 
-    def test_liked_falls_through_to_persona_respond(self):
-        """/liked reaches persona.respond() and returns a real reply."""
+    def test_liked_is_reported_as_an_unknown_command(self):
+        """`/liked` は `/like` として解釈されず、未知のコマンドとして案内される。
+
+        以前は「通常の会話として persona.respond() に落ちる」ことで前方一致の
+        誤爆を検証していた。いまは `/` で始まる未知の入力を会話として扱わない
+        （打ち間違いも、片方の UI にしか無いコマンドも、黙って流れると
+        「実行された」と誤解されるため）ので、直接そちらを検証する。
+        趣味が追加されていないことも併せて確かめる。
+        """
         prof = self._profile()
         d = _Driver(["/liked アニメ"])
         persona_cli.run_chat(
             persona=_persona(), conv_log=None, profile=prof,
             input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
         )
-        # Persona's fallback should appear in output
-        self.assertTrue(any("FB" in line or "HI" in line or "SEEYA" in line
-                            for line in d.out))
+        self.assertTrue(any("/help" in line for line in d.out), d.out)
+        self.assertNotIn("アニメ", prof.interests)
 
 
 # ---------------------------------------------------------------------------
@@ -2470,3 +2476,102 @@ class GiftListCooldownMarkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CliForgetAllTests(unittest.TestCase):
+    """対話 CLI の /forget-all が**実際に消す**こと。
+
+    以前この機能は GUI にしか無く、CLI で打つと未知のコマンドとして会話に流れ、
+    「全部消して」と言った人のデータが黙って残った。
+
+    このクラスは `run_chat` を実際に回して検証する。「import されているか」
+    「ソースに文字列があるか」を見るテストでは不十分だった — 実際に配線を
+    外して revert-verify したところ、import は残るのでソース検査は通って
+    しまった。**到達するかどうかは動かさないと分からない。**
+    """
+
+    def _run(self, inputs, erase_mock):
+        d = _Driver(inputs)
+        with mock.patch.object(persona_cli, "_erase_all_user_data", erase_mock):
+            persona_cli.run_chat(
+                persona=_persona(), conv_log=None,
+                input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+            )
+        return d.out
+
+    def test_two_inputs_erase_everything(self):
+        erase = mock.Mock(return_value={"profile": True, "conversation": True,
+                                        "mood": True, "avatar": True})
+        out = self._run(["/forget-all", "/forget-all"], erase)
+        erase.assert_called_once()
+        self.assertTrue(any("全部消した" in line or "erased everything" in line
+                            for line in out), out)
+
+    def test_a_single_input_only_asks(self):
+        """打ち間違い 1 回で全データが消えないこと。"""
+        erase = mock.Mock()
+        out = self._run(["/forget-all"], erase)
+        erase.assert_not_called()
+        self.assertTrue(any("/forget-all" in line for line in out), out)
+
+    def test_an_intervening_message_cancels_the_confirmation(self):
+        erase = mock.Mock()
+        self._run(["/forget-all", "こんにちは", "/forget-all"], erase)
+        erase.assert_not_called()
+
+    def test_aliases_work(self):
+        for alias in ("/forgetall", "/delete-all", "/erase-all"):
+            with self.subTest(alias=alias):
+                erase = mock.Mock(return_value={"profile": True})
+                self._run([alias, alias], erase)
+                erase.assert_called_once()
+
+    def test_nothing_to_erase_is_reported_not_claimed_as_success(self):
+        """消せるものが無いときに「全部消した」と言わないこと。"""
+        erase = mock.Mock(return_value={"profile": False, "conversation": False,
+                                        "mood": False, "avatar": False})
+        out = self._run(["/forget-all", "/forget-all"], erase)
+        blob = "\n".join(out)
+        self.assertNotIn("erased everything", blob)
+        self.assertIn("Nothing to erase", blob)
+
+    def test_a_failing_erasure_does_not_claim_success(self):
+        erase = mock.Mock(side_effect=RuntimeError("disk on fire"))
+        out = self._run(["/forget-all", "/forget-all"], erase)
+        blob = "\n".join(out)
+        self.assertNotIn("erased everything", blob)
+        self.assertIn("Failed to erase", blob)
+
+
+class CliUnknownCommandTests(unittest.TestCase):
+    """未知のスラッシュコマンドを会話として処理しないこと（実行して確認）。"""
+
+    def _run(self, inputs):
+        d = _Driver(inputs)
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=None,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        return d.out
+
+    def _notice(self, lang="en"):
+        return persona_cli.unknown_command_reply("x", lang)
+
+    def test_unknown_command_is_reported(self):
+        out = self._run(["/nonexistent"])
+        self.assertTrue(any(self._notice() in line for line in out), out)
+
+    def test_a_typo_of_a_real_command_is_reported(self):
+        """`/mod` を `/mood` として実行しないし、黙って会話にもしないこと。"""
+        out = self._run(["/mod"])
+        self.assertTrue(any(self._notice() in line for line in out), out)
+
+    def test_plain_text_is_still_conversation(self):
+        """`/` で始まらない入力は従来どおり会話であること。
+
+        「出力に /help が含まれるか」では判定できない — 起動時のコマンド一覧に
+        も含まれるため。案内文そのものの有無で見る。
+        """
+        out = self._run(["hello"])
+        self.assertFalse(any(self._notice() in line for line in out), out)
+        self.assertTrue(any(line.strip() for line in out))

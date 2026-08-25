@@ -217,6 +217,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **`/forget-all` did nothing in the headless CLI.** The product's strongest
+  privacy promise — one command that erases profile, conversation history,
+  affinity and avatar selection — existed only in the 3D GUI. Typing it into
+  `--chat` produced 「うんうん、そうなんだ。」 and erased nothing. Someone who
+  asked for all their data to be deleted was told, in effect, "mm-hmm", and kept
+  it.
+
+  The cause was placement, not design: `_erase_all_user_data()` lived inside
+  `avatar_3d_autonomous_tts.py` despite having no GUI dependency at all, so the
+  CLI could not call it without importing the whole Qt module. It now lives in
+  `data_erasure.py` and both entry points call the same function, with the same
+  aliases and the same two-step confirmation. `manage_satin data purge` keeps its
+  own implementation deliberately — it deletes files with the app stopped, and
+  offers a dry run — but a test asserts the two cover the same five stores.
+
+  It also wasn't in the CLI's `/help`, so nobody would have found it even after
+  it worked. A test now requires every destructive command to appear in the help
+  of both interfaces, and that the two help lists agree on every command they
+  share (`/avatar` is GUI-only, `/quit` and `/name` CLI-only; everything else
+  must match).
+
+- **Unknown slash commands were answered as conversation.** `/nonexistent`
+  returned 「へえ、それは興味深い！」. So did `/mod` for `/mood`, and so did
+  `/forget-all` in the CLI — which is precisely how a missing privacy feature
+  stayed invisible for as long as it did. A typo, a command that exists only in
+  the other interface, and a real request all failed the same silent way. Both
+  entry points now answer with a short "I don't know that command — try /help",
+  and never echo the input back.
+
 - **`/forget-me` erased everything on the first keystroke, in the GUI only.**
   One mistyped command wiped the user's name, birthday, interests and every
   remembered fact, with no confirmation and no undo. Every sibling destructive

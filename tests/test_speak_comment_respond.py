@@ -1769,19 +1769,16 @@ class GUISlashCommandPrefixBoundaryTests(unittest.TestCase):
         # /help output always contains "/forget-me"; fallback reply won't
         self.assertNotIn("/forget-me", v.comment_text)
 
-    def test_liked_falls_through_to_persona_respond(self):
-        """/liked <text> reaches persona.respond() and gets a real reply."""
-        with mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
-                               property(lambda self: _RESPONSE_PERSONA)), \
-             mock.patch.object(_mod, "_get_user_profile_gui", None):
-            v = _make_viewer()
+    def test_liked_is_reported_as_an_unknown_command(self):
+        """`/liked` は `/like` として解釈されず、未知のコマンドとして案内される。
+
+        前方一致の誤爆防止が本題。以前は「会話に落ちること」で確認していたが、
+        `/` で始まる未知の入力は会話として扱わなくなったので直接検証する。
+        """
+        v = _make_viewer()
+        with mock.patch.object(_mod, "_get_user_profile_gui", None):
             v.speak_comment("/liked アニメ")
-        # Persona has no "liked" rule, so fallback "REPLY_FB" is returned
-        self.assertEqual(v.comment_text, "REPLY_FB")
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertIn("/help", v.comment_text)
 
 
 class PendingConfirmationTableTests(unittest.TestCase):

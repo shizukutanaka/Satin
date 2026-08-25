@@ -699,60 +699,6 @@ class MainWindowCloseEventTests(unittest.TestCase):
         tracker.save.assert_called_once_with("/tmp/m.json")
 
 
-class EraseAllUserDataTests(unittest.TestCase):
-    """_erase_all_user_data must wipe every personal store best-effort, so a
-    privacy-first 'delete all my data' actually removes the conversation log,
-    mood, profile, and avatar history — not just the profile (which is all
-    /forget-me clears)."""
-
-    def test_erases_all_available_stores(self):
-        import tempfile
-        tmp = tempfile.mkdtemp()
-        logpath = os.path.join(tmp, "avatar_event_log.jsonl")
-        with open(logpath, "w", encoding="utf-8") as f:
-            f.write('{"event_type":"user_comment","details":{"text":"secret"}}\n')
-        mood_hist = os.path.join(tmp, "mood_history.jsonl")
-        with open(mood_hist, "w", encoding="utf-8") as f:
-            f.write("{}\n")
-
-        prof = mock.Mock()
-        conv_log = mock.Mock()
-        conv_log.logfile = logpath
-        tracker = mock.Mock()
-        tracker.affinity = 80
-        avatar_store = mock.Mock()
-
-        with mock.patch.object(_mod, "_get_user_profile_gui", return_value=prof), \
-             mock.patch.object(_mod, "_default_profile_path_gui", return_value="/tmp/p.json"), \
-             mock.patch.object(_mod, "get_conversation_log", return_value=conv_log), \
-             mock.patch.object(_mod, "get_mood_tracker", return_value=tracker), \
-             mock.patch.object(_mod, "_default_mood_path", return_value="/tmp/m.json"), \
-             mock.patch.object(_mod, "_default_mood_history_path", return_value=mood_hist), \
-             mock.patch.object(_mod, "_avatar_model_store", avatar_store):
-            report = _mod._erase_all_user_data()
-
-        self.assertEqual(report, {"profile": True, "conversation": True,
-                                  "mood": True, "avatar": True})
-        prof.clear.assert_called_once()
-        # conversation log truncated (the secret is gone)
-        self.assertEqual(os.path.getsize(logpath), 0)
-        # mood reset to neutral + history file removed
-        from mood import AFFINITY_START
-        self.assertEqual(tracker.affinity, AFFINITY_START)
-        self.assertFalse(os.path.exists(mood_hist))
-        avatar_store.clear.assert_called_once()
-        import shutil
-        shutil.rmtree(tmp, ignore_errors=True)
-
-    def test_missing_stores_reported_false_not_crash(self):
-        with mock.patch.object(_mod, "_get_user_profile_gui", None), \
-             mock.patch.object(_mod, "get_conversation_log", None), \
-             mock.patch.object(_mod, "get_mood_tracker", None), \
-             mock.patch.object(_mod, "_avatar_model_store", None):
-            report = _mod._erase_all_user_data()
-        self.assertEqual(report, {"profile": False, "conversation": False,
-                                  "mood": False, "avatar": False})
-
 
 class LoadAvatarModelTests(unittest.TestCase):
     """AutonomousAvatarViewer.load_avatar_model wires the --avatar-loader
