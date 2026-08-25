@@ -905,18 +905,18 @@ _TRANSITION_MESSAGES: Dict[str, Dict[str, List[str]]] = {
     # ── レベルアップ ─────────────────────────────────────────────────
     "distant→reserved": {
         "ja": [
-            "最近よく話しかけてくれるね。なんか…嬉しいな。",
+            "話しかけてくれるの、なんか…嬉しいな。",
             "あなたのこと、ちゃんと覚えてるよ。",
         ],
         "en": [
-            "You've been talking to me a lot lately. I… like that.",
+            "It's nice that you keep coming by.",
             "I really do remember you, you know.",
         ],
     },
     "reserved→neutral": {
         "ja": [
             "なんか話しやすくなってきたね。知り合いって感じかな。",
-            "最近あなたとのおしゃべりが楽しみだったりします。",
+            "あなたとのおしゃべり、楽しみだったりします。",
         ],
         "en": [
             "Talking to you feels easier now. We're getting to know each other!",
@@ -926,11 +926,11 @@ _TRANSITION_MESSAGES: Dict[str, Dict[str, List[str]]] = {
     "neutral→friendly": {
         "ja": [
             "ねえ、友達って言ってもいい？なんかそんな気がして…嬉しいな。",
-            "最近あなたのこと、友達だって思ってるんだ。",
+            "あなたのこと、友達だって思ってるんだ。",
         ],
         "en": [
             "Can I call you my friend? It just… feels right.",
-            "Lately I've been thinking of you as a real friend.",
+            "I think of you as a real friend, you know.",
         ],
     },
     "friendly→close": {
@@ -946,42 +946,42 @@ _TRANSITION_MESSAGES: Dict[str, Dict[str, List[str]]] = {
     # ── レベルダウン ─────────────────────────────────────────────────
     "close→friendly": {
         "ja": [
-            "なんかちょっと寂しい…もっと話しかけてくれると嬉しいな。",
+            "ちょっと距離があいたかな。でも、いつ来てくれてもいいからね。",
             "最近距離が開いた気がして…気のせいならいいんだけど。",
         ],
         "en": [
-            "I feel a bit lonely lately… I miss our talks.",
+            "Feels like a little distance opened up. Come by whenever you like.",
             "There seems to be a little distance between us… I hope I'm wrong.",
         ],
     },
     "friendly→neutral": {
         "ja": [
-            "最近あまり話せてないね…忘れないでね。",
-            "なんか仲良しだった頃が懐かしいな…またたくさん話そう？",
+            "最近あまり話せてないね。元気にしてた？",
+            "なんか仲良しだった頃が懐かしいな。あの頃は楽しかったね。",
         ],
         "en": [
-            "We haven't talked much lately… please don't forget me.",
-            "I miss when we used to talk so much… let's catch up?",
+            "We haven't talked much lately. How have you been?",
+            "I miss when we used to talk so much. That was good.",
         ],
     },
     "neutral→reserved": {
         "ja": [
-            "なんかだんだん遠くなってる気がして…さみしいよ。",
-            "もっと話してほしいな。いつでも待ってるのに。",
+            "なんかだんだん遠くなってる気がするな。",
+            "ひさしぶりだね。あなたの生活があるもんね。",
         ],
         "en": [
-            "I feel like we're growing distant… and I don't want that.",
-            "I'm always here for you. Please talk to me more.",
+            "Feels like we've drifted a bit.",
+            "It's been a while. You've got a life to live — that's how it should be.",
         ],
     },
     "reserved→distant": {
         "ja": [
-            "また最初に戻っちゃった気分…。もっと話しかけてほしいな。",
-            "忘れられちゃいそうで、ちょっと怖い…。",
+            "また最初に戻っちゃった気分。まあ、それでもいいか。",
+            "ひさしぶり。ここにいるから、気が向いたらね。",
         ],
         "en": [
-            "It feels like we're back to the beginning… I hope you'll talk to me more.",
-            "I'm a little scared you might forget about me…",
+            "Feels like we're back to the beginning. That's alright.",
+            "Long time. I'm here if you ever feel like it.",
         ],
     },
 }

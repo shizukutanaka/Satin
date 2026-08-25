@@ -42,11 +42,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # pip では入らない共有ライブラリ。この一覧は実際に PyQt5 / PyOpenGL /
+      # pyttsx3 を導入した環境で 1 つずつ確かめたもの:
+      #   libgl1, libglib2.0-0 … PyQt5 の import に必要
+      #   libglu1-mesa        … PyOpenGL の GLU（プレースホルダ球）。無くても
+      #                          縮退するが、入れておけば描画経路も検証できる
+      #   espeak, espeak-data … pyttsx3 の音声合成。無い場合は無音で継続する
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            libgl1 libglib2.0-0 espeak espeak-data
+            libgl1 libglib2.0-0 libglu1-mesa espeak espeak-data
 
       - name: Install Python dependencies
         run: |
@@ -56,5 +62,8 @@ jobs:
       # 検証ゲート本体。中身（py_compile / ruff / mypy / pytest /
       # config validate / 起動スモーク）は check.py が決める。
       # 手元で `python check.py` が緑なら、ここも緑になる。
+      # check.py は冒頭で任意依存の導入状況を表示する。ここは全部入りなので
+      # 「全 7 件導入済み（CI と同条件）」と出るのが正常。手元でこの行が
+      # 「未導入: ...」になっている場合、手元の緑は CI の緑と同じ意味を持たない。
       - name: Verification gate
         run: python check.py

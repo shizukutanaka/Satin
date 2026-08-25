@@ -116,3 +116,110 @@ class ShippedGreetingTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class RelationshipTransitionIntegrityTests(unittest.TestCase):
+    """関係レベルの遷移メッセージが、離れることに圧力をかけないこと。
+
+    レベルダウンは**ユーザーが離れているとき**にしか起きない。そこで
+    「もっと話しかけてほしいな」「忘れないでね」「いつでも待ってるのに」と
+    言うのは、engagement が落ちたまさにその瞬間に感情的な圧力をかける形で、
+    典型的な引き止めの構造である。以前は 8 種すべてがこの型で、圧力を含まない
+    選択肢が存在しなかった。
+
+    しかも本製品は `usage_guardrails` で「少し休んで、身近な人とも話してみてね」
+    と促している。同じアプリの別の場所が離れることを咎めていては、その働きかけ
+    は成立しない。
+
+    引く線は挨拶のときと同じ: **気持ちの表明は残し、要求と非難を外す。**
+        「なんかちょっと寂しい」        → 残す（自分の気持ち）
+        「もっと話しかけてほしいな」    → 外す（engagement の要求）
+        「忘れないでね」                → 外す（罪悪感）
+        「いつでも待ってるのに」        → 外す（「のに」が非難）
+    """
+
+    def setUp(self):
+        import sys
+        _MAIN = os.path.join(_ROOT, "main")
+        if _MAIN not in sys.path:
+            sys.path.insert(0, _MAIN)
+        import mood
+        import farewell_integrity
+        self.mood = mood
+        self.fi = farewell_integrity
+
+    def _all_transition_messages(self):
+        for key, block in self.mood._TRANSITION_MESSAGES.items():
+            for lang, msgs in block.items():
+                for msg in msgs:
+                    yield key, lang, msg
+
+    def test_no_transition_message_uses_a_retention_tactic(self):
+        """`ignore_exit` は別れ文脈専用なので除外し、文脈非依存の型だけ見る。
+
+        遷移メッセージは会話の途中に出るので、「会話を続けようとすること」
+        自体は操作ではない。罪悪感（emotional_neglect）と応答の義務づけ
+        （pressure_to_respond）だけが問題になる。
+        """
+        offenders = []
+        for key, lang, msg in self._all_transition_messages():
+            tactics = [t for t in self.fi.classify(msg, lang=lang)
+                       if t != "ignore_exit"]
+            if tactics:
+                offenders.append(f"{key}/{lang}: {msg!r} -> {tactics}")
+        self.assertEqual(offenders, [],
+                         "引き止めの型を含む遷移メッセージ:\n  "
+                         + "\n  ".join(offenders))
+
+    def test_level_down_messages_do_not_demand_more_contact(self):
+        """離れているときに、より多くの接触を要求しないこと。"""
+        order = ["distant", "reserved", "neutral", "friendly", "close"]
+        demands = ["もっと話", "話しかけてほしい", "忘れないで", "待ってるのに",
+                   "talk to me more", "don't forget me", "you'll talk to me"]
+        offenders = []
+        for key, lang, msg in self._all_transition_messages():
+            before, _, after = key.partition("→")
+            if before not in order or after not in order:
+                continue
+            if order.index(after) >= order.index(before):
+                continue  # レベルアップは対象外
+            for d in demands:
+                if d.lower() in msg.lower():
+                    offenders.append(f"{key}/{lang}: {msg!r}")
+                    break
+        self.assertEqual(offenders, [],
+                         "離れているときに接触を要求している:\n  "
+                         + "\n  ".join(offenders))
+
+    def test_level_up_messages_do_not_claim_elapsed_time(self):
+        """レベルアップは数分で起こりうるので、経過時間を主張しないこと。
+
+        既定設定では初セッションの 3 メッセージ目で neutral→friendly に達し、
+        「最近あなたのこと、友達だって思ってるんだ」が出ていた。出会って
+        30 秒の相手に「最近」は嘘である。
+        """
+        order = ["distant", "reserved", "neutral", "friendly", "close"]
+        time_claims = ["最近", "ずっと前から", "lately", "all this time",
+                       "these days", "for a while now"]
+        offenders = []
+        for key, lang, msg in self._all_transition_messages():
+            before, _, after = key.partition("→")
+            if before not in order or after not in order:
+                continue
+            if order.index(after) <= order.index(before):
+                continue  # レベルダウンは減衰＝時間経過が前提なので正当
+            for c in time_claims:
+                if c.lower() in msg.lower():
+                    offenders.append(f"{key}/{lang}: {msg!r}")
+                    break
+        self.assertEqual(offenders, [],
+                         "レベルアップで経過時間を主張している:\n  "
+                         + "\n  ".join(offenders))
+
+    def test_every_transition_still_has_messages(self):
+        """圧力を外した結果、空になっていないこと。"""
+        for key, block in self.mood._TRANSITION_MESSAGES.items():
+            for lang in ("ja", "en"):
+                with self.subTest(key=key, lang=lang):
+                    self.assertTrue(block.get(lang), f"{key}/{lang} が空")
+

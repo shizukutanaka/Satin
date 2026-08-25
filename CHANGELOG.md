@@ -217,6 +217,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **When the relationship cooled, the avatar asked you to come back more.**
+  Level-down messages fire precisely when someone has been away — and all eight
+  of them either demanded more contact or expressed distress at the absence:
+  「もっと話しかけてほしいな」/ "I hope you'll talk to me more",
+  「忘れないでね」/ "please don't forget me",
+  「もっと話してほしいな。いつでも待ってるのに。」 (the 「のに」 is openly
+  reproachful), "I'm a little scared you might forget about me". There was no
+  variant that simply noted the change. Applying emotional pressure at the exact
+  moment engagement drops is the retention lever in its purest form, and it
+  directly contradicts `usage_guardrails`, which nudges the same user toward
+  rest and people nearby — one part of the app cannot encourage stepping away
+  while another punishes it.
+
+  Rewritten on the line already drawn for greetings: keep the feeling, drop the
+  demand and the reproach. 「なんかだんだん遠くなってる気がするな。」 and
+  「ひさしぶりだね。あなたの生活があるもんね。」 acknowledge the distance
+  without asking for anything back. `tests/test_greeting_integrity.py` now
+  covers transitions too, and — because the retention classifier is scoped to
+  farewells, where continuing the conversation is itself the tactic — it checks
+  only the context-independent tactics, not `ignore_exit`.
+
+  Level-*up* messages had the mirror problem: 「最近あなたのこと、友達だって
+  思ってるんだ」 ("lately I've come to think of you as a friend") fires on
+  message three of a first session, where there is no "lately". The time claims
+  are gone; the level-down ones keep theirs, since a decay genuinely requires
+  time to pass.
 - **The test suite only passed when PyQt5 was *absent*.** Installing the optional
   GUI dependencies — exactly what `setup/requirements.txt` and CI do — turned
   2,021 passing tests into 197 failures. The GUI tests build a viewer with
