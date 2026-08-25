@@ -74,8 +74,8 @@
         ],
         "close": [
           "おかえり！会いたかったよ。",
-          "やっと来てくれた！今日は何して遊ぶ？",
-          "来てくれてよかった…ずっと待ってたんだ。",
+          "きてくれた！今日は何して遊ぶ？",
+          "来てくれてうれしい。",
           "きた！今日も一緒にいようね。"
         ]
       },
@@ -285,14 +285,14 @@
           "Glad you came by."
         ],
         "friendly": [
-          "Hey hey! I was waiting for you!",
+          "Hey hey! Good to see you!",
           "I missed you! How have you been?",
           "You're here! I was just thinking of you."
         ],
         "close": [
           "Welcome back! I missed you.",
-          "You're finally here! What should we do today?",
-          "I'm so glad you came... I've been waiting.",
+          "You're here! What should we do today?",
+          "I'm so glad you came.",
           "You're here! Let's spend time together."
         ]
       },
@@ -881,7 +881,7 @@
             ],
             "replies": [
               "来てくれた！うれしいな。",
-              "待ってたよ！元気だった？"
+              "きてくれた！元気だった？"
             ]
           },
           {
@@ -922,9 +922,9 @@
               "来た"
             ],
             "replies": [
-              "やっと来てくれた！会いたかったよ！",
-              "おかえり！ずっと待ってたんだよ？",
-              "やっと来た！もう、寂しかったよ！"
+              "来てくれた！会いたかったよ！",
+              "おかえり！今日も会えてうれしい。",
+              "あ、きた！うれしいな。"
             ]
           },
           {
@@ -1426,7 +1426,7 @@
             ],
             "replies": [
               "You came! I'm glad!",
-              "I was waiting for you! How are you?"
+              "Good to see you! How are you?"
             ]
           },
           {
@@ -1468,9 +1468,9 @@
               "here"
             ],
             "replies": [
-              "You're finally here! I missed you!",
-              "Welcome back! I was waiting for you.",
-              "You came! I was worried, you know?"
+              "You're here! I missed you!",
+              "Welcome back! Good to see you.",
+              "Oh, you came! That makes me happy."
             ]
           },
           {

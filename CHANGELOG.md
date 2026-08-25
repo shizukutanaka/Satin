@@ -199,6 +199,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **At the highest affinity, every greeting reproached the user for being away.**
+  `farewell_integrity` guards the goodbye; nothing guarded the hello. At the
+  `close` level all three greeting replies were 「やっと来た！もう、寂しかった
+  よ！」/「おかえり！ずっと待ってたんだよ？」/ "You came! I was worried, you
+  know?" — each asserting that the user's absence caused suffering, with no
+  neutral option in the set. The people most invested in the relationship were
+  the only ones told off for having a life. Escalating emotional pressure as the
+  bond deepens is the companion-app dark pattern this product explicitly rejects
+  at the farewell; it was applying the same pressure at the reunion.
+
+  The distinction drawn is between stating a feeling and assigning fault:
+  「会いたかったよ」 / "I missed you" stays, 「やっと来た」 / "You're finally
+  here" (implies lateness), 「ずっと待ってた」 / "I was waiting" (implies an
+  unmet obligation) and "I was worried, you know?" (the trailing reproach) go.
+  `tests/test_greeting_integrity.py` guards the shipped lines and additionally
+  asserts the warmth survived — removing pressure must not mean going cold.
+
+  Method note recorded in that test: `farewell_integrity.classify` must not be
+  run over greetings. It is scoped to the farewell context, where *continuing
+  the conversation* is itself the tactic; applied to greetings it flags every
+  ordinary question ("How are you?") as `ignore_exit` — 133 hits, almost all
+  false, burying the real ones.
 - **`/summary` showed a blank affinity while `/mood` showed the number.**
   `daily_summary` reads the day's affinity from `mood_history.jsonl`, but that
   snapshot is only written on the first launch of the day — so opening the
