@@ -7,7 +7,7 @@ import time
 logger = logging.getLogger(__name__)
 
 from optional_deps import (  # noqa: E402
-    QApplication, QMainWindow, QOpenGLWidget,
+    QApplication, QFileDialog, QMainWindow, QOpenGLWidget,
     QPushButton, QLabel, QLineEdit, QTimer,
     np, pygltflib,
 )
@@ -1378,13 +1378,64 @@ class AutonomousAvatarViewer(
         self._speak_reply(reply)
 
     def _cmd_avatar_gui(self, lang: str) -> None:
-        """GUI の /avatar コマンド: 現在のアバターモデルを表示・再読み込みする。
+        """GUI の /avatar コマンド: モデルを選び直して、その場で描画に反映する。
 
-        --avatar-loader で選び直した直後でも、ここで最新の選択を取り込める。
+        以前は「表示中のモデル名を言う」だけで、選ぶには本体を終了して
+        `--avatar-loader`（tkinter の別アプリ）を起動し、選んでから**再起動**
+        する必要があった。1 つの機能のために GUI ツールキットを 2 つ抱え、
+        プロセスを跨いで選択を受け渡し、ユーザーには再起動を強いていた。
+        本体は既に PyQt5 を持っているので、QFileDialog を直接開けばよい。
         """
         import os as _os
         is_en = lang.startswith("en")
-        # 直近の選択を取り込む（既に読み込み済みでも上書きで最新化）。
+        picked = self._pick_avatar_file(is_en)
+        if picked is None:
+            # ダイアログが使えない環境。従来どおり現在の状態を報告する。
+            self._report_current_avatar(is_en)
+            return
+        if not picked:
+            return  # ユーザーがキャンセルした（無言で戻る）
+        if self.load_avatar_model(picked):
+            if _avatar_model_store is not None:
+                try:
+                    _avatar_model_store.save_selection(picked)
+                except Exception as e:
+                    logger.debug("アバター選択の保存に失敗しました: %s", e)
+            name = _os.path.basename(picked)
+            self._speak_reply(f"Switched to {name}." if is_en
+                              else f"{name} にしたよ。")
+        else:
+            self._speak_reply(
+                "I couldn't read that model file." if is_en
+                else "そのモデルファイル、読めなかった…。")
+
+    #: /avatar のファイル選択ダイアログが受け付ける拡張子。
+    AVATAR_FILE_FILTER = ("3D models (*.glb *.gltf *.vrm);;All files (*)")
+
+    def _pick_avatar_file(self, is_en: bool):
+        """モデルファイルを選ばせる。
+
+        Returns:
+            選ばれたパス、キャンセルなら空文字、ダイアログが使えない環境なら
+            None（呼び出し側が従来の報告へフォールバックする）。
+        """
+        if QFileDialog is None:
+            return None
+        try:
+            path, _sel = QFileDialog.getOpenFileName(
+                self,
+                "Choose an avatar model" if is_en else "アバターモデルを選ぶ",
+                "",
+                self.AVATAR_FILE_FILTER,
+            )
+            return path or ""
+        except Exception as e:  # pragma: no cover - ヘッドレス等でダイアログ不可
+            logger.debug("ファイル選択ダイアログを開けませんでした: %s", e)
+            return None
+
+    def _report_current_avatar(self, is_en: bool) -> None:
+        """ダイアログが使えないときのフォールバック: 現在の状態を伝える。"""
+        import os as _os
         try:
             self.load_avatar_model()
         except Exception as e:
@@ -1392,15 +1443,12 @@ class AutonomousAvatarViewer(
         path = getattr(self, "avatar_model_path", None)
         if path:
             name = _os.path.basename(path)
-            reply = (f"Currently showing avatar: {name}" if is_en
-                     else f"いま表示してるアバター: {name}")
+            self._speak_reply(f"Currently showing avatar: {name}" if is_en
+                              else f"いま表示してるアバター: {name}")
         else:
-            reply = ("No avatar model loaded — pick one with "
-                     "`python satin_launcher.py --avatar-loader` (.glb/.gltf/.vrm), "
-                     "then restart." if is_en
-                     else "アバターモデルは未設定だよ。`python satin_launcher.py "
-                     "--avatar-loader` で .glb/.gltf/.vrm を選んでから起動し直してね。")
-        self._speak_reply(reply)
+            self._speak_reply(
+                "No avatar model loaded yet." if is_en
+                else "アバターモデルはまだ未設定だよ。")
 
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:
         """GUI の /birthday MM-DD コマンドを処理する。"""

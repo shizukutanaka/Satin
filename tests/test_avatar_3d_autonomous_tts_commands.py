@@ -806,41 +806,80 @@ class LoadAvatarModelTests(unittest.TestCase):
 
 
 class AvatarCommandGuiTests(unittest.TestCase):
+    """/avatar はその場でモデルを選ばせ、選択を即座に反映する。
+
+    以前は「表示中のモデル名を言う」だけで、選ぶには本体を終了して
+    `--avatar-loader`（tkinter の別アプリ）を起動し、選んでから**再起動**する
+    必要があった。1 つの機能のために GUI ツールキットを 2 つ抱え、プロセスを
+    跨いで選択を受け渡し、ユーザーに再起動を強いる形だった。本体は既に PyQt5 を
+    持っているので、QFileDialog を直接開けば済む。
+    """
+
     def _viewer(self):
         v = _fake_viewer(avatar_model_vertices=None, avatar_model_path=None)
         v.update = lambda: None
         return v
 
-    def test_reports_loaded_model_name(self):
-        v = self._viewer()
-        v.avatar_model_path = "/home/u/models/nekomimi.glb"
-        with mock.patch.object(_mod, "_avatar_model_store", None):
-            v._cmd_avatar_gui("ja")
-        self.assertIn("nekomimi.glb", v.comment_text)
+    def _with_dialog(self, chosen):
+        """QFileDialog.getOpenFileName を差し替えるコンテキスト。"""
+        fake = mock.Mock()
+        fake.getOpenFileName.return_value = (chosen, "")
+        return mock.patch.object(_mod, "QFileDialog", fake)
 
-    def test_guides_to_loader_when_unset_ja(self):
+    def test_opens_a_picker_and_loads_the_chosen_model(self):
         v = self._viewer()
-        with mock.patch.object(_mod, "_avatar_model_store", None):
-            v._cmd_avatar_gui("ja")
-        self.assertIn("--avatar-loader", v.comment_text)
-
-    def test_guides_to_loader_when_unset_en(self):
-        v = self._viewer()
-        with mock.patch.object(_mod, "_avatar_model_store", None):
-            v._cmd_avatar_gui("en")
-        self.assertIn("--avatar-loader", v.comment_text)
-        self.assertIn("No avatar", v.comment_text)
-
-    def test_picks_up_newly_selected_model(self):
-        # /avatar re-resolves, so a selection made after launch is picked up.
-        v = self._viewer()
-        fake_store = mock.Mock()
-        fake_store.resolve_selected_avatar.return_value = "/m/fresh.glb"
-        with mock.patch.object(_mod, "_avatar_model_store", fake_store), \
+        with self._with_dialog("/m/nekomimi.glb"), \
+             mock.patch.object(_mod, "_avatar_model_store", None), \
              mock.patch.object(_mod, "_load_model_geometry",
                                return_value=([[0, 0, 0]], None, None)):
             v._cmd_avatar_gui("ja")
-        self.assertIn("fresh.glb", v.comment_text)
+        self.assertIn("nekomimi.glb", v.comment_text)
+
+    def test_cancelling_the_picker_says_nothing(self):
+        """キャンセルに反応して喋らないこと（黙って戻る）。"""
+        v = self._viewer()
+        v.comment_text = ""
+        with self._with_dialog(""), \
+             mock.patch.object(_mod, "_avatar_model_store", None):
+            v._cmd_avatar_gui("ja")
+        self.assertEqual(v.comment_text, "")
+
+    def test_unreadable_model_reports_the_failure(self):
+        v = self._viewer()
+        with self._with_dialog("/m/broken.glb"), \
+             mock.patch.object(_mod, "_avatar_model_store", None), \
+             mock.patch.object(_mod, "_load_model_geometry", return_value=None):
+            v._cmd_avatar_gui("ja")
+        self.assertIn("読めなかった", v.comment_text)
+
+    def test_selection_is_persisted_for_the_next_launch(self):
+        v = self._viewer()
+        store = mock.Mock()
+        with self._with_dialog("/m/fresh.glb"), \
+             mock.patch.object(_mod, "_avatar_model_store", store), \
+             mock.patch.object(_mod, "_load_model_geometry",
+                               return_value=([[0, 0, 0]], None, None)):
+            v._cmd_avatar_gui("ja")
+        store.save_selection.assert_called_once_with("/m/fresh.glb")
+
+    def test_falls_back_to_reporting_when_no_dialog_is_available(self):
+        """ヘッドレス等で QFileDialog が使えないときは現状を報告する。"""
+        v = self._viewer()
+        v.avatar_model_path = "/home/u/models/nekomimi.glb"
+        with mock.patch.object(_mod, "QFileDialog", None), \
+             mock.patch.object(_mod, "_avatar_model_store", None):
+            v._cmd_avatar_gui("ja")
+        self.assertIn("nekomimi.glb", v.comment_text)
+
+    def test_fallback_says_nothing_is_loaded_without_pointing_at_another_mode(self):
+        """未設定でも、別モードを起動して再起動しろとは言わないこと。"""
+        v = self._viewer()
+        with mock.patch.object(_mod, "QFileDialog", None), \
+             mock.patch.object(_mod, "_avatar_model_store", None):
+            v._cmd_avatar_gui("en")
+        self.assertIn("No avatar", v.comment_text)
+        self.assertNotIn("--avatar-loader", v.comment_text)
+        self.assertNotIn("restart", v.comment_text.lower())
 
 
 if __name__ == "__main__":

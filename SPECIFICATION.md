@@ -32,10 +32,14 @@ TTS で音声合成しながら 3D アバターを動かす。関係性（好感
 ### 1.2 動作要件 (Requirements)
 
 - Python 3.10 以降を推奨（CI が検証しているのは 3.10 / 3.11 / 3.12）
-- 必須: `tkinter`（標準）
-- 任意: PyQt5 / PyOpenGL / Pillow / numpy / pygltflib（3D アバター）、
-  pyttsx3（TTS）、flask（ダッシュボード）。いずれも欠けても該当機能が縮退する
-  だけで起動は継続する。
+- **必須の外部依存は無い**。CLI 会話（`--chat`）と管理 CLI は標準ライブラリ
+  だけで動く。
+- 任意: PyQt5 / PyOpenGL / numpy / pygltflib（3D アバター GUI）、
+  pyttsx3（TTS）、flask（ダッシュボード）、Pillow + tkinter（`--avatar-loader`
+  のサムネイル表示。§3.6 参照）。いずれも欠けても該当機能が縮退するだけで
+  起動は継続する。
+  Linux では PyOpenGL が使う `libGLU` が pip で入らない場合がある
+  （Debian/Ubuntu: `apt install libglu1-mesa`）。無くても縮退する。
 
 ---
 
@@ -51,7 +55,8 @@ satin_launcher.py
   ├─ 設定チェック (_check_config)      config/ の存在確認
   └─ モード分岐
        ├─ (既定)        GUI 本体: avatar_3d_autonomous_tts.MainWindow (PyQt5/OpenGL)
-       ├─ --avatar-loader GUI: avatar_loader.AvatarLoaderApp (tkinter、外部ファイル選択のみ)
+       ├─ --avatar-loader GUI: avatar_loader.AvatarLoaderApp (tkinter。サムネイル付き選択。
+       │                  ※ 本体 GUI の /avatar でも選べる — §3.6 の注記を参照)
        ├─ --chat         CLI 会話: persona_cli.main()
        ├─ --dashboard    Web: dashboard.app (Flask)
        ├─ --manage […]   管理 CLI: manage_satin.main()
@@ -171,6 +176,22 @@ satin_launcher.py
 - 仮想オーディオ出力版（`tts_with_virtual_audio`、VTuber 配信向けに
   `save_to_file` + デバイス再生を行っていた）は削除した。配信は本製品の
   用途ではなく、どこからも呼ばれていなかった。
+
+### 3.5.1 アバターモデルの選択 — 経路が 2 つある
+
+本体 GUI の **`/avatar`** コマンドが `QFileDialog` を開き、選んだモデルをその場で
+描画に反映して選択を永続化する。これが通常の経路である。
+
+**`--avatar-loader`**（`avatar_loader.py`、tkinter）は同じ選択をサムネイル一覧と
+履歴つきで行う別アプリで、選択は `avatar_model_store` 経由で本体と共有される。
+ただし本体を終了してから起動し、選んだあと**再起動**する必要がある。
+
+以前は後者しか無く、「1 つの機能のために GUI ツールキットを 2 つ抱え、プロセスを
+跨いで選択を受け渡し、ユーザーに再起動を強いる」状態だった。`/avatar` に
+ファイル選択を実装したことでその強制は解けたが、サムネイル表示と履歴は
+`--avatar-loader` にしかない。**この重複を残すかは製品判断**であり、畳むなら
+tkinter と Pillow が依存から完全に消える（現在この 2 つを使うのは
+`avatar_loader` だけである）。
 
 ### 3.6 Web ダッシュボード (`dashboard.py`)
 

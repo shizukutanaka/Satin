@@ -496,7 +496,9 @@ python satin_launcher.py              # GUI avatar (default)
 python satin_launcher.py --chat       # headless CLI chat (no GUI/TTS deps needed)
 python satin_launcher.py --dashboard  # Flask web dashboard
 python satin_launcher.py --validate   # validate config and exit
-python satin_launcher.py --avatar-loader  # pick a .glb/.gltf/.vrm avatar; the main GUI renders it next launch
+python satin_launcher.py --avatar-loader  # thumbnail picker (tkinter); requires a restart to take effect
+                                          # (normally just type /avatar in the running GUI —
+                                          #  it opens a file picker and applies the choice immediately)
 ```
 
 The selected model is drawn as a **shaded solid**: `gltf_utils` reads the mesh's
