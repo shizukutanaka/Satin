@@ -102,6 +102,12 @@ AFFINITY_START = 50.0
 # 1 メッセージあたりの最大変化量（連投での急変を防ぐ）
 _MAX_DELTA_PER_MESSAGE = 10.0
 
+# 告白イベントの最低条件。close に達しただけでは足りず、実際に関係が続いて
+# いることを要求する（詳細は check_confession_event の docstring）。
+# 日数は記念日の最初の節目（7 日）に合わせてある。0 にすると従来どおり即座。
+_CONFESSION_MIN_DAYS = 7.0
+_CONFESSION_MIN_INTERACTIONS = 20
+
 # 1 日あたりの会話由来の好感度「上昇」上限（同一の肯定語を連投して短時間で
 # 関係を最大化する行為を防ぐ）。ギフトの日次クールダウン（全種類を1回ずつ
 # 贈った場合の合計 ≈30.5）と同程度の水準に設定。減少（ネガティブな発言への
@@ -412,6 +418,8 @@ class MoodTracker:
         positive_delta: float = _DEFAULT_POSITIVE_DELTA,
         negative_delta: float = _DEFAULT_NEGATIVE_DELTA,
         max_daily_gain: float = _MAX_DAILY_CONVERSATION_GAIN,
+        confession_min_days: float = _CONFESSION_MIN_DAYS,
+        confession_min_interactions: int = _CONFESSION_MIN_INTERACTIONS,
         interactions: int = 0,
         last_interaction_time: float = 0.0,
         first_interaction_time: float = 0.0,
@@ -443,6 +451,9 @@ class MoodTracker:
         # 会話由来の 1 日あたり上昇上限（成長弧の長さを決める。上の定数の
         # コメントに算術あり）。負値は上限なしではなく 0 と解釈する。
         self.max_daily_gain = max(0.0, float(max_daily_gain))
+        # 告白イベントの最低条件（0 で従来どおり即座に発火）
+        self.confession_min_days = max(0.0, float(confession_min_days))
+        self.confession_min_interactions = max(0, int(confession_min_interactions))
         self._last_interaction_time = float(last_interaction_time)
         # 関係が始まった時刻（初回 register 時に記録）。0.0 = 未交流。
         self._first_interaction_time = float(first_interaction_time)
@@ -770,6 +781,11 @@ def _kwargs_from_mood_config(mood_config: Optional[Dict]) -> Dict:
         kwargs["negative_delta"] = float(mood_config["negative_delta"])
     if isinstance(mood_config.get("max_daily_gain"), (int, float)):
         kwargs["max_daily_gain"] = float(mood_config["max_daily_gain"])
+    if isinstance(mood_config.get("confession_min_days"), (int, float)):
+        kwargs["confession_min_days"] = float(mood_config["confession_min_days"])
+    if isinstance(mood_config.get("confession_min_interactions"), (int, float)):
+        kwargs["confession_min_interactions"] = int(
+            mood_config["confession_min_interactions"])
     return kwargs
 
 
@@ -1148,17 +1164,51 @@ def check_confession_event(
     after: float,
     lang: str = "ja",
 ) -> Optional[str]:
-    """friendly→close 遷移が初回であれば告白メッセージを返し、マークする。
+    """関係が close に達し、かつ実体が伴っていれば告白メッセージを返す。
 
-    それ以外（既に告白済み・遷移なし）は None を返す。
-    副作用: 初回のみ tracker._confession_done = True にセットする。
+    それ以外（既に告白済み・close 未満・関係が浅すぎる）は None を返す。
+    副作用: 返すときのみ tracker._confession_done = True にセットする。
+
+    **なぜ最低条件があるか**
+
+    以前は「friendly→close の遷移が起きたら即座に」告白していた。既定の
+    好感度設定では**新規ユーザーが「大好き」と 3 回打つだけで**
+    「こんなに誰かのことを好きになったの、初めてかもしれない。…あなたの
+    ことだよ。」に到達する。出会って 3 メッセージの相手に永続的な愛着を
+    宣言するのは love-bombing であり、本リポジトリが別れぎわ
+    （`farewell_integrity`）・不在の非難（挨拶）・依存
+    （`usage_guardrails`）について既に禁じているものと同じ型の操作である。
+    ロマンス要素そのものは製品の設計判断として尊重するが、**関係が無い
+    ところに関係の告白を置かない**。
+
+    最低条件は既存の節目に合わせた: 出会いからの日数は記念日の最初の節目
+    （7 日）、対話回数は 20 回。どちらも `config/mood_config.json` の
+    `confession_min_days` / `confession_min_interactions` で変更でき、0 に
+    すれば従来どおり即座に発火する。
+
+    判定を「遷移」ではなく「現在 close に居るか」にしてある。条件を満たさずに
+    見送った場合、遷移は二度と起きないため、遷移基準のままでは告白が永久に
+    失われる。close に留まっているあいだ毎ターン評価し、条件が揃った時点で
+    発火する（`before` は API 互換のために残しているが判定には使わない）。
     """
-    before_level = affinity_level(before)
-    after_level = affinity_level(after)
-    if before_level != "friendly" or after_level != "close":
-        return None
     if getattr(tracker, "_confession_done", False):
         return None
+    if affinity_level(after) != "close":
+        return None
+
+    min_interactions = int(getattr(tracker, "confession_min_interactions",
+                                   _CONFESSION_MIN_INTERACTIONS))
+    if int(getattr(tracker, "interactions", 0) or 0) < min_interactions:
+        return None
+
+    min_days = float(getattr(tracker, "confession_min_days", _CONFESSION_MIN_DAYS))
+    if min_days > 0:
+        first = float(getattr(tracker, "_first_interaction_time", 0.0) or 0.0)
+        if first <= 0.0:
+            return None  # 交流の記録が無い = 関係が始まっていない
+        elapsed_days = (time.time() - first) / 86400.0
+        if elapsed_days < min_days:
+            return None
 
     import random
     lang_key = "en" if str(lang).lower().startswith("en") else "ja"

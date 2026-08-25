@@ -16,6 +16,8 @@ import pytest
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
 
+import time  # noqa: E402
+
 import mood  # noqa: E402
 from mood import (  # noqa: E402
     AFFINITY_MAX,
@@ -714,10 +716,19 @@ class TransitionMessageTests(unittest.TestCase):
 
 
 class ConfessionEventTests(unittest.TestCase):
-    """check_confession_event fires once on first friendly→close crossing."""
+    """check_confession_event は close 到達 + 実体のある関係で 1 度だけ発火する。
+
+    既定では出会いから 7 日・対話 20 回を要求する（love-bombing 防止。
+    詳細は ConfessionMinimumRelationshipTests と mood.check_confession_event
+    の docstring）。このクラスは発火そのものを見たいので、_tracker() が
+    条件を満たした状態を作る。
+    """
 
     def _tracker(self, affinity=79.0, confession_done=False):
-        t = MoodTracker(affinity=affinity)
+        import time as _t
+        t = MoodTracker(affinity=affinity,
+                        interactions=50,
+                        first_interaction_time=_t.time() - 30 * 86400)
         t._confession_done = confession_done
         return t
 
@@ -797,19 +808,33 @@ class ConfessionGetAttrDefaultTests(unittest.TestCase):
     so a tracker loaded from old state without that attribute would silently
     skip every confession forever. Default must be False."""
 
-    def test_tracker_without_attribute_shows_confession(self):
-        from mood import check_confession_event, MoodTracker
-        # Simulate an old-format tracker without _confession_done attribute.
+    def _old_format_tracker(self):
+        """_confession_done を持たない旧形式の tracker を模す。
+
+        告白の最低条件（7 日・20 回）は満たした状態にする。このクラスの
+        subject はあくまで `_confession_done` の既定値であって、最低条件では
+        ないため、そちらを未達にすると何を検証しているのか分からなくなる。
+        `object.__new__` は `__init__` を通らないので `confession_min_*` も
+        存在しない — check_confession_event がモジュール定数へフォールバック
+        することの検証も兼ねる。
+        """
+        import time as _t
+        from mood import MoodTracker
         t = object.__new__(MoodTracker)
-        t.affinity = 79.0
-        # Deliberately do NOT set t._confession_done.
-        msg = check_confession_event(t, 79.0, 81.0, lang="ja")
+        t.affinity = 81.0
+        t.interactions = 50
+        t._first_interaction_time = _t.time() - 30 * 86400
+        # 意図的に t._confession_done は設定しない。
+        return t
+
+    def test_tracker_without_attribute_shows_confession(self):
+        from mood import check_confession_event
+        msg = check_confession_event(self._old_format_tracker(), 79.0, 81.0, lang="ja")
         self.assertIsNotNone(msg, "tracker with no _confession_done must show confession")
 
     def test_tracker_without_attribute_marks_done_after_call(self):
-        from mood import check_confession_event, MoodTracker
-        t = object.__new__(MoodTracker)
-        t.affinity = 79.0
+        from mood import check_confession_event
+        t = self._old_format_tracker()
         check_confession_event(t, 79.0, 81.0)
         self.assertTrue(t._confession_done)
 
@@ -1792,4 +1817,90 @@ class DailyGainCapConfigTests(unittest.TestCase):
         before = t.affinity
         t.register("嫌い")
         self.assertLess(t.affinity, before)
+
+
+class ConfessionMinimumRelationshipTests(unittest.TestCase):
+    """告白には「実体のある関係」を要求すること（love-bombing 防止）。
+
+    以前は friendly→close の遷移が起きた瞬間に告白していた。既定の好感度設定
+    では**新規ユーザーが「大好き」と 3 回打つだけで**
+    「こんなに誰かのことを好きになったの、初めてかもしれない。…あなたの
+    ことだよ。」に到達した。出会って 3 メッセージの相手に永続的な愛着を
+    宣言するのは love-bombing であり、本リポジトリが別れぎわ
+    （farewell_integrity）・不在の非難（挨拶）・依存（usage_guardrails）に
+    ついて既に禁じているものと同じ型の操作である。
+
+    ロマンス要素そのものは製品の設計判断として尊重する。ここで守るのは
+    「関係が無いところに関係の告白を置かない」という一点だけである。
+    """
+
+    def _fresh(self, **kw):
+        return MoodTracker(**kw)
+
+    def test_a_brand_new_user_cannot_trigger_a_confession(self):
+        t = self._fresh()
+        for _ in range(40):
+            before = t.affinity
+            t.register("大好き")
+            self.assertIsNone(
+                check_confession_event(t, before, t.affinity, lang="ja"),
+                f"新規ユーザーが {t.interactions} メッセージで告白を受けた")
+        self.assertEqual(t.level, "close", "前提: 好感度自体は close に達している")
+
+    def test_confession_fires_once_the_relationship_is_real(self):
+        t = self._fresh(affinity=81.0, interactions=50,
+                        first_interaction_time=time.time() - 30 * 86400)
+        self.assertIsNotNone(check_confession_event(t, 79.0, 81.0, lang="ja"))
+
+    def test_interaction_count_alone_is_not_enough(self):
+        """回数だけ稼いでも、経過日数が足りなければ告白しない。"""
+        t = self._fresh(affinity=81.0, interactions=500,
+                        first_interaction_time=time.time() - 3600)
+        self.assertIsNone(check_confession_event(t, 79.0, 81.0, lang="ja"))
+
+    def test_elapsed_days_alone_is_not_enough(self):
+        """日数が経っていても、ほとんど会話していなければ告白しない。"""
+        t = self._fresh(affinity=81.0, interactions=2,
+                        first_interaction_time=time.time() - 365 * 86400)
+        self.assertIsNone(check_confession_event(t, 79.0, 81.0, lang="ja"))
+
+    def test_no_first_interaction_time_means_no_relationship(self):
+        t = self._fresh(affinity=81.0, interactions=100,
+                        first_interaction_time=0.0)
+        self.assertIsNone(check_confession_event(t, 79.0, 81.0, lang="ja"))
+
+    def test_deferred_confession_is_not_lost(self):
+        """条件未達で見送った告白が、条件成立後に発火すること。
+
+        判定を「friendly→close の遷移」に置いたままだと、遷移は二度と起きない
+        ので告白が永久に失われる。close に留まっているあいだ評価し続ける。
+        """
+        t = self._fresh()
+        for _ in range(40):
+            before = t.affinity
+            t.register("大好き")
+            check_confession_event(t, before, t.affinity, lang="ja")
+        self.assertFalse(t._confession_done, "見送りで done を立ててはいけない")
+        # 関係が実体を持つ日が来たら発火する
+        t._first_interaction_time = time.time() - 30 * 86400
+        before = t.affinity
+        t.register("大好き")
+        self.assertIsNotNone(check_confession_event(t, before, t.affinity, lang="ja"))
+
+    def test_thresholds_are_configurable(self):
+        kwargs = mood._kwargs_from_mood_config(
+            {"confession_min_days": 0, "confession_min_interactions": 0})
+        self.assertEqual(kwargs["confession_min_days"], 0.0)
+        self.assertEqual(kwargs["confession_min_interactions"], 0)
+
+    def test_zero_thresholds_restore_the_old_immediate_behaviour(self):
+        """0 に設定すれば従来どおり即座に発火すること（後方互換の逃げ道）。"""
+        t = self._fresh(affinity=81.0, confession_min_days=0,
+                        confession_min_interactions=0)
+        self.assertIsNotNone(check_confession_event(t, 79.0, 81.0, lang="ja"))
+
+    def test_defaults_match_the_first_anniversary_milestone(self):
+        """既定の日数が、製品自身の「しばらく一緒にいた」の定義と揃っていること。"""
+        self.assertEqual(mood._CONFESSION_MIN_DAYS, 7.0)
+        self.assertIn(7, mood._ANNIVERSARY_MILESTONES)
 

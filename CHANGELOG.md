@@ -217,6 +217,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The avatar declared love to users it had known for three messages.**
+  `check_confession_event` fired the moment affinity crossed from `friendly` to
+  `close` — and with the default tuning, typing 「大好き」 three times on a first
+  launch is enough. A brand-new user could reach 「こんなに誰かのことを好きに
+  なったの、初めてかもしれない。…あなたのことだよ。」 / "I've never felt this
+  way about anyone before. It's you. It's always been you." within a minute of
+  installing. An intense declaration of permanent attachment to someone you just
+  met is love-bombing, and it is the same class of manipulation this repository
+  already legislates against at the farewell (`farewell_integrity`), in the
+  greeting (absence guilt, above), and around dependency (`usage_guardrails`).
+
+  The romance arc itself is a legitimate product decision and is untouched. What
+  changed is that it now requires a relationship to exist: by default, seven days
+  since the first interaction — matching the product's own first anniversary
+  milestone — and twenty exchanges. Both are configurable via
+  `confession_min_days` / `confession_min_interactions`, and setting them to zero
+  restores the previous immediate behaviour exactly.
+
+  The trigger also moved from *the friendly→close transition* to *being at close*.
+  Under the transition test, a confession held back for not meeting the floor
+  would have been lost forever — the transition never happens twice. It is now
+  re-evaluated each turn while the relationship stays at `close`, so a deferred
+  confession arrives when the relationship is real rather than never.
 - **At the highest affinity, every greeting reproached the user for being away.**
   `farewell_integrity` guards the goodbye; nothing guarded the hello. At the
   `close` level all three greeting replies were 「やっと来た！もう、寂しかった

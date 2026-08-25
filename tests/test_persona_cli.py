@@ -2008,8 +2008,13 @@ class ConfessionSaveMidSessionTests(unittest.TestCase):
         import json
         from mood import MoodTracker
 
-        # Start at high-friendly (78), enough positive hits push to close (>=80)
-        m = MoodTracker(affinity=78.0)
+        # Start at high-friendly (78), enough positive hits push to close (>=80).
+        # 告白には実体のある関係（既定 7 日・20 回）が要るので、それも満たす。
+        # このテストの subject は「発火したときに即ディスクへ保存されるか」で
+        # あって最低条件ではない。
+        import time as _t
+        m = MoodTracker(affinity=78.0, interactions=50,
+                        first_interaction_time=_t.time() - 30 * 86400)
         self.assertFalse(m._confession_done)
 
         # "ありがとう大好きかわいいうれしい" hits 4 positive keywords → +10 (capped)
