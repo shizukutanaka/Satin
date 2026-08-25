@@ -104,6 +104,11 @@ except Exception:  # pragma: no cover - defensive
     _crisis_reply_gui = None  # type: ignore[assignment]
 
 try:
+    from farewell_integrity import is_farewell as _is_farewell_gui
+except Exception:  # pragma: no cover - defensive
+    _is_farewell_gui = None  # type: ignore[assignment]
+
+try:
     from daily_summary import summary_greeting as _summary_greeting_gui
 except Exception:  # pragma: no cover - defensive
     _summary_greeting_gui = None  # type: ignore[assignment]
@@ -521,7 +526,14 @@ class AutonomousAvatarViewer(
                 logger.warning("好感度の更新・保存に失敗しました: %s", e)
         # 数回のやりとりごとにアバターから話題を振る（受け身すぎないように）。
         # 既に疑問文で終わっている応答には添えない（二重質問を避ける）。
-        if persona is not None and _FOLLOW_UP_EVERY > 0 \
+        #
+        # 別れの挨拶には絶対に付けない。「またね！ところでストレス発散は
+        # どうしてる？」は、去ろうとしている相手に応答の義務を作る形であり、
+        # farewell_integrity が PRESSURE_TO_RESPOND として禁じている型そのもの
+        # である（persona_cli の同じ箇所と対で修正した — 片方だけ直すと
+        # GUI と CLI で振る舞いがずれる）。
+        _leaving_gui = _is_farewell_gui is not None and _is_farewell_gui(comment)
+        if persona is not None and _FOLLOW_UP_EVERY > 0 and not _leaving_gui \
                 and not reply.rstrip().endswith(("？", "?")):
             try:
                 interactions = None

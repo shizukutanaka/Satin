@@ -1139,6 +1139,53 @@ class DailyLoginTests(unittest.TestCase):
         self.assertEqual(t._login_streak, 1)
         self.assertEqual(t._last_login_date, "2026-06-16")
 
+    def test_never_says_welcome_back_to_someone_it_has_never_met(self):
+        """初回起動で「おかえり」と言わないこと。
+
+        まっさらな状態（好感度ファイルも会話履歴も無い）で起動すると
+        「おかえり！今日も会いに来てくれてうれしいな。」と言っていた —
+        一度も会ったことのない相手に対してである。
+
+        本製品の価値は「時間をかけて育つ関係」なので、初対面で既に親しい
+        ふりをすると、その後の成長が演出でしかなくなる。育っていない親密さを
+        演じるのは、別れぎわの引き止め（farewell_integrity）と同種の操作で、
+        こちらは関係の入口で起きる。
+        """
+        for lang, forbidden in (("ja", "おかえり"), ("en", "Welcome back")):
+            with self.subTest(lang=lang):
+                msg = self._check(MoodTracker(affinity=50.0),
+                                  today="2026-06-16", lang=lang)
+                self.assertIsNotNone(msg)
+                self.assertNotIn(forbidden, msg)
+
+    def test_first_meeting_greets_as_a_first_meeting(self):
+        self.assertIn("はじめまして",
+                      self._check(MoodTracker(), today="2026-06-16", lang="ja"))
+        self.assertIn("nice to meet you",
+                      self._check(MoodTracker(), today="2026-06-16", lang="en").lower())
+
+    def test_second_day_is_a_welcome_back_not_a_first_meeting(self):
+        """2 日目以降は通常どおり「おかえり」に戻ること。"""
+        t = MoodTracker()
+        self._check(t, today="2026-06-16", lang="ja")
+        msg = self._check(t, today="2026-06-17", lang="ja")
+        self.assertIn("おかえり", msg)
+        self.assertNotIn("はじめまして", msg)
+
+    def test_existing_user_without_a_login_date_is_not_a_first_meeting(self):
+        """_last_login_date 導入前からの既存ユーザーを初対面扱いしないこと。
+
+        判定を _last_login_date だけに頼ると、対話履歴を持つ既存ユーザーに
+        「はじめまして」と言ってしまう。相手の記憶を消すほうが、余計に
+        「おかえり」と言うより害が大きいので、迷ったら初対面でない側に倒す。
+        """
+        t = MoodTracker(affinity=72.0)
+        t.interactions = 40
+        t._first_interaction_time = 1_700_000_000.0
+        msg = self._check(t, today="2026-06-16", lang="ja")
+        self.assertIn("おかえり", msg)
+        self.assertNotIn("はじめまして", msg)
+
     def test_second_login_same_day_returns_none(self):
         t = MoodTracker(affinity=50.0)
         self._check(t, today="2026-06-16", lang="ja")
@@ -1183,7 +1230,10 @@ class DailyLoginTests(unittest.TestCase):
         self.assertLessEqual(gained, _DAILY_LOGIN_MAX_BONUS + 0.001)
 
     def test_en_message(self):
+        # 再訪ユーザーで検証する。まっさらな tracker は初対面あつかいになり、
+        # デイリーログインの文言ではなく「はじめまして」を返すため。
         t = MoodTracker(affinity=50.0)
+        self._check(t, today="2026-06-15", lang="en")   # 初対面をここで消化する
         msg = self._check(t, today="2026-06-16", lang="en")
         self.assertIsNotNone(msg)
         self.assertTrue(any(w in msg.lower() for w in ("welcome", "glad", "day")))

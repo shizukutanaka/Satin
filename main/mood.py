@@ -1274,6 +1274,40 @@ _STREAK_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
     },
 }
 
+# 本当の初対面で出すメッセージ。
+#
+# これが無かったころ、まっさらな状態の初回起動でも「おかえり！今日も会いに来て
+# くれてうれしいな。」と言っていた — 一度も会ったことのない相手に対してである。
+# 本製品の価値は「時間をかけて育つ関係」なので、初対面で既に親しいふりをすると
+# その成長が偽物になる。育っていない親密さを演じることは、別れぎわの引き止め
+# （farewell_integrity）と同じ種類の操作であり、こちらは関係の入口で起こる。
+_FIRST_MEETING_MESSAGES: Dict[str, List[str]] = {
+    "ja": [
+        "はじめまして。会えてうれしい。",
+        "はじめまして！これからよろしくね。",
+    ],
+    "en": [
+        "Nice to meet you. I'm glad you're here.",
+        "Hello — nice to meet you! I'm looking forward to this.",
+    ],
+}
+
+
+def _is_first_meeting(tracker: "MoodTracker") -> bool:
+    """この tracker が「まだ一度も会っていない」状態かどうか。
+
+    3 つすべてが空であることを要求する。`_last_login_date` だけで判定すると、
+    このフィールドが導入される前から使っていた既存ユーザー（対話履歴はあるが
+    ログイン日は未記録）に「はじめまして」と言ってしまう。相手の記憶を消して
+    しまうほうが、余計に「おかえり」と言うより害が大きいので、迷ったら
+    初対面ではない側に倒す。
+    """
+    return (
+        not getattr(tracker, "_last_login_date", "")
+        and not getattr(tracker, "interactions", 0)
+        and not getattr(tracker, "_first_interaction_time", None)
+    )
+
 
 def check_daily_login(
     tracker: "MoodTracker",
@@ -1300,6 +1334,10 @@ def check_daily_login(
     if last == today:
         return None  # 今日は既にログイン済み
 
+    # 本当の初対面かどうかは、状態を書き換える前に見ておく必要がある
+    # （下で _last_login_date を today にしてしまうと判定できなくなる）。
+    first_meeting = _is_first_meeting(tracker)
+
     # 連続日数の判定（前日なら継続、それ以外は 1 にリセット）
     streak = 1
     if last:
@@ -1324,6 +1362,11 @@ def check_daily_login(
         pass
 
     lang_key = "en" if str(lang).lower().startswith("en") else "ja"
+
+    # 初対面に「おかえり」と言わない。まだ無い関係を演じない。
+    if first_meeting:
+        import random
+        return random.choice(_FIRST_MEETING_MESSAGES[lang_key])
 
     # 節目メッセージがあれば優先
     if streak in _STREAK_MILESTONE_MESSAGES:

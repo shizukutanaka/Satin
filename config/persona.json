@@ -662,9 +662,9 @@
         "なるほど、そうなんだ。",
         "うんうん、聞いてるよ。",
         "へえ、もっと教えて！",
-        "そっか、いいね。",
+        "そっか、そうだったんだ。",
         "うん、わかった！",
-        "なんか面白いね。"
+        "へえ、そうなんだ。"
       ],
       "topic_repeat_fallback": [
         "さっきも似たようなこと言ってたね。よっぽど気になるんだ？",
@@ -1202,9 +1202,9 @@
         "I see, got it.",
         "Mhm, I'm listening.",
         "Oh, tell me more!",
-        "Nice, sounds good.",
+        "I see how it is.",
         "Got it!",
-        "That's interesting!"
+        "Oh, I see."
       ],
       "topic_repeat_fallback": [
         "You mentioned that just now too. It must really be on your mind.",

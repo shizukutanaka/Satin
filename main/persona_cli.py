@@ -117,6 +117,11 @@ except Exception:  # pragma: no cover - defensive
     _crisis_reply = None  # type: ignore
 
 try:
+    from farewell_integrity import is_farewell as _is_farewell
+except Exception:  # pragma: no cover - defensive
+    _is_farewell = None  # type: ignore
+
+try:
     from daily_summary import summary_greeting as _summary_greeting
 except Exception:  # pragma: no cover - defensive
     _summary_greeting = None  # type: ignore
@@ -659,7 +664,14 @@ def run_chat(
         exchanges += 1
         # 数回ごとにアバターから話題を振る（受け身すぎないように）。
         # ただし返答が既に疑問文で終わっていれば二重質問を避ける。
+        # 別れの挨拶には絶対に付けない。「またね！ところでストレス発散は
+        # どうしてる？」は、去ろうとしている相手に応答の義務を作る形であり、
+        # farewell_integrity が PRESSURE_TO_RESPOND として禁じている型そのもの
+        # である。あちらは台詞そのものを検査するが、ここは「別れの直後に質問を
+        # 連結する」という組み立て側の漏れだったので、入口で止める。
+        _leaving = _is_farewell is not None and _is_farewell(text)
         if _FOLLOW_UP_EVERY > 0 and exchanges % _FOLLOW_UP_EVERY == 0 \
+                and not _leaving \
                 and not reply.rstrip().endswith(("？", "?")):
             try:
                 question = ""

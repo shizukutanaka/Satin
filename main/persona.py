@@ -44,6 +44,11 @@ try:  # 別れぎわの操作的表現ガードレール（無くても従来ど
 except Exception:  # pragma: no cover - defensive fallback
     _farewell_integrity = None  # type: ignore[assignment]
 
+try:  # 日常的なつらさの検知（同上 optional）
+    import everyday_distress as _everyday_distress
+except Exception:  # pragma: no cover - defensive fallback
+    _everyday_distress = None  # type: ignore[assignment]
+
 
 def _kw_match(kw_norm: str, text_norm: str) -> bool:
     """Return True if the pre-normalised keyword matches text_norm.
@@ -642,6 +647,21 @@ class Persona:
         # 「行くね」等キーワードに無い言い回しで別れを告げられた場合、fallback は
         # 「もっと教えて！」のような会話継続文になりがちで、それはまさに
         # ignore_exit（別れの意思の無視）になる。別れの文脈では同様に濾す。
+        # つらさの表明がどのルールにも一致しなかった場合、フォールバックへ
+        # 落とすと「へえ、もっと教えて！」のような的外れな返しになる。ここで
+        # 共感の一言に差し替える。
+        #
+        # 汎用フォールバックは**全体としてどちらの知らせにも使える**文言に
+        # 揃えてあるが（「いいね」のような価値判断を持たない）、それでも
+        # 「聞いてはいるが何も受け取っていない」返しにしかならない。つらさを
+        # 打ち明けられる相手であることが本製品の主要な価値なので、検知できた
+        # ぶんはきちんと受け止める。
+        #
+        # 別れの挨拶が同時に成立する場合（「疲れたからもう寝るね」等）は、
+        # 別れの意思のほうを優先する — 共感を口実に引き止めない。
+        if (not is_farewell and _everyday_distress is not None
+                and _everyday_distress.is_distressed(text)):
+            return _everyday_distress.acknowledgement(lang_key)
         if level_fallback:
             if is_farewell:
                 level_fallback = self._farewell_safe(level_fallback, lang_key)

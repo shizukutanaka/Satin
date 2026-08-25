@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Everyday distress is answered with empathy** (`everyday_distress.py`). The
+  most common disclosure a companion receives — a bad day — fell into a gap.
+  `crisis_support` is deliberately narrow (self-harm and suicidal ideation;
+  widening it would cheapen the hotline referral), and `mood.classify_sentiment`
+  measures how the user feels *about the avatar*, to move the affinity score.
+  Nothing owned "the user is having a hard time," so anything outside the small
+  keyword dictionary reached the generic fallback — and every generic fallback
+  was cheerful:
+
+      「今日はしんどかった」  → 「そっか、いいね。」
+      「イライラする」        → 「そっか、いいね。」
+      "I feel lonely"        → "Nice, sounds good."
+      "I'm burnt out"        → "That's interesting!"
+
+  Answering bad news with "nice!" is worse than answering it blandly: it reads
+  as not listening, or as mockery. Detection is offline pattern matching in both
+  languages, matching on Japanese stems (「しんど」) because inflection
+  (「しんどかった」) was a large part of the miss. Negations (「疲れてない」,
+  "not stressed") and distress that resolves positively (「疲れたけど楽しかった」,
+  "long day but it was great") are excluded. It gives no advice and never quotes
+  a hotline — that stays `crisis_support`'s job, and a crisis line in answer to
+  「疲れた」 would be an overreaction that devalues the real thing. A farewell
+  outranks empathy, so 「疲れたからもう寝るね」 gets a clean goodbye rather than
+  sympathy used as a reason to keep talking.
+
+  As a second line of defence, the generic fallbacks were stripped of positive
+  valence (「そっか、いいね。」 → 「そっか、そうだったんだ。」, "That's
+  interesting!" → "Oh, I see."). Detection by phrase matching will always miss
+  some cases; those misses should degrade to a neutral acknowledgement, never to
+  enthusiasm about bad news.
+
 - **One verification gate** (`check.py`). `python check.py` runs the whole
   definition of green — `py_compile`, ruff, mypy, pytest, config validation, and
   three launch smokes (`--version`, `--chat`, the dashboard's main routes) — in
@@ -168,6 +199,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **Satin said "welcome back" to people it had never met.** On a genuinely first
+  run — no affinity file, no history — the daily-login greeting fired with
+  `streak = 1` and produced 「おかえり！今日も会いに来てくれてうれしいな。」
+  ("Welcome back! I'm so glad you came to see me today"). The whole premise of
+  this product is a relationship that grows over time; opening by claiming a
+  history that does not exist makes the growth a performance. `check_daily_login`
+  now recognises a first meeting and greets accordingly. The check requires the
+  login date, the interaction count *and* the first-interaction timestamp to all
+  be empty — keying on the login date alone would have told long-time users who
+  predate that field "nice to meet you", and erasing someone's history is a worse
+  error than one redundant "welcome back".
+- **A goodbye could come back with a question attached.** "See you next time! How
+  do you unwind when you're stressed?" — the follow-up question was appended
+  without checking whether the user was leaving, creating an obligation to reply
+  for someone who just said they were going. That is the `PRESSURE_TO_RESPOND`
+  tactic `farewell_integrity` exists to prevent; the guardrail screened the
+  dialogue lines themselves but not the code that concatenates a question onto
+  them. Fixed in both `persona_cli` and the GUI — fixing one would have left the
+  two entry points behaving differently.
 - **The dashboard's backup page called itself "Cloud Sync".** `/sync` zips
   `config/` and the conversation log to a local file and touches no network at
   all, but its heading read "Cloud Sync" / 「クラウド同期」, its button "Sync
