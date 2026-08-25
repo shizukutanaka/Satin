@@ -233,6 +233,59 @@ def respond_to(
     return reply
 
 
+# --------------------------------------------------------------------------- #
+# コマンドの使い方表示（GUI と CLI で共有）
+# --------------------------------------------------------------------------- #
+# 同じコマンドの使い方が、GUI では「使い方:」CLI では「使用方法:」と割れていた。
+# 誕生日の例に至っては 03-14 と 06-15 で別々だった。どちらも同じアバターが
+# 同じコマンドについて説明しているのだから、割れる理由が無い。
+#
+# GUI（avatar_3d_autonomous_tts）は既にこのモジュールから import しているので、
+# 定義をここに一本化する。文言を直すときは 1 箇所で済み、片方だけ直して
+# ずれることが起こらない。
+_COMMAND_USAGE = {
+    "callme": {
+        "ja": "使い方: /callme <呼んでほしい名前>",
+        "en": "Usage: /callme <your name>",
+    },
+    "birthday": {
+        "ja": "使い方: /birthday MM-DD  例: /birthday 03-14",
+        "en": "Usage: /birthday MM-DD  e.g. /birthday 03-14",
+    },
+    "like": {
+        "ja": "使い方: /like <好きなもの>  例: /like アニメ",
+        "en": "Usage: /like <thing you enjoy>  e.g. /like anime",
+    },
+    "forget": {
+        "ja": "使い方: /forget <好きなもの>",
+        "en": "Usage: /forget <thing>  — removes it from memory",
+    },
+    "forget-fact": {
+        "ja": "使い方: /forget-fact <覚えていることの一部>",
+        "en": "Usage: /forget-fact <something I said I remember>",
+    },
+    "gift": {
+        "ja": "使い方: /gift <プレゼント>",
+        "en": "Usage: /gift <present>",
+    },
+    "search": {
+        "ja": "使い方: /search <キーワード>",
+        "en": "Usage: /search <keyword>",
+    },
+}
+
+
+def command_usage(command: str, lang: str = "ja") -> str:
+    """コマンドの使い方の一行を返す（GUI / CLI 共通）。
+
+    未知のコマンドは空文字を返す（呼び出し側が独自の案内を出せる）。
+    """
+    entry = _COMMAND_USAGE.get(command)
+    if not entry:
+        return ""
+    return entry["en" if str(lang).lower().startswith("en") else "ja"]
+
+
 def _help_text(lang: str = "ja", *, with_disclosure: bool = True) -> str:
     """コマンド一覧。
 
@@ -534,7 +587,7 @@ def run_chat(
             continue
         if text.lower() == "/search" or text.lower().startswith("/search "):
             query = text[len("/search"):].strip()
-            _print_search(conv_log, query, output_fn)
+            _print_search(conv_log, query, output_fn, lang)
             continue
         if text.lower() == "/export-log" or text.lower().startswith("/export-log "):
             dest = text[len("/export-log"):].strip() or "conversation_export.csv"
@@ -910,7 +963,7 @@ def _set_user_name(profile, new_name: str, avatar_name: str, lang: str,
         output_fn("(プロファイルは利用できません)")
         return ""
     if not new_name:
-        output_fn("使用方法: /callme <呼んでほしい名前>")
+        output_fn(command_usage("callme", lang))
         return ""
     try:
         saved = profile.set_name(new_name)
@@ -937,7 +990,7 @@ def _set_birthday(profile, new_bday: str, avatar_name: str, lang: str,
         output_fn("(プロファイルは利用できません)")
         return ""
     if not new_bday:
-        output_fn("使用方法: /birthday MM-DD （例: /birthday 06-15）")
+        output_fn(command_usage("birthday", lang))
         return ""
     try:
         saved = profile.set_birthday(new_bday)
@@ -984,7 +1037,7 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
                 output_fn("贈れるプレゼント一覧（ボーナス）:")
             output_fn(cat)
         else:
-            output_fn("使用方法: /gift <プレゼント>")
+            output_fn(command_usage("gift", lang))
         return ""
     if _lookup_gift is None:
         output_fn("(プレゼント機能は利用できません)")
@@ -1058,10 +1111,7 @@ def _add_interest(profile, thing: str, avatar_name: str, lang: str,
         output_fn("(プロファイルは利用できません)")
         return ""
     if not thing:
-        if lang == "en":
-            output_fn("Usage: /like <thing you enjoy>  e.g. /like anime")
-        else:
-            output_fn("使用方法: /like <好きなもの>  例: /like アニメ")
+        output_fn(command_usage("like", lang))
         return ""
     try:
         saved = profile.add_interest(thing)
@@ -1091,10 +1141,7 @@ def _remove_interest(profile, thing: str, avatar_name: str, lang: str,
         output_fn("(プロファイルは利用できません)")
         return ""
     if not thing:
-        if lang == "en":
-            output_fn("Usage: /forget <thing>  — removes it from memory")
-        else:
-            output_fn("使用方法: /forget <覚えさせたもの>")
+        output_fn(command_usage("forget", lang))
         return ""
     try:
         removed = profile.remove_interest(thing)
@@ -1131,10 +1178,7 @@ def _remove_fact(profile, text: str, avatar_name: str, lang: str,
         output_fn("(プロファイルは利用できません)")
         return ""
     if not text:
-        if lang == "en":
-            output_fn("Usage: /forget-fact <something I said I remember>")
-        else:
-            output_fn("使用方法: /forget-fact <覚えていることの一部>")
+        output_fn(command_usage("forget-fact", lang))
         return ""
     facts = getattr(profile, "facts", {}) or {}
     needle = text.strip().lower()
@@ -1320,13 +1364,18 @@ def _print_history(conv_log, output_fn: Callable[[str], None]) -> None:
         output_fn(line)
 
 
-def _print_search(conv_log, query: str, output_fn: Callable[[str], None]) -> None:
-    """会話ログをキーワード検索して結果を表示する（アーカイブ含む）。"""
+def _print_search(conv_log, query: str, output_fn: Callable[[str], None],
+                  lang: str = "ja") -> None:
+    """会話ログをキーワード検索して結果を表示する（アーカイブ含む）。
+
+    使い方の一行は `command_usage()` から取る。共有化するまで、ここは
+    日本語固定で英語ユーザーにも日本語の案内を出していた。
+    """
     if conv_log is None:
         output_fn("(会話履歴は利用できません)")
         return
     if not query:
-        output_fn("使用方法: /search <キーワード>")
+        output_fn(command_usage("search", lang))
         return
     try:
         from conversation_log import USER_EVENT_TYPES

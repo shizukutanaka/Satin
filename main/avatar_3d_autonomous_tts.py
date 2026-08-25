@@ -80,8 +80,13 @@ except Exception:  # pragma: no cover - defensive
 
 try:
     from persona_cli import _detect_ritual_event as _detect_ritual_event_gui
+    from persona_cli import command_usage as _command_usage_gui
 except Exception:  # pragma: no cover - defensive
     _detect_ritual_event_gui = None  # type: ignore[assignment]
+
+    def _command_usage_gui(command, lang="ja"):  # type: ignore[misc]
+        """persona_cli を読めない場合のフォールバック（空文字で無害に縮退）。"""
+        return ""
 
 try:
     from user_profile import (
@@ -823,8 +828,7 @@ class AutonomousAvatarViewer(
     def _cmd_callme_gui(self, name: str, lang: str) -> None:
         """GUI の /callme <name> コマンドを処理する。"""
         if not name:
-            self._speak_reply("使い方: /callme <呼んでほしい名前>" if lang != "en"
-                              else "Usage: /callme <your name>")
+            self._speak_reply(_command_usage_gui("callme", lang))
             return
 
         # set_name() でサニタイズ（長さ上限・制御文字除去）した値を採用する。
@@ -852,8 +856,7 @@ class AutonomousAvatarViewer(
     def _cmd_like_gui(self, thing: str, lang: str) -> None:
         """GUI の /like <thing> コマンドを処理する。"""
         if not thing:
-            self._speak_reply("使い方: /like <好きなもの>  例: /like アニメ" if lang != "en"
-                              else "Usage: /like <thing you enjoy>  e.g. /like anime")
+            self._speak_reply(_command_usage_gui("like", lang))
             return
 
         saved = ""
@@ -883,8 +886,7 @@ class AutonomousAvatarViewer(
     def _cmd_forget_gui(self, thing: str, lang: str) -> None:
         """GUI の /forget <thing> コマンドを処理する。"""
         if not thing:
-            self._speak_reply("使い方: /forget <好きなもの>" if lang != "en"
-                              else "Usage: /forget <thing>")
+            self._speak_reply(_command_usage_gui("forget", lang))
             return
 
         removed = False
@@ -920,8 +922,7 @@ class AutonomousAvatarViewer(
         （persona_cli._remove_fact と同一ロジック）。
         """
         if not text:
-            self._speak_reply("使い方: /forget-fact <覚えていることの一部>" if lang != "en"
-                              else "Usage: /forget-fact <something I said I remember>")
+            self._speak_reply(_command_usage_gui("forget-fact", lang))
             return
         if _get_user_profile_gui is None:
             self._speak_reply("(プロファイルは利用できません)" if lang != "en"
@@ -1270,8 +1271,7 @@ class AutonomousAvatarViewer(
                               else "(Conversation history unavailable)")
             return
         if not query:
-            self._speak_reply("使用方法: /search <キーワード>" if lang != "en"
-                              else "Usage: /search <keyword>")
+            self._speak_reply(_command_usage_gui("search", lang))
             return
         try:
             from conversation_log import USER_EVENT_TYPES
@@ -1453,8 +1453,7 @@ class AutonomousAvatarViewer(
     def _cmd_birthday_gui(self, date_str: str, lang: str) -> None:
         """GUI の /birthday MM-DD コマンドを処理する。"""
         if not date_str:
-            self._speak_reply("使い方: /birthday MM-DD  例: /birthday 03-14" if lang != "en"
-                              else "Usage: /birthday MM-DD  e.g. /birthday 03-14")
+            self._speak_reply(_command_usage_gui("birthday", lang))
             return
 
         saved = ""

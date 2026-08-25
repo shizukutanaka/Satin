@@ -217,6 +217,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   increasing perceived manipulation, churn intent, and negative word of mouth.
 
 ### Fixed
+- **The same command explained itself differently in the GUI and the CLI.**
+  A measured comparison of every user-facing string in both entry points found
+  11 near-identical pairs. Some differences are legitimate presentation (the CLI
+  prefixes replies with the avatar's name). Others were plain decay:
+
+      GUI: 「使い方: /birthday MM-DD  例: /birthday 03-14」
+      CLI: 「使用方法: /birthday MM-DD （例: /birthday 06-15）」
+
+  Different heading, different example date, for the same command from the same
+  avatar. `/callme`, `/like`, `/forget`, `/forget-fact` and `/search` had the
+  same split. Nobody chose this; it is what maintaining one string in two places
+  by hand produces.
+
+  The usage lines now live once, in `persona_cli.command_usage()`, which the GUI
+  imports — it already imported that module, so no new dependency direction.
+  `tests/test_command_usage_parity.py` fails on any usage string written inline
+  in either entry point, which immediately caught a `/search` case the manual
+  pass had missed.
+
+  Consolidating also exposed that `_print_search` never took a `lang` argument,
+  so its usage line was hardcoded Japanese — English users were shown Japanese.
 - **Three more reachable-but-pointless parts, found by asking what each one
   does rather than whether it is imported.**
   - `avatar_event_log_rotate` shipped a standalone daemon (`monitor_and_rotate`
