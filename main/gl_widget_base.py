@@ -52,6 +52,23 @@ FOV_Y_DEGREES = 45.0
 #: 近クリップ面・遠クリップ面。
 Z_NEAR = 0.1
 Z_FAR = 100.0
+#: アバターを描くカメラからの距離（paintGL の glTranslatef に渡す z）。
+AVATAR_Z = -5.0
+#: 描画時のアバター半径。gltf_utils.normalize_vertices がどのモデルも
+#: 「重心中心・最大半径 1.0」に正規化し、プレースホルダ球も半径 1.0。
+AVATAR_RADIUS = 1.0
+
+
+def visible_half_height(distance: float) -> float:
+    """カメラから distance だけ離れた平面で、画面に収まる縦半分の長さ。
+
+    視錐台の上端は near·tan(fovy/2)、そこから距離に比例して広がるので
+    distance·tan(fovy/2)。横半分はこれにアスペクト比を掛ける。
+    射影行列（_apply_perspective）とアバターの移動範囲
+    （autonomous_behavior）が同じ三角関数を二度書かないよう、ここを唯一の
+    出どころにしている。
+    """
+    return distance * math.tan(math.radians(FOV_Y_DEGREES) / 2.0)
 
 
 def _apply_perspective(aspect: float) -> None:
@@ -59,7 +76,7 @@ def _apply_perspective(aspect: float) -> None:
 
     GLU を使わずコアの glFrustum で構成する（理由は module docstring）。
     """
-    top = Z_NEAR * math.tan(math.radians(FOV_Y_DEGREES) / 2.0)
+    top = visible_half_height(Z_NEAR)
     right = top * aspect
     glFrustum(-right, right, -top, top, Z_NEAR, Z_FAR)
 

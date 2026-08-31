@@ -13,7 +13,7 @@ from optional_deps import (  # noqa: E402
 )
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
 from tts_thread import TTSThread  # noqa: E402,F401
-from gl_widget_base import GLViewportMixin  # noqa: E402
+from gl_widget_base import AVATAR_RADIUS, AVATAR_Z, GLViewportMixin  # noqa: E402
 
 # 選んだアバターモデル (.glb/.gltf/.vrm) の頂点を読み込んで描画するための
 # 任意依存。未導入・失敗時は従来の球体プレースホルダにフォールバックする。
@@ -1454,7 +1454,9 @@ class AutonomousAvatarViewer(
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
-        glTranslatef(self.position[0], self.position[1], -5.0)
+        # z は共有定数。自律移動の境界（autonomous_behavior._movement_bounds）が
+        # この距離での可視範囲から算出されるので、ここだけ変えると歩き去る。
+        glTranslatef(self.position[0], self.position[1], AVATAR_Z)
         glColor3f(0.6, 0.8, 1.0)
         # 面が取れていれば陰影付きソリッド、頂点だけならワイヤーフレーム、
         # モデルが無ければ球体プレースホルダ。
@@ -1489,7 +1491,7 @@ class AutonomousAvatarViewer(
             return
         try:
             quad = gluNewQuadric()
-            gluSphere(quad, 1.0, 32, 32)
+            gluSphere(quad, AVATAR_RADIUS, 32, 32)
         except Exception as e:  # NullFunctionError 等（GLU の実体が無い環境）
             logger.debug("プレースホルダ球を描画できませんでした: %s", e)
 

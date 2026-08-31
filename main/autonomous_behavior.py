@@ -7,7 +7,6 @@ avatar_3d_autonomous / avatar_3d_autonomous_tts / autonomous_gltf_avatar が
 属性を __init__ で初期化したうえで _advance_autonomous_state() を呼ぶ。
 
 フック:
-  - _autonomous_run_extra(): run 中の移動直後に呼ばれる（例: 画面端反射）
   - _on_talk_start(text):    talk 開始時に呼ばれる（例: TTS キュー投入）
   - reset_direction_on_run:  talk → run 復帰時に方向をランダムリセットするか
   - EXTRA_TEXT_FIELDS:       start/stop で空文字にリセットする追加属性名のタプル
@@ -20,12 +19,20 @@ self.talks / self.REST_TEXTS にフォールバックする（後方互換）。
 from __future__ import annotations
 
 import logging
+import math
 import random
 from typing import Any
 
-from optional_deps import np
-
 logger = logging.getLogger(__name__)
+
+try:
+    from gl_widget_base import AVATAR_RADIUS, AVATAR_Z, visible_half_height
+except Exception:  # pragma: no cover - defensive（GL 抜きの環境でも歩ける）
+    AVATAR_RADIUS = 1.0
+    AVATAR_Z = -5.0
+
+    def visible_half_height(distance: float) -> float:  # type: ignore[misc]
+        return distance * math.tan(math.radians(45.0) / 2.0)
 
 try:
     from persona import get_persona
@@ -129,6 +136,9 @@ class AutonomousBehaviorMixin:
     # 実際に使うのでここで契約として宣言しておく（Qt の update() と座標）。
     update: Any
     position: Any
+    # ビューポートの実寸（Qt ウィジェットが供給）。移動範囲の算出に使う。
+    width: Any
+    height: Any
 
     @property
     def persona(self):
@@ -314,15 +324,60 @@ class AutonomousBehaviorMixin:
             setattr(self, field, '')
         self.update()
 
-    def _autonomous_move(self) -> None:
-        """direction 方向へ 1 ティック分移動する。numpy 未導入なら何もしない。"""
-        speed = 0.03
-        if np is not None:
-            self.position[0] += speed * np.cos(np.radians(self.direction))
-            self.position[1] += speed * np.sin(np.radians(self.direction))
+    #: 1 ティックの移動量（ワールド座標）。
+    MOVE_SPEED = 0.03
 
-    def _autonomous_run_extra(self) -> None:
-        """run 中の移動直後フック。デフォルトは何もしない。"""
+    def _viewport_aspect(self) -> float:
+        """合成先ウィジェットの アスペクト比（幅/高さ）。取れなければ 1.0。"""
+        try:
+            width = float(self.width())
+            height = float(self.height())
+        except Exception:
+            return 1.0
+        if width <= 0.0 or height <= 0.0:
+            return 1.0
+        return width / height
+
+    def _movement_bounds(self) -> tuple:
+        """アバターの中心が動ける範囲（±x, ±y）。
+
+        アバターは z = AVATAR_Z に半径 AVATAR_RADIUS で描かれるので、その平面
+        で画面に収まる範囲から半径を引いた矩形が「はみ出さずに立てる場所」。
+        縦横比が 1 未満（縦長ウィンドウ）なら横のほうが狭いので、アスペクト比
+        を掛けた実際の横幅で判定する。窓がアバターより狭ければ 0 になり、
+        原点に留まる（それ以上できることは無い）。
+        """
+        half_h = visible_half_height(abs(AVATAR_Z))
+        half_w = half_h * self._viewport_aspect()
+        return (max(half_w - AVATAR_RADIUS, 0.0), max(half_h - AVATAR_RADIUS, 0.0))
+
+    def _autonomous_move(self) -> None:
+        """direction 方向へ 1 ティック分移動し、画面端では跳ね返る。
+
+        跳ね返りが無いと、方向転換が ±60° のランダムウォークなので位置は
+        一切戻らず、**アバターは数秒で画面外へ歩き去って二度と戻らない**
+        （実測: 10 秒で原点から 2.46、可視半径は約 2.07）。以前は
+        `_autonomous_run_extra()` という「例: 画面端反射」と説明された空フックが
+        あったが、どのビューアも実装していなかった。境界はカメラの画角から
+        一意に決まるので、フックにせずここで直接扱う。
+
+        壁で向きを鏡映（縦壁なら 180-θ、横壁なら -θ）してから位置を境界に
+        丸める。クランプだけだと端に貼り付いたまま押し続けるので、
+        「向きを変えて歩き去る」ほうが生き物らしい。
+        """
+        radians = math.radians(self.direction)
+        x = self.position[0] + self.MOVE_SPEED * math.cos(radians)
+        y = self.position[1] + self.MOVE_SPEED * math.sin(radians)
+        x_max, y_max = self._movement_bounds()
+        if not -x_max <= x <= x_max:
+            self.direction = 180.0 - self.direction
+            x = max(-x_max, min(x_max, x))
+        if not -y_max <= y <= y_max:
+            self.direction = -self.direction
+            y = max(-y_max, min(y_max, y))
+        self.direction %= 360.0
+        self.position[0] = x
+        self.position[1] = y
 
     def _on_talk_start(self, text: str) -> None:
         """talk 開始時フック。デフォルトは何もしない。"""
@@ -427,10 +482,10 @@ class AutonomousBehaviorMixin:
         if self.mode == 'run':
             # 駆け回る
             self._autonomous_move()
-            self._autonomous_run_extra()
             # ランダムに方向転換
             if random.random() < 0.05:
-                self.direction += random.uniform(-60, 60)
+                # 反射と同じく [0, 360) に正規化して保つ（角度が無限に育たない）
+                self.direction = (self.direction + random.uniform(-60, 60)) % 360.0
             if self.ticks > 60 + random.randint(0, 40):  # 3秒程度
                 self.mode = 'rest'
                 self.ticks = 0

@@ -5,6 +5,7 @@ state machine extracted from the three autonomous avatar viewers.
 The mixin operates on plain attributes, so it is testable without Qt/numpy.
 """
 import contextlib
+import math
 import os
 import sys
 import unittest
@@ -15,6 +16,7 @@ sys.path.insert(0, _MAIN)
 
 import autonomous_behavior  # noqa: E402
 from autonomous_behavior import AutonomousBehaviorMixin  # noqa: E402
+from gl_widget_base import AVATAR_RADIUS, AVATAR_Z, visible_half_height  # noqa: E402
 
 
 class _Dummy(AutonomousBehaviorMixin):
@@ -36,13 +38,18 @@ class _TalkHookDummy(_Dummy):
         self.spoken.append(text)
 
 
-class _RunExtraDummy(_Dummy):
-    def __init__(self):
-        super().__init__()
-        self.extra_calls = 0
+class _SizedDummy(_Dummy):
+    """width()/height() を持つ = Qt ウィジェット相当のダミー。"""
 
-    def _autonomous_run_extra(self):
-        self.extra_calls += 1
+    def __init__(self, width=640, height=480):
+        super().__init__()
+        self._size = (width, height)
+
+    def width(self):
+        return self._size[0]
+
+    def height(self):
+        return self._size[1]
 
 
 def _step_until_mode(obj, mode, max_steps=500):
@@ -91,12 +98,6 @@ class StateMachineTests(unittest.TestCase):
         d._advance_autonomous_state()  # first tick of talk
         self.assertIn(d.talk_text, d.talks)
         self.assertEqual(d.spoken, [d.talk_text])
-
-    def test_run_extra_hook_called_each_run_tick(self):
-        d = _RunExtraDummy()
-        d._advance_autonomous_state()
-        d._advance_autonomous_state()
-        self.assertEqual(d.extra_calls, 2)
 
     def test_direction_reset_flag(self):
         class _Resetting(_Dummy):
@@ -1199,6 +1200,99 @@ class UsageGuardrailGreetingTests(unittest.TestCase):
 
         self.assertTrue(d.is_autonomous)
         self.assertIn("GREETING", d.talk_text)
+
+
+class MovementBoundsTests(unittest.TestCase):
+    """Regression: the avatar used to walk off screen and never come back.
+
+    Movement was an unbounded random walk (±60° turns, no edge handling), so
+    a 10-second run in the real GUI took it to 2.46 from the origin while the
+    visible half-extent at the draw distance is only ~2.07. The documented
+    hook for edge reflection (_autonomous_run_extra) had no implementer.
+    """
+
+    def setUp(self):
+        self._patcher = mock.patch.object(autonomous_behavior, "get_persona", None)
+        self._patcher.start()
+        self._mood_patcher = mock.patch.object(autonomous_behavior, "_get_mood_tracker", None)
+        self._mood_patcher.start()
+
+    def tearDown(self):
+        self._patcher.stop()
+        self._mood_patcher.stop()
+
+    def test_bound_is_the_frustum_edge_minus_the_avatar_radius(self):
+        """The bound is derived from the camera, not a magic number: at the
+        limit the avatar's silhouette exactly touches the top of the view."""
+        d = _SizedDummy(480, 480)  # square: aspect 1, x and y bounds equal
+        x_max, y_max = d._movement_bounds()
+        edge = visible_half_height(abs(AVATAR_Z))
+        self.assertAlmostEqual(y_max + AVATAR_RADIUS, edge, places=6)
+        self.assertAlmostEqual(x_max, y_max, places=6)
+        self.assertGreater(y_max, 0.0, "the avatar must have somewhere to walk")
+
+    def test_stays_in_view_over_a_long_run(self):
+        d = _SizedDummy()
+        x_max, y_max = d._movement_bounds()
+        for tick in range(5000):
+            d._advance_autonomous_state()
+            self.assertLessEqual(abs(d.position[0]), x_max + 1e-9,
+                                 f"walked off horizontally at tick {tick}")
+            self.assertLessEqual(abs(d.position[1]), y_max + 1e-9,
+                                 f"walked off vertically at tick {tick}")
+
+    def test_actually_moves_without_numpy(self):
+        """Movement used to be a no-op when numpy was absent — an optional
+        dependency silently froze the flagship animation. math.cos is enough."""
+        d = _SizedDummy()
+        d.direction = 0.0
+        d._autonomous_move()
+        self.assertAlmostEqual(d.position[0], d.MOVE_SPEED, places=6)
+        self.assertAlmostEqual(d.position[1], 0.0, places=6)
+
+    def test_reflects_off_the_edge_instead_of_sticking(self):
+        d = _SizedDummy()
+        x_max, _ = d._movement_bounds()
+        d.position = [x_max, 0.0]
+        d.direction = 0.0  # heading straight at the right wall
+        d._autonomous_move()
+        self.assertLess(math.cos(math.radians(d.direction)), 0.0,
+                        "must turn around at the wall, not keep pushing into it")
+        before = d.position[0]
+        d._autonomous_move()
+        self.assertLess(d.position[0], before, "must walk back into view")
+
+    def test_direction_stays_in_range_after_reflections(self):
+        d = _SizedDummy()
+        for _ in range(500):
+            d._advance_autonomous_state()
+            self.assertTrue(0.0 <= d.direction < 360.0,
+                            f"direction escaped its range: {d.direction}")
+
+    def test_portrait_window_narrows_the_horizontal_bound(self):
+        """A tall window shows less width than height; the bound follows."""
+        portrait = _SizedDummy(480, 640)
+        x_max, y_max = portrait._movement_bounds()
+        self.assertLess(x_max, y_max)
+
+    def test_missing_widget_size_falls_back_to_a_square(self):
+        """The mixin is used headless in tests; no width() must not crash."""
+        d = _Dummy()  # no width()/height()
+        self.assertEqual(d._viewport_aspect(), 1.0)
+        x_max, y_max = d._movement_bounds()
+        self.assertAlmostEqual(x_max, y_max, places=6)
+
+    def test_zero_height_does_not_divide_by_zero(self):
+        d = _SizedDummy(640, 0)
+        self.assertEqual(d._viewport_aspect(), 1.0)
+
+    def test_window_narrower_than_the_avatar_pins_it_to_the_centre(self):
+        """Degenerate but reachable: nothing sensible to do but stay put."""
+        d = _SizedDummy(1, 480)
+        x_max, _ = d._movement_bounds()
+        self.assertEqual(x_max, 0.0)
+        d._advance_autonomous_state()
+        self.assertAlmostEqual(d.position[0], 0.0, places=6)
 
 
 if __name__ == "__main__":
