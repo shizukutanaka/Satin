@@ -209,6 +209,58 @@ def check_smoke_dashboard() -> Result:
     return res
 
 
+_GUI_SMOKE_SCRIPT = """\
+import sys
+sys.path.insert(0, %r)
+try:
+    from PyQt5.QtWidgets import QApplication
+except Exception:
+    sys.exit(77)
+import avatar_3d_autonomous_tts as av
+app = QApplication([])
+w = av.MainWindow()
+w.show()
+app.processEvents()
+v = w.viewer
+w.toggle_autonomous()
+assert v.is_autonomous, "autonomous mode did not start"
+x_max, y_max = v._movement_bounds()
+for tick in range(400):
+    v.update_autonomous()
+    assert abs(v.position[0]) <= x_max + 1e-9, (tick, v.position)
+    assert abs(v.position[1]) <= y_max + 1e-9, (tick, v.position)
+w.toggle_autonomous()
+assert not v.is_autonomous, "autonomous mode did not stop"
+w.close()
+app.processEvents()
+"""
+
+
+def check_smoke_gui() -> Result:
+    """PyQt5 と X サーバ（実物か xvfb）がある場合のみ、実 GUI で自律モードを回す。
+
+    アバターが画面外へ歩き去る欠陥は、xvfb で実際に起動して座標を実測する
+    まで、どの静的検査・単体テストにも掛からなかった。実 Qt タイマー経路
+    （update_autonomous → _advance_autonomous_state → paintGL の座標）を
+    400 ティック回し、位置が常に可視範囲内に留まることを検証する。
+    手で二度やった検証は自動化する（5 ステップの最終段）。
+    """
+    script = _GUI_SMOKE_SCRIPT % _MAIN
+    cmd = [sys.executable, "-c", script]
+    if not os.environ.get("DISPLAY"):
+        xvfb = shutil.which("xvfb-run")
+        if xvfb is None:
+            return Result("smoke: GUI", _SKIP, "DISPLAY も xvfb-run も無い", 0.0)
+        cmd = [xvfb, "-a", *cmd]
+    res = _run("smoke: GUI", cmd, timeout=300)
+    # 77 は「PyQt5 未導入」の合図。失敗ではなく SKIP として扱う。
+    if res.status == _NG and "SystemExit: 77" not in res.detail:
+        proc = subprocess.run(cmd, cwd=_ROOT, capture_output=True, text=True)
+        if proc.returncode == 77:
+            return Result(res.name, _SKIP, "PyQt5 未導入", res.seconds)
+    return res
+
+
 _STATIC = [
     ("py_compile", check_compile),
     ("ruff", check_lint),
@@ -221,6 +273,7 @@ _SMOKE = [
     ("smoke: --version", check_smoke_version),
     ("smoke: --chat", check_smoke_chat),
     ("smoke: dashboard", check_smoke_dashboard),
+    ("smoke: GUI", check_smoke_gui),
 ]
 
 

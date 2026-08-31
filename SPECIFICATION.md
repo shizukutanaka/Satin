@@ -360,9 +360,12 @@ python check.py     # これ 1 本。緑ならリリース可能な状態であ�
 ```
 
 `check.py` が実行するもの: `py_compile` / ruff / mypy / pytest /
-`manage_satin validate` / 起動スモーク 3 種（`--version`・`--chat`・
-ダッシュボードの主要ルート）。約 10 秒で終わり、`--fast` を付けると
-起動スモークを省いて編集中の高速ループに使える。
+`manage_satin validate` / 起動スモーク 4 種（`--version`・`--chat`・
+ダッシュボードの主要ルート・GUI）。GUI スモークは PyQt5 と X サーバ
+（実物か xvfb）がある環境でのみ実行され、実 Qt で起動して自律モードを
+400 ティック回し、アバターの座標が常に可視範囲内に留まることを検証する
+（それ以外の環境では SKIP）。`--fast` を付けると起動スモークを省いて
+編集中の高速ループに使える。
 
 CI（`setup/github-actions-ci.yml`）もこの同じコマンドを呼ぶ。検証内容を
 2 箇所に書かないことで、「手元では通るのに CI で落ちる」がリスト間の

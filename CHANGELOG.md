@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The avatar no longer walks off screen in autonomous mode.** Movement was an
+  unbounded random walk; measured in the real GUI (xvfb) the avatar left the
+  ~2.07 visible half-extent within seconds and never returned. The bound is now
+  derived from the camera geometry (`AVATAR_Z`, `FOV_Y_DEGREES`, model radius
+  1.0 after normalization) and the avatar reflects off the edge. The empty
+  `_autonomous_run_extra` hook — documented as "e.g. edge reflection" but
+  implemented by no viewer — was deleted, and movement no longer silently
+  freezes when numpy is absent (`math.cos` suffices).
+
+- **A real-GUI smoke test in `check.py`** (`smoke: GUI`). Where PyQt5 and an X
+  server (or xvfb) are available, the gate now launches the actual Qt window,
+  turns on autonomous mode, runs 400 ticks, and asserts the avatar stays inside
+  the visible range; elsewhere it SKIPs. This automates the manual xvfb
+  verification that found the walk-off defect.
+
+- **`PRODUCT_REVIEW.md`** — a full strengths/weaknesses/improvements audit of
+  the product, written as Socratic dialogue (claims survive only when answered
+  by a measurement or a test) with each remedy assigned to a step of Elon
+  Musk's five-step algorithm and a tier (do now / propose / needs a human).
+
 - **The relationship's growth arc is now tunable** (`max_daily_gain` in
   `config/mood_config.json`). Walking a long session revealed the arithmetic:
   affinity starts at 50.0, the top level (`close`) begins at 80.0, and the
