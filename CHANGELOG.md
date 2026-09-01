@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **`--avatar-loader` is gone** (the owner's decision on `PRODUCT_REVIEW.md`
+  §3 #4). It opened a separate tkinter window whose only job was picking an
+  avatar file — something the main GUI's `/avatar` command does in place,
+  without a restart. Keeping it meant carrying two GUI toolkits for one
+  feature, handing the choice between processes, and making the user relaunch.
+  **tkinter and Pillow are now gone from the dependency list entirely**:
+  `check.py` tracks six optional dependencies instead of seven, and a test
+  fails if either import comes back. The selection history is unaffected —
+  `avatar_model_store` still keeps it and still reads a legacy
+  `avatar_history.json`.
+
+  Examining it turned up a second defect: passing the removed flag did not
+  error. `--manage`'s `argparse.REMAINDER` was swallowing every unrecognized
+  argument, so a typo like `--chta` silently launched the 3D GUI instead of
+  the chat. Leftover arguments outside `--manage` are now reported (exit
+  code 2).
+
 ### Changed
 - **The relationship now grows over about a week, not in one sitting**
   (`max_daily_gain` default 30.0 → 5.0, the owner's decision on the question
