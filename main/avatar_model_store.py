@@ -1,14 +1,16 @@
 """
 選択されたアバターモデルの永続化と解決（純ロジック・LLM/GUI 非依存）。
 
-`avatar_loader.py`（`--avatar-loader` で開くファイル選択ダイアログ）が選んだ
-アバターファイルのパスを保存し、本体 3D GUI（`avatar_3d_autonomous_tts.py`）が
-起動時にそれを読み取って描画できるようにする「唯一の受け渡し口」。
+本体 3D GUI（`avatar_3d_autonomous_tts.py`）の `/avatar` コマンドで選んだ
+アバターファイルのパスを保存し、次回起動時に読み取って描画できるようにする
+「唯一の受け渡し口」。
 
-従来 `avatar_loader.py` は cwd 相対の `avatar_history.json` に履歴を書くだけで、
-どのモジュールもそれを読まず、ユーザーが選んだアバターがどこにも反映されな
-かった（商用品質監査 W7 の残課題）。ここに canonical な保存先とアトミック
-書き込み・堅牢な読み込み・拡張子/実在チェック付きの解決を集約する。
+歴史的経緯: 選択は別プロセスの tkinter ダイアログ（`avatar_loader.py`、
+`--avatar-loader`）が担っており、cwd 相対の `avatar_history.json` に履歴を
+書くだけでどのモジュールもそれを読まず、ユーザーが選んだアバターがどこにも
+反映されなかった（商用品質監査 W7 の残課題）。ここに canonical な保存先と
+アトミック書き込み・堅牢な読み込み・拡張子/実在チェック付きの解決を集約し、
+その後 `/avatar` が本体内で選択できるようになったのでダイアログ側は削除した。
 """
 from __future__ import annotations
 
@@ -40,7 +42,11 @@ def history_path() -> str:
 
 
 def _legacy_cwd_path() -> str:
-    """旧 `avatar_loader.py` が書いていた cwd 相対の履歴ファイル。"""
+    """削除済みの `avatar_loader.py` が書いていた cwd 相対の履歴ファイル。
+
+    旧バージョンで選択履歴を作ったユーザーの分を拾うために読むだけで、
+    ここへ書くことはもうない。
+    """
     return os.path.abspath("avatar_history.json")
 
 
@@ -77,7 +83,7 @@ def save_selection(path: str) -> List[str]:
 
     重複は除去し先頭へ、上限 _MAX_HISTORY 件。アトミック書き込み
     (mkstemp + os.replace) で途中クラッシュ時の破損を防ぐ
-    （`avatar_loader.add_history` のパターンを移設・共通化）。
+    （削除済み `avatar_loader.add_history` のパターンを移設・共通化）。
     空/None path は no-op（現在の履歴を返す）。
     """
     if not path:

@@ -53,7 +53,7 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 _MAIN = os.path.join(_ROOT, "main")
 
 # 任意依存。有無でテストの通り方が変わりうるので、実行のたびに状態を出す。
-_OPTIONAL_DEPS = ("PyQt5", "OpenGL", "flask", "numpy", "pygltflib", "PIL", "pyttsx3")
+_OPTIONAL_DEPS = ("PyQt5", "OpenGL", "flask", "numpy", "pygltflib", "pyttsx3")
 
 # 端末が UTF-8 でない場合に備え、記号はここで一元管理する。
 _OK, _NG, _SKIP = "PASS", "FAIL", "SKIP"

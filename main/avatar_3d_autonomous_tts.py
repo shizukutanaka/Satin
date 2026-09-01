@@ -323,7 +323,7 @@ class AutonomousAvatarViewer(
         # 破壊的コマンドの二段階確認フラグ（_PENDING_CONFIRMATIONS 参照）
         for _attr in _PENDING_CONFIRMATIONS:
             setattr(self, _attr, False)
-        # --avatar-loader で選んだアバターモデルの頂点（無ければ球体を描画）
+        # /avatar で選んだアバターモデルの頂点（無ければ球体を描画）
         self.avatar_model_vertices = None
         # 三角形インデックス (M, 3) と面ごとのフラット法線 (M, 3)。
         # 取れたときは陰影付きのソリッド描画、取れなければ従来のワイヤーフレーム。
@@ -1341,6 +1341,8 @@ class AutonomousAvatarViewer(
         する必要があった。1 つの機能のために GUI ツールキットを 2 つ抱え、
         プロセスを跨いで選択を受け渡し、ユーザーには再起動を強いていた。
         本体は既に PyQt5 を持っているので、QFileDialog を直接開けばよい。
+        重複していた `--avatar-loader` は削除済み（tkinter と Pillow への
+        依存もそれと一緒に消えた）。
         """
         import os as _os
         is_en = lang.startswith("en")
@@ -1550,7 +1552,7 @@ class MainWindow(QMainWindow if QMainWindow is not None else object):  # type: i
         self.break_reminder = None
         self.viewer = AutonomousAvatarViewer(self)
         self.viewer.set_tts_queue(self.tts_queue)
-        # --avatar-loader で選んだアバターがあれば起動時に読み込んで描画する。
+        # 前回 /avatar で選んだアバターがあれば起動時に読み込んで描画する。
         try:
             self.viewer.load_avatar_model()
         except Exception as e:

@@ -5,6 +5,8 @@ All tests avoid actually launching GUI, Flask, or TTS by mocking out the
 underlying _launch_* functions and checking the dispatch logic. Also tests
 _check_deps() and _check_config().
 """
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -121,31 +123,68 @@ class LaunchDispatchTests(unittest.TestCase):
 
     def test_no_args_launches_avatar_gui(self):
         """Default mode must launch the real 3D avatar GUI (TTS/mood/log/
-        slash commands), not the file-picker-only avatar_loader. Regression
-        for a commercial-quality audit finding: the documented launch path
-        (this default, launch/win/run_satin.bat, launch/mac/run_satin.sh,
-        README) used to dead-end at avatar_loader.AvatarLoaderApp, which
-        only remembers a chosen file path and never displays the avatar."""
+        slash commands). Regression for a commercial-quality audit finding:
+        the documented launch path (this default, launch/win/run_satin.bat,
+        launch/mac/run_satin.sh, README) used to dead-end at the
+        file-picker-only avatar_loader.AvatarLoaderApp, which only remembered
+        a chosen file path and never displayed the avatar. That picker has
+        since been deleted — /avatar in the main GUI replaces it."""
         with mock.patch.object(satin_launcher, "_launch_avatar_gui") as m, \
              mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
              mock.patch.object(satin_launcher, "_check_config"):
             self._run(["--no-dep-check"])
             m.assert_called_once()
 
-    def test_no_args_does_not_launch_avatar_loader(self):
-        with mock.patch.object(satin_launcher, "_launch_avatar_loader") as loader_m, \
-             mock.patch.object(satin_launcher, "_launch_avatar_gui"), \
-             mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
-             mock.patch.object(satin_launcher, "_check_config"):
-            self._run(["--no-dep-check"])
-            loader_m.assert_not_called()
+    def test_avatar_loader_flag_is_gone(self):
+        """--avatar-loader は削除されたので、未知の引数として拒否されること。
 
-    def test_avatar_loader_flag_dispatches(self):
-        with mock.patch.object(satin_launcher, "_launch_avatar_loader") as m, \
+        本体 GUI の /avatar が同じ選択機能を提供するため重複を削除した。
+        黙って既定モードにフォールバックすると、旧フラグを使う人は
+        「選択ダイアログのつもりで本体が起動した」ことに気づけない。
+        argparse がエラー終了する（exit code 2）のが正しい。
+        """
+        # _run() は SystemExit を握りつぶすので、ここは main() を直に呼ぶ。
+        with mock.patch("sys.argv", ["satin_launcher", "--avatar-loader",
+                                     "--no-dep-check"]), \
+             mock.patch.object(satin_launcher, "_launch_avatar_gui") as gui_m, \
+             mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
+             mock.patch.object(satin_launcher, "_check_config"), \
+             contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                satin_launcher.main()
+            self.assertEqual(ctx.exception.code, 2)
+            gui_m.assert_not_called()
+
+    def test_a_mistyped_flag_is_reported_not_swallowed(self):
+        """打ち間違いが黙って既定モードにならないこと。
+
+        manage_subargs が argparse.REMAINDER なので、認識できない引数を
+        すべて飲み込んでいた。`--chat` を `--chta` と打つと、エラーも出さずに
+        3D GUI が起動する（会話 CLI を頼んだのに）。
+        """
+        with mock.patch("sys.argv", ["satin_launcher", "--chta", "--no-dep-check"]), \
+             mock.patch.object(satin_launcher, "_launch_avatar_gui") as gui_m, \
+             mock.patch.object(satin_launcher, "_launch_chat") as chat_m, \
+             mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
+             mock.patch.object(satin_launcher, "_check_config"), \
+             contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                satin_launcher.main()
+            self.assertEqual(ctx.exception.code, 2)
+            gui_m.assert_not_called()
+            chat_m.assert_not_called()
+
+    def test_manage_subcommands_still_forward(self):
+        """--manage の転送は壊さないこと（REMAINDER の正当な用途）。"""
+        with mock.patch.object(satin_launcher, "_launch_manage") as m, \
              mock.patch.object(satin_launcher, "_check_deps", return_value=[]), \
              mock.patch.object(satin_launcher, "_check_config"):
-            self._run(["--avatar-loader", "--no-dep-check"])
-            m.assert_called_once()
+            self._run(["--manage", "mood", "show", "--no-dep-check"])
+            m.assert_called_once_with(["mood", "show", "--no-dep-check"])
+
+    def test_launcher_has_no_avatar_loader_entry_point(self):
+        """起動関数そのものが残っていないこと（削除の取りこぼし防止）。"""
+        self.assertFalse(hasattr(satin_launcher, "_launch_avatar_loader"))
 
 
 class LaunchAvatarGuiTests(unittest.TestCase):
@@ -258,10 +297,10 @@ class HeadlessModesDoNotNeedTkinterTests(unittest.TestCase):
     (dependency_manifest.REQUIRED_PACKAGES), so satin_launcher._check_deps()
     called sys.exit(1) before dispatching to ANY mode on a machine without
     tkinter — including --chat, which --help itself describes as
-    "ヘッドレスでアバターと会話する CLI" (a headless CLI). Only
-    avatar_loader.py (the default GUI mode) ever imports tkinter, and
-    _launch_avatar_loader() already has its own try/except around that
-    import with a clear error message. These tests exercise the REAL
+    "ヘッドレスでアバターと会話する CLI" (a headless CLI). The only module
+    that ever imported tkinter was avatar_loader.py, which has since been
+    deleted — nothing in the repository imports tkinter now, so no mode may
+    be gated on it. These tests exercise the REAL
     _check_deps() (unlike LaunchDispatchTests above, which mocks it away)
     with tkinter simulated absent, to confirm none of the headless modes
     are blocked by it.

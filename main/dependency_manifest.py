@@ -23,7 +23,6 @@ from typing import List, Tuple
 OPTIONAL_PACKAGES: List[Tuple[str, str, str]] = [
     ("PyQt5",       "pip install PyQt5",            "3D アバター GUI"),
     ("OpenGL",      "pip install PyOpenGL",         "3D アバター描画 (OpenGL)"),
-    ("PIL",         "pip install pillow",           "画像処理（テクスチャ等）"),
     ("numpy",       "pip install numpy",            "数値計算（ポーズ・幾何）"),
     ("pyttsx3",     "pip install pyttsx3",          "音声合成 (TTS)"),
     ("pygltflib",   "pip install pygltflib",        "glTF アバター読み込み"),
@@ -32,15 +31,15 @@ OPTIONAL_PACKAGES: List[Tuple[str, str, str]] = [
 
 # (import_name, message) — これらが無いと起動できない。
 #
-# tkinter は以前ここに含まれていたが、実際に tkinter を使うのは
-# avatar_loader.py（GUI アバターローダー）だけで、satin_launcher.py の
-# _launch_avatar_loader() は自前で import tkinter を try/except しており
-# 既に明確なエラーメッセージを出す。REQUIRED_PACKAGES はランチャの
-# *全モード* に対して起動前チェックされるため、tkinter がここにあると
-# --chat（「ヘッドレスで会話する CLI」と明記）・--dashboard・--manage・
-# --validate まで、それらが一切使わない tkinter の不在で起動不能になって
-# いた。GUI アバターローダー固有の依存はそのモードの try/except に任せ、
-# ここは真に全モード共通の必須依存だけを列挙する（現状は無し）。
+# ここは REQUIRED_PACKAGES がランチャの *全モード* に対して起動前チェック
+# されるため、あるモードでしか使わない依存を入れてはいけない（かつて
+# tkinter がここにあり、tkinter を一切使わない --chat・--dashboard・
+# --manage・--validate まで起動不能になっていた）。モード固有の依存は
+# そのモードの try/except に任せる。現状、全モード共通の必須依存は無い。
+#
+# PIL(Pillow) も以前は任意依存に挙がっていたが、唯一の利用者だった
+# avatar_loader.py（tkinter のサムネイル付きファイル選択ダイアログ）は、
+# 本体 GUI の /avatar コマンドと機能が重複するため削除した。
 REQUIRED_PACKAGES: List[Tuple[str, str]] = []
 
 

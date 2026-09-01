@@ -15,8 +15,6 @@ Satin ランチャー
   --dashboard       Flask ダッシュボードを起動
   --manage [args…]  CLI 管理バッチツールを起動（サブコマンドを渡せる: mood show 等）
   --validate        設定バリデーションのみ実行して終了（エラー時は exit code 1）
-  --avatar-loader   外部アバターファイル(.vrm/.fbx/.glb/.gltf)選択ダイアログのみを起動
-                    （3D 描画・TTS・会話機能は無い簡易ツール。従来の既定モード）
   --help / -h       ヘルプを表示して終了
 """
 from __future__ import annotations
@@ -45,9 +43,8 @@ try:
     _OPTIONAL_DEPS: list[tuple[str, str]] = optional_check_list()
     _REQUIRED_DEPS: list[tuple[str, str]] = required_check_list()
 except Exception:  # pragma: no cover - defensive fallback
-    # tkinter は全モード共通の必須依存ではない（_launch_avatar_loader() が
-    # 自前で try/except している）。dependency_manifest.py の
-    # REQUIRED_PACKAGES と同じ理由でここも空にする。
+    # dependency_manifest.py の REQUIRED_PACKAGES と同じ理由でここも空にする
+    # （依存表を読めないこと自体で起動を止めない）。
     _OPTIONAL_DEPS = []
     _REQUIRED_DEPS = []
 
@@ -87,27 +84,15 @@ def _check_config() -> None:
 # --------------------------------------------------------------------------- #
 # 各起動モード
 # --------------------------------------------------------------------------- #
-def _launch_avatar_loader() -> None:
-    try:
-        import tkinter as tk
-        from avatar_loader import AvatarLoaderApp
-        root = tk.Tk()
-        AvatarLoaderApp(root)
-        root.mainloop()
-    except ImportError as e:
-        print(f"[ERROR] GUI 起動失敗: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
 def _launch_avatar_gui() -> None:
     """3D アバター本体（TTS・好感度・会話ログ・スラッシュコマンド）を起動する。
 
-    既定の起動モード。以前は avatar_loader.AvatarLoaderApp（外部アバター
+    唯一の起動モード。以前は avatar_loader.AvatarLoaderApp（外部アバター
     ファイルを選ぶだけで何も起動しない簡易ダイアログ）が既定になっており、
     launch/win/run_satin.bat・launch/mac/run_satin.sh・README が案内する
     「Satin を起動する」手順の実体が、この本体 GUI に一切辿り着けない状態
-    だった（商用品質監査で発見）。ファイル選択ダイアログは --avatar-loader
-    で引き続き利用できる。
+    だった（商用品質監査で発見）。その後 --avatar-loader として残していたが、
+    本体 GUI の /avatar コマンドが同じ選択機能を提供するため削除した。
     """
     # 多重起動ガード: 本体 GUI は mood.json / 会話ログ / プロフィールを継続的に
     # 書き込むため、2 つ同時起動すると状態が破損しうる。既に起動中なら拒否する。
@@ -220,8 +205,6 @@ def main() -> None:
     parser.add_argument("--dashboard", action="store_true", help="Flask ダッシュボードを起動")
     parser.add_argument("--manage",    action="store_true", help="CLI 管理バッチツールを起動")
     parser.add_argument("--validate",  action="store_true", help="設定バリデーションのみ実行して終了")
-    parser.add_argument("--avatar-loader", action="store_true",
-                        help="外部アバターファイル選択ダイアログのみを起動（従来の既定モード）")
     parser.add_argument("--host",      default="127.0.0.1", help="ダッシュボードのホスト (default: 127.0.0.1)")
     parser.add_argument("--port",      type=int, default=None, help="ダッシュボードのポート (default: 5003 / 環境変数 SATIN_DASHBOARD_PORT)")
     parser.add_argument("--lang",      default=None, help="会話言語 (例: ja, en) — --chat と併用")
@@ -231,6 +214,14 @@ def main() -> None:
     parser.add_argument("manage_subargs", nargs=argparse.REMAINDER,
                         help="--manage 時に manage_satin に転送するサブコマンド引数")
     args = parser.parse_args()
+
+    # manage_subargs は argparse.REMAINDER なので、**認識できない引数を
+    # すべて黙って飲み込む**。そのため `--avaatar` のような打ち間違いや、
+    # 削除済みの `--avatar-loader` を渡しても、エラーにならず既定モード
+    # （3D GUI）が起動していた。--manage 以外では転送先が無いので、
+    # 残った引数は不明な引数として報告する（argparse は exit code 2）。
+    if not args.manage and args.manage_subargs:
+        parser.error("不明な引数: " + " ".join(args.manage_subargs))
 
     if not args.no_dep_check:
         _check_deps(verbose=True)
@@ -250,8 +241,6 @@ def main() -> None:
         _launch_manage(args.manage_subargs or None)
     elif args.dashboard:
         _launch_dashboard(host=args.host, port=args.port)
-    elif args.avatar_loader:
-        _launch_avatar_loader()
     else:
         # デフォルト: 3D アバター本体（TTS・好感度・会話ログ）を起動
         _launch_avatar_gui()

@@ -35,9 +35,9 @@ TTS で音声合成しながら 3D アバターを動かす。関係性（好感
 - **必須の外部依存は無い**。CLI 会話（`--chat`）と管理 CLI は標準ライブラリ
   だけで動く。
 - 任意: PyQt5 / PyOpenGL / numpy / pygltflib（3D アバター GUI）、
-  pyttsx3（TTS）、flask（ダッシュボード）、Pillow + tkinter（`--avatar-loader`
-  のサムネイル表示。§3.6 参照）。いずれも欠けても該当機能が縮退するだけで
-  起動は継続する。
+  pyttsx3（TTS）、flask（ダッシュボード）。いずれも欠けても該当機能が縮退する
+  だけで起動は継続する。tkinter と Pillow は依存に含まれない（唯一の利用者
+  だった `--avatar-loader` を削除したため。§3.5.1）。
   Linux では PyOpenGL が使う `libGLU` が pip で入らない場合がある
   （Debian/Ubuntu: `apt install libglu1-mesa`）。無くても縮退する。
 
@@ -55,8 +55,6 @@ satin_launcher.py
   ├─ 設定チェック (_check_config)      config/ の存在確認
   └─ モード分岐
        ├─ (既定)        GUI 本体: avatar_3d_autonomous_tts.MainWindow (PyQt5/OpenGL)
-       ├─ --avatar-loader GUI: avatar_loader.AvatarLoaderApp (tkinter。サムネイル付き選択。
-       │                  ※ 本体 GUI の /avatar でも選べる — §3.6 の注記を参照)
        ├─ --chat         CLI 会話: persona_cli.main()
        ├─ --dashboard    Web: dashboard.app (Flask)
        ├─ --manage […]   管理 CLI: manage_satin.main()
@@ -68,7 +66,7 @@ satin_launcher.py
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ プレゼンテーション層                                          │
-│  avatar_loader / avatar_3d_*  (GUI)                          │
+│  avatar_3d_autonomous_tts     (GUI)                          │
 │  persona_cli / manage_satin   (CLI)                          │
 │  dashboard                    (Web/Flask)                    │
 ├─────────────────────────────────────────────────────────────┤
@@ -186,21 +184,18 @@ python check.py               # テスト件数を含む全検証
   `save_to_file` + デバイス再生を行っていた）は削除した。配信は本製品の
   用途ではなく、どこからも呼ばれていなかった。
 
-### 3.5.1 アバターモデルの選択 — 経路が 2 つある
+### 3.5.1 アバターモデルの選択 — 経路は 1 つ
 
 本体 GUI の **`/avatar`** コマンドが `QFileDialog` を開き、選んだモデルをその場で
-描画に反映して選択を永続化する。これが通常の経路である。
+描画に反映して選択を永続化する（`avatar_model_store`）。
 
-**`--avatar-loader`**（`avatar_loader.py`、tkinter）は同じ選択をサムネイル一覧と
-履歴つきで行う別アプリで、選択は `avatar_model_store` 経由で本体と共有される。
-ただし本体を終了してから起動し、選んだあと**再起動**する必要がある。
-
-以前は後者しか無く、「1 つの機能のために GUI ツールキットを 2 つ抱え、プロセスを
-跨いで選択を受け渡し、ユーザーに再起動を強いる」状態だった。`/avatar` に
-ファイル選択を実装したことでその強制は解けたが、サムネイル表示と履歴は
-`--avatar-loader` にしかない。**この重複を残すかは製品判断**であり、畳むなら
-tkinter と Pillow が依存から完全に消える（現在この 2 つを使うのは
-`avatar_loader` だけである）。
+かつては `--avatar-loader`（tkinter + Pillow の別ウィンドウ）という別アプリ
+しか無く、「1 つの機能のために GUI ツールキットを 2 つ抱え、プロセスを跨いで
+選択を受け渡し、ユーザーに再起動を強いる」状態だった。`/avatar` を実装したあとも
+サムネイル一覧と履歴表示のために残していたが、**製品オーナーの判断で削除**した
+（`PRODUCT_REVIEW.md` §3 の #4）。これで tkinter と Pillow が依存から完全に消え、
+アバターを選ぶ道は 1 本になった。選択履歴は `avatar_model_store` が引き続き
+保持しており、旧 `avatar_history.json` があれば読み込む。
 
 ### 3.6 Web ダッシュボード (`dashboard.py`)
 
@@ -336,7 +331,7 @@ YouTube / arXiv / Web スクレイピングの統合層（`youtube_integrator` /
 | W3 | 解消済 | ドキュメント | 本仕様書がその答えであり、散在していた `*_IMPROVEMENTS.md` は `docs/history/` へ集約した。 |
 | W5 | 解消済 | 任意依存の管理 | 依存一覧は `main/dependency_manifest.py` を唯一の真実の源とし、`satin_launcher.py` はそれを読む。 |
 | W6 | 情報 | `null`/型不正データ耐性 | 直近セッションで JSONL/設定の `null` 値クラッシュを多数修正済み（§ CHANGELOG）。同種の防御は今後も新規 I/O ごとに必要。 |
-| W7 | 解消済 (I25/I26) | `satin_launcher.py` 既定モード + アバター描画 | 商用品質監査で発見: 既定起動が `avatar_loader.AvatarLoaderApp`（何も表示しないファイル選択ダイアログ）を開くだけで本体 GUI に繋がらず、かつ本体 GUI は常に仮の球体しか描画せず、選んだアバターモデルを表示する手段が無かった。I25 で既定起動を本体 GUI に接続、I26 で `--avatar-loader` の選択を共有ストア経由で本体 GUI が読み込み・描画するよう統合（頂点ワイヤーフレーム、テクスチャ・スキニングは対象外）。 |
+| W7 | 解消済 (I25/I26) | `satin_launcher.py` 既定モード + アバター描画 | 商用品質監査で発見: 既定起動が `avatar_loader.AvatarLoaderApp`（何も表示しないファイル選択ダイアログ）を開くだけで本体 GUI に繋がらず、かつ本体 GUI は常に仮の球体しか描画せず、選んだアバターモデルを表示する手段が無かった。I25 で既定起動を本体 GUI に接続、I26 で選択を共有ストア経由で本体 GUI が読み込み・描画するよう統合（頂点ワイヤーフレーム、テクスチャ・スキニングは対象外）。 |
 
 ## 7. 改善の記録
 
