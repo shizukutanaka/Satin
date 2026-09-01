@@ -276,11 +276,14 @@ class DecayTests(unittest.TestCase):
 
 class ConfigOverrideTests(unittest.TestCase):
     def test_custom_keywords_and_deltas(self):
+        # delta 自体の検証なので日次上限（既定 5.0）を外す。
+        # 上限の検証は DailyGainCapTests の担当。
         cfg = {
             "positive": {"en": ["yay"]},
             "negative": {"en": ["ugh"]},
             "positive_delta": 7.0,
             "negative_delta": 9.0,
+            "max_daily_gain": 100.0,
         }
         m = MoodTracker.load(None, mood_config=cfg)
         m.register("yay")
@@ -1759,40 +1762,103 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class EarnSharesTheDailyBudgetTests(unittest.TestCase):
+    """稼げる上昇（会話・プレゼント）が同じ日次予算を共有すること。
+
+    共有しないと `max_daily_gain` は成長弧の長さを決めない。実際、
+    プレゼントは `adjust()` を直接呼んで上限を完全に迂回しており、
+    上限を 5.0/日（最短 6 日の弧）にしても **7 種を配るだけで初日に最高
+    レベルへ到達できた**（ギフト合計 30.5 = 開始 50.0 から close の閾値
+    80.0 までちょうど届く）。
+    """
+
+    def test_gift_sized_bonuses_cannot_outrun_the_daily_cap(self):
+        """全ギフトぶん（合計 30.5）を earn しても上限までしか入らない。"""
+        t = MoodTracker()
+        applied = sum(t.earn(b) for b in (5.0, 4.0, 3.5, 4.0, 5.0, 3.0, 6.0))
+        self.assertAlmostEqual(applied, t.max_daily_gain, places=6)
+        self.assertEqual(t.level, "neutral", "初日に最高レベルへ到達している")
+
+    def test_earn_returns_what_was_actually_applied(self):
+        """表示を実態に合わせられるよう、反映量を返すこと。"""
+        t = MoodTracker(max_daily_gain=3.0)
+        self.assertAlmostEqual(t.earn(5.0), 3.0, places=6)
+        self.assertAlmostEqual(t.earn(5.0), 0.0, places=6)
+
+    def test_conversation_and_gifts_draw_from_one_budget(self):
+        """会話で使い切ったらプレゼントでは伸びない（逆も同じ）。"""
+        t = MoodTracker()
+        for _ in range(10):
+            t.register("ありがとう")
+        spent = t.affinity
+        self.assertAlmostEqual(t.earn(6.0), 0.0, places=6)
+        self.assertAlmostEqual(t.affinity, spent, places=6)
+
+    def test_earn_does_not_dilute_penalties(self):
+        """減少は上限の対象外（正当なマイナスを薄めない）。"""
+        t = MoodTracker()
+        for _ in range(10):
+            t.register("ありがとう")   # 予算を使い切る
+        before = t.affinity
+        self.assertLess(t.earn(-4.0), 0.0)
+        self.assertLess(t.affinity, before)
+
+    def test_adjust_stays_uncapped_for_one_off_events(self):
+        """誕生日・記念日など繰り返せないボーナスは従来どおり満額。"""
+        t = MoodTracker()
+        for _ in range(10):
+            t.register("ありがとう")
+        before = t.affinity
+        t.adjust(8.0)
+        self.assertAlmostEqual(t.affinity, before + 8.0, places=6)
+
+
 class DailyGainCapConfigTests(unittest.TestCase):
     """会話由来の日次上昇上限が設定可能であること。
 
     この値が関係の成長弧の長さを決める。開始 50.0 から close の閾値 80.0 まで
-    は 30.0 で、既定の上限も 30.0/日 — つまり**初日の 8 メッセージほどで最高
-    レベルに到達し、「セッションを跨いで育つ関係」は 1 セッションで終わる**。
+    は 30.0。かつての既定 30.0/日では**初日の 8 メッセージほどで最高レベルに
+    到達し、「セッションを跨いで育つ関係」は 1 セッションで終わっていた**。
+    製品オーナーの判断で 5.0（最短 6 日の弧）へ変更した。
 
-    速い報酬を良しとする設計判断でもありうるので既定は変えていない。ただし
-    コードを編集しないと変えられない状態ではオーナーが選べないので、
-    config/mood_config.json から上書きできるようにした。
+    config/mood_config.json から上書きできるので、速い弧が欲しい人は
+    コードを編集せずに戻せる。
     """
 
-    def test_default_is_unchanged(self):
-        """既定値を変えていないこと（この変更は選択肢を増やすだけである）。"""
-        self.assertEqual(MoodTracker().max_daily_gain, 30.0)
-        self.assertEqual(mood._MAX_DAILY_CONVERSATION_GAIN, 30.0)
+    def test_default_is_a_multi_day_arc(self):
+        """既定は 5.0 = 最短 6 日の弧（オーナー判断で 30.0 から変更）。"""
+        self.assertEqual(MoodTracker().max_daily_gain, 5.0)
+        self.assertEqual(mood._MAX_DAILY_CONVERSATION_GAIN, 5.0)
 
-    def test_default_reaches_the_top_level_on_day_one(self):
-        """既定のままなら初日に最高レベルへ到達することを、事実として固定する。
+    def test_default_does_not_reach_the_top_level_on_day_one(self):
+        """1 日どれだけ話しても最高レベルには届かないこと。
 
-        意図してこうなっているのか、算術を見落としていたのかを次に読む人が
-        判断できるよう、挙動をテストに書き残しておく。
+        これが変更の要点である — 好感度で釣って初日に関係を終わらせない。
         """
         t = MoodTracker()
         for _ in range(30):
             t.register("ありがとう")
-        self.assertEqual(t.level, "close")
-
-    def test_a_lower_cap_lengthens_the_arc(self):
-        t = MoodTracker(max_daily_gain=5.0)
-        for _ in range(30):
-            t.register("ありがとう")
         self.assertLess(t.affinity, 60.0)
         self.assertEqual(t.level, "neutral")
+
+    def test_the_arc_takes_at_least_six_days(self):
+        """日次上限いっぱい稼いでも close まで 6 日かかること（30.0 / 5.0）。"""
+        t = MoodTracker()
+        for day in range(1, 7):
+            t._daily_gain_date = None  # 日付が変わったものとして上限をリセット
+            for _ in range(20):
+                t.register("ありがとう")
+            if day < 6:
+                self.assertNotEqual(t.level, "close",
+                                    f"day {day} で最高レベルに達している")
+        self.assertEqual(t.level, "close")
+
+    def test_a_higher_cap_shortens_the_arc(self):
+        """上げれば従来どおり初日に到達できる（設定で戻せる）。"""
+        t = MoodTracker(max_daily_gain=30.0)
+        for _ in range(30):
+            t.register("ありがとう")
+        self.assertEqual(t.level, "close")
 
     def test_cap_is_read_from_mood_config(self):
         kwargs = mood._kwargs_from_mood_config({"max_daily_gain": 7.5})
@@ -1835,6 +1901,10 @@ class ConfessionMinimumRelationshipTests(unittest.TestCase):
     """
 
     def _fresh(self, **kw):
+        # ここで見たいのは「好感度は最高でも、日数・対話数が足りなければ
+        # 告白しない」こと。好感度を 1 日で最高まで上げる必要があるので、
+        # 成長弧の日次上限（既定 5.0）だけ外す（上限自体は別テストの担当）。
+        kw.setdefault("max_daily_gain", 1000.0)
         return MoodTracker(**kw)
 
     def test_a_brand_new_user_cannot_trigger_a_confession(self):

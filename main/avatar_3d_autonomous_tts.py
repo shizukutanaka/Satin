@@ -748,10 +748,13 @@ class AutonomousAvatarViewer(
                 effective_bonus = bonus * mult
             except Exception:
                 pass
+        # earn() は日次上限（max_daily_gain）を通す — 会話とプレゼントで予算を
+        # 共有しないと、上限が成長弧の長さを決めなくなる（CLI 側と対）。
+        applied = effective_bonus
         if effective_bonus > 0.0 and get_mood_tracker is not None:
             try:
                 tracker = get_mood_tracker()
-                tracker.adjust(effective_bonus)
+                applied = tracker.earn(effective_bonus)
                 # 受け取り記録（デイリークールダウン用）
                 if _lookup_gift_key_gui is not None and hasattr(tracker, "record_gift"):
                     try:
@@ -767,9 +770,10 @@ class AutonomousAvatarViewer(
             except Exception as e:
                 logger.debug("プレゼントの好感度ボーナス適用に失敗（GUI）: %s", e)
 
-        if effective_bonus > 0.0:
-            avatar_reply = (f"{avatar_reply} (+{int(effective_bonus)} affinity)" if lang == "en"
-                            else f"{avatar_reply}（好感度 +{int(effective_bonus)}）")
+        # 上限に達していて実際には 0 だったときは数字を出さない（CLI 側と対）。
+        if round(applied) >= 1:
+            avatar_reply = (f"{avatar_reply} (+{round(applied)} affinity)" if lang == "en"
+                            else f"{avatar_reply}（好感度 +{round(applied)}）")
 
         if get_conversation_log is not None:
             try:

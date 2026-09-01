@@ -116,13 +116,14 @@ _CONFESSION_MIN_INTERACTIONS = 20
 #
 # **この値が関係の成長弧の長さを決める。** 算術を明示しておく:
 #   開始 50.0（neutral）→ close（最高レベル）の閾値 80.0 = 差 30.0
-#   → 既定の 30.0/日では、**初日の 8 メッセージほどで最高レベルに到達する**。
-# 「セッションを跨いで育つ関係」を謳う一方で、実際の成長は 1 セッションで
-# 終わる。速い報酬を良しとする設計判断でもありうるので既定は変えていないが、
-# 長い弧が欲しい場合はここを下げること（例: 5.0 なら 6 日、2.0 なら 15 日）。
-# コードを編集せずとも config/mood_config.json の `max_daily_gain` で
-# 上書きできる。
-_MAX_DAILY_CONVERSATION_GAIN = 30.0
+#   → 5.0/日なら最高レベルまで最短 6 日、つまり「セッションを跨いで育つ関係」
+#     という製品の謳い文句どおりの弧になる。
+# かつての既定は 30.0 で、**初日の 8 メッセージほどで最高レベルに到達**し、
+# 成長は 1 セッションで終わっていた。製品オーナーの判断で 5.0 へ変更した
+# （告白の下限が「出会いから 7 日」であることとも整合する）。
+# 速い弧が欲しい場合は config/mood_config.json の `max_daily_gain` を
+# 上げること（コード編集は不要）。
+_MAX_DAILY_CONVERSATION_GAIN = 5.0
 
 # 非活動時の好感度低下レート（ポイント/時間）。長期離席で関係が冷える。
 _DEFAULT_DECAY_RATE = 2.0
@@ -541,11 +542,39 @@ class MoodTracker:
         self._daily_gain_total += effective
         return effective
 
+    def earn(self, delta: float) -> float:
+        """日次上限の対象となる「稼げる上昇」を適用し、**実際に反映された量**を返す。
+
+        会話（register）とプレゼント（/gift）は、どちらもユーザーが同じ日に
+        何度でも繰り返せる上昇経路なので、同じ日次予算を共有させる。
+        共有しないと `max_daily_gain` が成長弧の長さを決めなくなる — 実際、
+        プレゼントは `adjust()` を直接呼んでいたため上限を完全に迂回しており、
+        上限を 5.0/日（最短 6 日の弧）にしても **7 種を配るだけで初日に最高
+        レベルへ到達できた**（合計 30.5 = 開始 50.0 から close の閾値 80.0 まで
+        ちょうど届く）。
+
+        誕生日・記念日など繰り返せない一度きりのボーナスは対象外で、
+        従来どおり `adjust()` を使う。減少（delta <= 0）も対象外 —
+        上限は「稼ぎすぎ」だけを防ぎ、正当なマイナス影響は薄めない。
+        """
+        try:
+            d = float(delta)
+        except (TypeError, ValueError):
+            return 0.0
+        if d <= 0.0:
+            return self.adjust(d)
+        with self._lock:
+            capped = self._apply_daily_gain_cap(d)
+            before = self.affinity
+            self.affinity = _clamp(self.affinity + capped)
+            return self.affinity - before
+
     def adjust(self, delta: float) -> float:
         """好感度を delta だけ直接増減して 0–100 にクランプし、実変化量を返す。
 
-        誕生日・記念日・イベントなど、テキスト評価を経ずに関係性へ直接ボーナス／
-        ペナルティを与えたい場合に使う（register() のメッセージ計数とは独立）。
+        日次上限を**通さない**。繰り返せない一度きりのボーナス（誕生日・記念日・
+        イベント）とペナルティのためのもの。ユーザーが何度でも稼げる経路
+        （会話・プレゼント）には `earn()` を使うこと。
         """
         try:
             d = float(delta)

@@ -764,6 +764,11 @@ class GUISlashCommandTests(unittest.TestCase):
         class _Tracker:
             level = "neutral"
             affinity = 30.0
+            # プレゼントは earn()（日次上限つき）を通る。ここでは上限に
+            # 掛からない日を模して、渡された分をそのまま反映する。
+            def earn(self, d):
+                self.affinity += d
+                return d
             def adjust(self, d): self.affinity += d
             def save(self, p): pass
             def snapshot_to_history(self, p): pass

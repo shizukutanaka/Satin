@@ -1216,9 +1216,13 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
         except Exception:
             pass
     # 好感度ボーナスを適用し、即時保存（Ctrl+C 等でもボーナスが消えないよう）
+    # earn() は日次上限（max_daily_gain）を通す — 会話とプレゼントで予算を
+    # 共有しないと、上限が成長弧の長さを決めなくなる（プレゼント 7 種だけで
+    # 初日に最高レベルへ到達できてしまう）。表示は実際に反映された量にする。
+    applied = effective_bonus
     if mood is not None:
         try:
-            mood.adjust(effective_bonus)
+            applied = mood.earn(effective_bonus)
             # 受け取り記録（デイリークールダウン用）
             if hasattr(mood, "record_gift") and _lookup_gift_key is not None:
                 try:
@@ -1235,10 +1239,13 @@ def _give_gift(item: str, mood, avatar_name: str, lang: str,
                 pass
         except Exception:
             pass
-    if lang == "en":
-        output_fn(f"(+{round(effective_bonus)} affinity)")
-    else:
-        output_fn(f"（好感度 +{round(effective_bonus)}）")
+    # 上限に達していて実際には 0 だったときは数字を出さない（受け取った事実は
+    # 返事が伝えている。反映されていない「+5」を見せるのは嘘になる）。
+    if round(applied) >= 1:
+        if lang == "en":
+            output_fn(f"(+{round(applied)} affinity)")
+        else:
+            output_fn(f"（好感度 +{round(applied)}）")
     return reply
 
 

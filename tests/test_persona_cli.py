@@ -2235,6 +2235,9 @@ class GiftBonusDisplayTests(unittest.TestCase):
             mood_stub = mock.MagicMock()
             mood_stub.level = "neutral"
             mood_stub.gift_received_today.return_value = False
+            # earn() は「実際に反映された量」を返す。ここは丸め表示の検証なので
+            # 日次上限に掛からない日（全額反映）を模す。
+            mood_stub.earn.side_effect = lambda d: d
             pc._give_gift(item, mood_stub, "Avatar", lang, out.append)
         return "\n".join(out)
 
@@ -2275,6 +2278,31 @@ class GiftBonusDisplayTests(unittest.TestCase):
             pc._give_gift("widget", mood_stub, "Avatar", "en", out.append)
         combined = "\n".join(out)
         self.assertNotIn("+0", combined)
+
+    def test_capped_bonus_shows_no_number(self):
+        """日次上限に達していて実際には 0 だったら数字を出さないこと。
+
+        プレゼントは会話と日次予算を共有するので、同じ日に贈り続ければ
+        いずれ反映量は 0 になる。そこで「+5」と表示するのは嘘になる
+        （返事は返るので、贈った事実自体は伝わる）。
+        """
+        from unittest import mock
+        import persona_cli as pc
+        out = []
+        with mock.patch.object(pc, "_lookup_gift",
+                               lambda i, lang="en", level=None: (5.0, "Thanks!")), \
+             mock.patch.object(pc, "_lookup_gift_key",
+                               lambda i, lang="en": "test_gift"), \
+             mock.patch.object(pc, "_mood_affinity_multiplier",
+                               lambda mood_key: 1.0):
+            mood_stub = mock.MagicMock()
+            mood_stub.level = "neutral"
+            mood_stub.gift_received_today.return_value = False
+            mood_stub.earn.side_effect = lambda d: 0.0  # 上限に達している
+            pc._give_gift("flower", mood_stub, "Avatar", "en", out.append)
+        combined = "\n".join(out)
+        self.assertNotIn("+", combined)
+        self.assertIn("Thanks!", combined)
 
 
 class AffinityBannerLocalizationTests(unittest.TestCase):

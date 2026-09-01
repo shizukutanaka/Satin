@@ -64,7 +64,10 @@ class IntensityScoringTests(unittest.TestCase):
 
     def test_unlisted_positive_uses_plain_delta(self):
         # 強度未指定の語は係数そのまま（既存挙動を保つ）。
-        m = MoodTracker(affinity=50.0, positive={"en": ["yay"]}, positive_delta=7.0)
+        # max_daily_gain は既定 5.0 なので、ここでは delta 自体を見るために
+        # 上限を外す（上限の検証は test_mood.py の DailyGainCap 側の担当）。
+        m = MoodTracker(affinity=50.0, positive={"en": ["yay"]}, positive_delta=7.0,
+                        max_daily_gain=100.0)
         self.assertAlmostEqual(m.register("yay"), 7.0, places=5)
 
     def test_unlisted_negative_uses_plain_delta(self):

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The relationship now grows over about a week, not in one sitting**
+  (`max_daily_gain` default 30.0 → 5.0, the owner's decision on the question
+  raised in `PRODUCT_REVIEW.md` §3). Affinity starts at 50.0 and the top level
+  begins at 80.0, so the daily earn budget is what sets the arc: 5.0/day means
+  six days minimum, which is what "a relationship that grows across sessions"
+  claimed all along. Existing save files are untouched — only the daily cap
+  changes. Setting it back to 30.0 in `config/mood_config.json` restores the
+  old same-day arc.
+
+- **Gifts now share that daily budget** (`MoodTracker.earn()`). They called
+  `adjust()` directly and so bypassed the cap entirely: handing over all seven
+  gifts is worth 30.5 points, exactly the distance from the starting affinity
+  to the top level, so **the top level was still reachable on day one no matter
+  what the cap was set to** — the knob did not actually control the arc. Both
+  repeatable earning paths (conversation and gifts) now draw from one budget;
+  one-off bonuses that cannot be farmed (birthday, anniversary) still use the
+  uncapped `adjust()`, and penalties are never diluted by the cap. When the
+  budget is spent, a gift still gets its reply but no "+N affinity" number is
+  shown, because none was applied.
+
 ### Added
 - **The avatar no longer walks off screen in autonomous mode.** Movement was an
   unbounded random walk; measured in the real GUI (xvfb) the avatar left the

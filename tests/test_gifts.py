@@ -505,7 +505,9 @@ class GiftDailyMoodMultiplierTests(unittest.TestCase):
         from unittest import mock
         import mood as _mood_mod
 
-        tracker = MoodTracker(affinity=50.0)
+        # 見たいのは倍率。プレゼントは日次上限（既定 5.0）を通るように
+        # なったので、倍率が観測できるよう上限を外す。
+        tracker = MoodTracker(affinity=50.0, max_daily_gain=100.0)
         before = tracker.affinity
 
         with mock.patch.object(_mood_mod, "_default_mood_path", lambda: "/dev/null"), \
