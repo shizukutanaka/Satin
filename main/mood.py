@@ -125,8 +125,19 @@ _CONFESSION_MIN_INTERACTIONS = 20
 # 上げること（コード編集は不要）。
 _MAX_DAILY_CONVERSATION_GAIN = 5.0
 
-# 非活動時の好感度低下レート（ポイント/時間）。長期離席で関係が冷える。
-_DEFAULT_DECAY_RATE = 2.0
+# 非活動時の好感度低下レート（ポイント/時間）と、低下が始まるまでの猶予（時間）。
+#
+# **成長と対称にしてある。** 上昇は日次 5.0 が上限（_MAX_DAILY_CONVERSATION_GAIN）
+# なので、低下も 0.2/時間 ≒ 4.8/日 とし、離れた日数ぶんだけ戻る形にした。
+# かつては 2.0/時間・猶予なしで、実測すると **24 時間で -48（close から
+# reserved へ）、40 時間で 0（最低レベル）**。育つのに最短 6 日かかるのに 2 日で
+# ゼロになる非対称があり、しかも usage_guardrails は「休んでいいよ」と休息を
+# 促すので、製品が休息を勧めておいて休んだ人を罰していた。
+#
+# 猶予 48 時間は「週末そのぶん離れても関係は冷えない」ための下駄。これを超えた
+# ぶんだけが低下の対象になる（1 週間の不在で約 -25）。
+_DEFAULT_DECAY_RATE = 0.2
+_DECAY_GRACE_HOURS = 48.0
 
 # 既定の感情語（config に mood が無くても動く）
 _DEFAULT_POSITIVE: Dict[str, List[str]] = {
@@ -591,24 +602,32 @@ class MoodTracker:
         self,
         elapsed_seconds: float,
         rate_per_hour: float = _DEFAULT_DECAY_RATE,
+        grace_hours: float = _DECAY_GRACE_HOURS,
     ) -> float:
         """非活動時間に応じて好感度を低下させる。変化量（負またはゼロ）を返す。
 
         一度も会話したことが無い場合（interactions == 0）は低下させない。
         elapsed_seconds が 0 以下の場合も変化なし。
+
+        最初の grace_hours 時間は低下しない（既定 48 時間）。それを超えたぶん
+        だけがレートの対象になる。理由は _DECAY_GRACE_HOURS の定義を参照。
+        猶予無しの素の計算が要る場合は grace_hours=0 を渡す。
         """
         if elapsed_seconds <= 0:
             return 0.0
         with self._lock:
             if self.interactions == 0:
                 return 0.0
-            hours = elapsed_seconds / 3600.0
+            hours = (elapsed_seconds / 3600.0) - max(0.0, grace_hours)
+            if hours <= 0:
+                return 0.0
             delta = -hours * rate_per_hour
             before = self.affinity
             self.affinity = _clamp(self.affinity + delta)
             return self.affinity - before
 
-    def auto_decay(self, rate_per_hour: float = _DEFAULT_DECAY_RATE) -> float:
+    def auto_decay(self, rate_per_hour: float = _DEFAULT_DECAY_RATE,
+                   grace_hours: float = _DECAY_GRACE_HOURS) -> float:
         """最後の会話からの経過時間を基に decay() を適用する。変化量を返す。
 
         last_interaction_time が記録されていない場合（0.0）は変化なし。
@@ -625,11 +644,18 @@ class MoodTracker:
             elapsed = now - self._last_interaction_time
             if elapsed <= 0:
                 return 0.0
-            hours = elapsed / 3600.0
+            grace = max(0.0, grace_hours)
+            hours = (elapsed / 3600.0) - grace
+            if hours <= 0:
+                # 猶予の内側。チェックポイントは進めない — 進めると「48 時間ごとに
+                # 一瞬開く」だけで永久に低下しなくなる。
+                return 0.0
             d = -hours * rate_per_hour
             before = self.affinity
             self.affinity = _clamp(self.affinity + d)
-            self._last_interaction_time = now
+            # 猶予ぶんを残してチェックポイントを進める。now にすると次回また
+            # まるまる猶予が付き、長期不在の低下が累積で足りなくなる。
+            self._last_interaction_time = now - grace * 3600.0
             return self.affinity - before
 
     # ---- 永続化 ---------------------------------------------------------- #
@@ -1347,6 +1373,19 @@ _DAILY_LOGIN_BASE_BONUS = 2.0
 _DAILY_LOGIN_STREAK_BONUS = 0.5
 _DAILY_LOGIN_MAX_BONUS = 5.0
 
+# ログインボーナスが 1 日の予算のうち占めてよい割合の上限。
+#
+# **これが無いと、来るだけで会話が無意味になる。** 実測: 予算 5.0・連続 7 日目
+# だとログインした時点でボーナスが 5.0 に達し、予算を使い切る。そのあと 30 回
+# 会話しても好感度は 1 ポイントも動かなかった。会話コンパニオンで「話すこと」
+# より「毎日来ること」が報われるのは本末転倒であり、しかも usage_guardrails が
+# 警戒しているエンゲージメント誘導そのものである。
+#
+# 40% にすると既定（予算 5.0）ではログインは 2.0 まで、会話に必ず 3.0 が残る。
+# 予算が既定のままだと連続日数の加算はこの上限に飲まれて一定になるが、連続
+# 記録そのものと節目のお祝いメッセージは従来どおり出る（好感度で釣らない）。
+_DAILY_LOGIN_BUDGET_SHARE = 0.4
+
 # 連続ログイン日数の節目に出す特別メッセージ
 _STREAK_MILESTONE_MESSAGES: Dict[int, Dict[str, List[str]]] = {
     3: {
@@ -1470,6 +1509,9 @@ def check_daily_login(
     bonus = min(
         _DAILY_LOGIN_BASE_BONUS + (streak - 1) * _DAILY_LOGIN_STREAK_BONUS,
         _DAILY_LOGIN_MAX_BONUS,
+        # 予算の一部までに抑え、会話に必ず余地を残す（定数の説明を参照）
+        float(getattr(tracker, "max_daily_gain", _MAX_DAILY_CONVERSATION_GAIN))
+        * _DAILY_LOGIN_BUDGET_SHARE,
     )
     try:
         tracker.earn(bonus)

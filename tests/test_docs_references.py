@@ -205,6 +205,7 @@ class ReviewChecklistTests(unittest.TestCase):
         self.assertIn(str(mood._MAX_DAILY_CONVERSATION_GAIN), row)
         row = self._table_row("好感度の自然低下")
         self.assertIn(str(mood._DEFAULT_DECAY_RATE), row)
+        self.assertIn(f"{int(mood._DECAY_GRACE_HOURS)} 時間", row)
         row = self._table_row("告白の下限")
         self.assertIn(str(int(mood._CONFESSION_MIN_DAYS)), row)
         self.assertIn(str(mood._CONFESSION_MIN_INTERACTIONS), row)
@@ -214,7 +215,9 @@ class ReviewChecklistTests(unittest.TestCase):
         import persona_cli
         row = self._table_row("デイリーログイン")
         self.assertIn(str(mood._DAILY_LOGIN_BASE_BONUS), row)
-        self.assertIn(str(mood._DAILY_LOGIN_MAX_BONUS), row)
+        self.assertIn(str(mood._DAILY_LOGIN_STREAK_BONUS), row)
+        # 予算に対する割合が実効的な上限（_DAILY_LOGIN_MAX_BONUS より先に効く）
+        self.assertIn(f"{int(mood._DAILY_LOGIN_BUDGET_SHARE * 100)}%", row)
         row = self._table_row("謝罪 / おやすみ")
         self.assertIn(str(persona_cli._APOLOGY_BONUS), row)
         self.assertIn(str(persona_cli._GOODNIGHT_BONUS), row)

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Absence no longer erases the relationship** (decay 2.0/hour → 0.2/hour with
+  a 48-hour grace period, the owner's decision). Measured before the change: a
+  day away cost 48 points, taking a `close` relationship down to `reserved`,
+  and 40 hours took it to zero. The arc takes six days to climb and two days to
+  destroy — and `usage_guardrails` spends its existence telling the user it is
+  fine to take a break, so the product urged rest and then punished it. Decay
+  is now symmetric with growth (0.2/hour ≈ 4.8/day against a 5.0/day earn
+  budget): a weekend away costs nothing, a week costs about 25.
+
+- **The daily login bonus is capped at 40% of the daily budget**, so
+  conversation always has room. Measured before the cap: on a seven-day streak,
+  logging in consumed the entire 5.0 budget, and the next thirty messages moved
+  affinity by exactly zero. A conversation companion where showing up beats
+  talking is backwards, and a daily-login reward that crowds out the
+  conversation is the engagement hook the guardrails exist to avoid. This one
+  was self-inflicted: unifying the earn budget in the previous change is what
+  let the login bonus crowd out conversation. Streak counting and the milestone
+  messages are unchanged — the streak is still celebrated, just not paid for.
+
 ### Added
 - **`.githooks/pre-push` runs the verification gate before every push**, enabled
   with one line per clone: `git config core.hooksPath .githooks`. The gate was

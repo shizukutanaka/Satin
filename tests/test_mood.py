@@ -193,11 +193,40 @@ class AdjustTests(unittest.TestCase):
 
 
 class DecayTests(unittest.TestCase):
-    def test_decay_reduces_affinity(self):
+    """Absence cools the relationship, but only past a grace period.
+
+    Owner's decision: decay is symmetric with growth (0.2/h ~= 4.8/day against
+    a 5.0/day earn budget) and the first 48 hours are free. Before that it was
+    2.0/h with no grace, measured at -48 over 24 hours (close -> reserved) and
+    zero after 40 — the product urged the user to take breaks
+    (usage_guardrails) and then erased the relationship when they did.
+    """
+
+    def test_decay_reduces_affinity_past_the_grace_period(self):
         m = MoodTracker(affinity=80, interactions=5)
-        delta = m.decay(3600)  # 1 hour
+        delta = m.decay(72 * 3600)  # 3 days: 1 day beyond the grace
         self.assertLess(delta, 0)
         self.assertLess(m.affinity, 80)
+
+    def test_a_weekend_away_costs_nothing(self):
+        """The guardrails encourage breaks; the score must not contradict them."""
+        m = MoodTracker(affinity=80, interactions=5)
+        self.assertEqual(m.decay(47 * 3600), 0.0)
+        self.assertEqual(m.affinity, 80)
+
+    def test_decay_is_symmetric_with_growth(self):
+        """A day of absence costs about what a day of talking earns."""
+        m = MoodTracker(affinity=80, interactions=5)
+        lost = -m.decay((mood._DECAY_GRACE_HOURS + 24) * 3600)
+        self.assertLessEqual(lost, m.max_daily_gain,
+                             "a day away must not cost more than a day earns")
+        self.assertGreater(lost, m.max_daily_gain * 0.5,
+                           "...but it should still cool measurably")
+
+    def test_grace_can_be_disabled_for_raw_arithmetic(self):
+        m = MoodTracker(affinity=80, interactions=5)
+        m.decay(3600, rate_per_hour=4.0, grace_hours=0)
+        self.assertAlmostEqual(m.affinity, 76.0, places=5)
 
     def test_decay_zero_seconds_no_change(self):
         m = MoodTracker(affinity=80, interactions=5)
@@ -218,7 +247,7 @@ class DecayTests(unittest.TestCase):
 
     def test_decay_custom_rate(self):
         m = MoodTracker(affinity=60, interactions=3)
-        m.decay(3600, rate_per_hour=4.0)  # -4 after 1h
+        m.decay(3600, rate_per_hour=4.0, grace_hours=0)  # -4 after 1h
         self.assertAlmostEqual(m.affinity, 56.0, places=5)
 
     def test_auto_decay_no_timestamp_no_change(self):
@@ -227,10 +256,17 @@ class DecayTests(unittest.TestCase):
         self.assertEqual(delta, 0.0)
         self.assertEqual(m.affinity, 70)
 
-    def test_auto_decay_recent_interaction_small_change(self):
+    def test_auto_decay_within_grace_is_a_no_op(self):
         import time
         m = MoodTracker(affinity=70, interactions=5,
                         last_interaction_time=time.time() - 3600)
+        self.assertEqual(m.auto_decay(), 0.0)
+        self.assertEqual(m.affinity, 70)
+
+    def test_auto_decay_past_grace_reduces_affinity(self):
+        import time
+        m = MoodTracker(affinity=70, interactions=5,
+                        last_interaction_time=time.time() - 96 * 3600)
         delta = m.auto_decay()
         self.assertLess(delta, 0)
         self.assertLess(m.affinity, 70)
@@ -238,23 +274,39 @@ class DecayTests(unittest.TestCase):
     def test_auto_decay_advances_checkpoint(self):
         import time
         m = MoodTracker(affinity=70, interactions=5,
-                        last_interaction_time=time.time() - 3600)
+                        last_interaction_time=time.time() - 96 * 3600)
         m.auto_decay()
-        # Checkpoint must move to ~now so the elapsed window isn't recounted.
-        self.assertGreater(m._last_interaction_time, time.time() - 5)
+        # The checkpoint moves forward but keeps one grace window in hand, so a
+        # longer absence keeps decaying instead of restarting the grace clock.
+        expected = time.time() - mood._DECAY_GRACE_HOURS * 3600
+        self.assertAlmostEqual(m._last_interaction_time, expected, delta=5)
 
     def test_auto_decay_twice_does_not_double_decay(self):
         # Regression: toggling autonomous on/off called auto_decay repeatedly,
         # each time decaying the SAME elapsed period from a stale timestamp.
         import time
         m = MoodTracker(affinity=80, interactions=5,
-                        last_interaction_time=time.time() - 7200)  # 2h idle
+                        last_interaction_time=time.time() - 96 * 3600)
         first = m.auto_decay()
         after_first = m.affinity
         second = m.auto_decay()  # immediately again, no register() in between
         self.assertLess(first, 0)                    # first call decays
         self.assertAlmostEqual(second, 0.0, places=2)  # second is ~no-op
         self.assertAlmostEqual(m.affinity, after_first, places=2)
+
+    def test_long_absence_keeps_decaying_across_calls(self):
+        """Opening the app must not hand back a fresh grace window each time."""
+        import time
+        one = MoodTracker(affinity=80, interactions=5,
+                          last_interaction_time=time.time() - 240 * 3600)
+        one.auto_decay()
+
+        stepwise = MoodTracker(affinity=80, interactions=5,
+                               last_interaction_time=time.time() - 240 * 3600)
+        stepwise.auto_decay()
+        stepwise._last_interaction_time -= 120 * 3600  # another 5 days pass
+        stepwise.auto_decay()
+        self.assertLess(stepwise.affinity, one.affinity)
 
     def test_register_updates_last_interaction_time(self):
         import time
@@ -1826,6 +1878,39 @@ class EarnSharesTheDailyBudgetTests(unittest.TestCase):
             t.register("ありがとう")
         self.assertAlmostEqual(t.affinity, 50.0 + t.max_daily_gain, places=6,
                                msg="ログインボーナスが日次予算の外で上乗せされている")
+
+    def test_login_bonus_leaves_room_for_conversation(self):
+        """Regression: on a 7-day streak the login bonus ate the whole budget.
+
+        Measured before the cap: logging in took the full 5.0, and the next 30
+        messages moved affinity by exactly 0.0 — a conversation companion where
+        showing up beats talking, which is the engagement hook the usage
+        guardrails exist to avoid.
+        """
+        import datetime
+        from mood import check_daily_login
+        t = MoodTracker()
+        t._login_streak = 6
+        t._last_login_date = (datetime.date.today()
+                              - datetime.timedelta(days=1)).isoformat()
+        check_daily_login(t, lang="ja")
+        after_login = t.affinity
+        for _ in range(30):
+            t.register("ありがとう")
+        self.assertGreater(t.affinity, after_login,
+                           "conversation must still move affinity after logging in")
+
+    def test_login_bonus_is_capped_to_a_share_of_the_budget(self):
+        import datetime
+        from mood import check_daily_login
+        t = MoodTracker()
+        t._login_streak = 20  # far past the point where the raw formula maxes
+        t._last_login_date = (datetime.date.today()
+                              - datetime.timedelta(days=1)).isoformat()
+        before = t.affinity
+        check_daily_login(t, lang="ja")
+        self.assertLessEqual(t.affinity - before,
+                             t.max_daily_gain * mood._DAILY_LOGIN_BUDGET_SHARE + 1e-9)
 
     def test_the_arc_takes_six_days_with_login_bonuses_included(self):
         """実際の 1 日（ログイン → 会話）を 6 日回して、5 日目まで close に達しないこと。
