@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import tempfile
-from typing import Dict, Iterator, List
+from typing import Dict, Iterator, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ def atomic_write_text(
     encoding: str = "utf-8",
     fsync: bool = True,
     restrict: bool = False,
+    newline: Optional[str] = None,
 ) -> None:
     """content を path へアトミックに書き込む。
 
@@ -80,6 +81,10 @@ def atomic_write_text(
 
     失敗時は一時ファイルを削除したうえで例外を re-raise する
     （呼び出し元の既存の try/except パターンに判断を委ねる）。
+
+    newline は組み込み open と同じ意味。CSV を書くときは csv モジュールが
+    自前で "\r\n" を出すので newline="" を渡すこと（既定の None だと
+    Windows で "\n" → "\r\n" の変換が二重に掛かり "\r\r\n" になる）。
     """
     parent = os.path.dirname(path) or "."
     os.makedirs(parent, exist_ok=True)
@@ -87,7 +92,7 @@ def atomic_write_text(
         dir=parent, prefix=f".{os.path.basename(path)}.", suffix=".tmp"
     )
     try:
-        with os.fdopen(fd, "w", encoding=encoding) as f:
+        with os.fdopen(fd, "w", encoding=encoding, newline=newline) as f:
             f.write(content)
             f.flush()
             if fsync:

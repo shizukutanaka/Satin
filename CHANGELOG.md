@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Exports of private data are now 0600, like the files they copy.** The live
+  conversation log, the affinity file and the rotated archives were all
+  owner-only, and the dashboard's zip export already called
+  `restrict_to_owner` — but five plain `open(dest, "w")` paths wrote
+  world-readable copies under the default umask: `/export-log` in both the CLI
+  and the GUI, and `manage_satin`'s `mood export`, `log export` and `log csv`.
+  Each is a complete copy of the conversation history or the affinity state.
+  All five now go through `fsutil.atomic_write_text(..., restrict=True)`.
+
+  Unifying them fixed a second inconsistency for free: only one of the three
+  CSV writers passed `newline=""`, so the others would have doubled the
+  csv module's own `\r\n` into `\r\r\n` on Windows. `atomic_write_text`
+  takes a `newline` argument now and every CSV export passes it.
+
 ### Removed
 - **The CLI-only daily-mood multiplier on conversation gains.** `--chat`
   applied "bright day = +20%" to every conversational gain, outside the daily

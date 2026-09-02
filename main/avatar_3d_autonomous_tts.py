@@ -79,6 +79,21 @@ except Exception:  # pragma: no cover - defensive
     _check_hurt_event = None  # type: ignore[assignment]
 
 try:
+    from fsutil import atomic_write_text as _atomic_write_text
+except Exception:  # pragma: no cover - fsutil は main/ の同梱モジュール
+    def _atomic_write_text(path, content, *, encoding="utf-8", fsync=True,  # type: ignore[misc]
+                           restrict=False, newline=None):
+        """fsutil を読めない場合の最小フォールバック（権限制限は落とさない）。"""
+        import os as _os
+        with open(path, "w", encoding=encoding, newline=newline) as f:
+            f.write(content)
+        if restrict:
+            try:
+                _os.chmod(path, 0o600)
+            except OSError:
+                pass
+
+try:
     from persona_cli import _detect_ritual_event as _detect_ritual_event_gui
     from persona_cli import command_usage as _command_usage_gui
     from persona_cli import confirmation_prompt as _confirmation_prompt_gui
@@ -1142,8 +1157,9 @@ class AutonomousAvatarViewer(
         try:
             conv_log = get_conversation_log()
             csv_text = conv_log.to_csv(avatar_label=avatar_label, include_archives=True)
-            with open(dest, "w", encoding="utf-8") as f:
-                f.write(csv_text)
+            # 0600 で保存している会話ログの完全な複製なので、複製も 0600 に
+            # する（CLI 側と対）。newline="" は Windows の改行二重変換対策。
+            _atomic_write_text(dest, csv_text, restrict=True, newline="")
         except Exception as e:
             logger.debug("/export-log に失敗（GUI）: %s", e)
             reply = (f"(Failed to export the log to '{dest}')" if lang == "en"

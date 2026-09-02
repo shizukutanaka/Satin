@@ -39,6 +39,21 @@ from typing import Any, Callable, List, Optional
 from persona import Persona, get_persona
 
 try:
+    from fsutil import atomic_write_text as _atomic_write_text
+except Exception:  # pragma: no cover - fsutil は main/ の同梱モジュール
+    def _atomic_write_text(path, content, *, encoding="utf-8", fsync=True,  # type: ignore[misc]
+                           restrict=False, newline=None):
+        """fsutil を読めない場合の最小フォールバック（権限制限は落とさない）。"""
+        import os as _os
+        with open(path, "w", encoding=encoding, newline=newline) as f:
+            f.write(content)
+        if restrict:
+            try:
+                _os.chmod(path, 0o600)
+            except OSError:
+                pass
+
+try:
     from conversation_log import ConversationLog, get_conversation_log
 except Exception:  # pragma: no cover - defensive
     ConversationLog = None  # type: ignore
@@ -1558,8 +1573,11 @@ def _export_log(conv_log, dest: str, lang: str,
         pass
     try:
         csv_text = conv_log.to_csv(avatar_label=avatar_label, include_archives=True)
-        with open(dest, "w", encoding="utf-8") as f:
-            f.write(csv_text)
+        # エクスポートは会話全文の完全な複製。元の JSONL は 0600 なのに、
+        # 素の open() で書くと umask 既定の 0644 になり、複製だけが他ユーザー
+        # から読める状態だった。newline="" は csv が自前で出す "\r\n" に
+        # Windows の変換が二重掛かりするのを防ぐ。
+        _atomic_write_text(dest, csv_text, restrict=True, newline="")
     except Exception:  # pragma: no cover - defensive
         if lang == "en":
             output_fn(f"(Failed to export the log to '{dest}')")

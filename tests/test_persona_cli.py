@@ -2414,6 +2414,16 @@ class ExportClearLogTests(unittest.TestCase):
         self.assertTrue(any(dest in line for line in out),
                         "Output must confirm the export destination")
 
+    @unittest.skipUnless(hasattr(os, "chmod"), "chmod is a no-op on this platform")
+    def test_export_log_is_owner_only(self):
+        """The CSV is a full copy of the conversation; the source JSONL is
+        0600, so the copy must be too. It used to come out 0644."""
+        import stat
+        dest = os.path.join(self._tmp, "export_perms.csv")
+        persona_cli._export_log(self._log, dest, "ja", lambda s: None)
+        self.assertEqual(stat.S_IMODE(os.stat(dest).st_mode) & 0o077, 0,
+                         "exported conversation must not be group/other readable")
+
     def test_export_log_none_conv_log_does_not_crash(self):
         """Direct helper call: run_chat substitutes a default log for None,
         so the None-guard is only reachable by calling the helper directly."""

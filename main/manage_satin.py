@@ -29,6 +29,21 @@ import sys
 
 # main/ ディレクトリを sys.path に追加（リポジトリルートから実行を想定）
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from fsutil import atomic_write_text as _atomic_write_text
+except Exception:  # pragma: no cover - fsutil は main/ の同梱モジュール
+    def _atomic_write_text(path, content, *, encoding="utf-8", fsync=True,  # type: ignore[misc]
+                           restrict=False, newline=None):
+        """fsutil を読めない場合の最小フォールバック（権限制限は落とさない）。"""
+        import os as _os
+        with open(path, "w", encoding=encoding, newline=newline) as f:
+            f.write(content)
+        if restrict:
+            try:
+                _os.chmod(path, 0o600)
+            except OSError:
+                pass
 _MAIN = os.path.dirname(os.path.abspath(__file__))
 for _p in (_MAIN, _ROOT):
     if _p not in sys.path:
@@ -252,8 +267,10 @@ def cmd_mood_export(dest: str) -> None:
         from mood import get_mood_tracker
         tracker = get_mood_tracker()
         data = tracker.to_dict()
-        with open(dest, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # 好感度ファイルは 0600。その複製も 0600 で書く（下の log export /
+        # log csv、ダッシュボードの zip エクスポートと同じ扱い）。
+        _atomic_write_text(dest, json.dumps(data, ensure_ascii=False, indent=2),
+                           restrict=True)
         print(f"好感度を '{dest}' にエクスポートしました。")
     except ImportError:
         print("[ERROR] mood モジュールが見つかりません。")
@@ -374,8 +391,8 @@ def cmd_log_export(dest: str) -> None:
         log = _get_conversation_log()
         # include_archives=True でローテート済みアーカイブも含む完全エクスポート
         events = log.search("", include_archives=True)
-        with open(dest, "w", encoding="utf-8") as f:
-            json.dump(events, f, ensure_ascii=False, indent=2)
+        _atomic_write_text(dest, json.dumps(events, ensure_ascii=False, indent=2),
+                           restrict=True)
         print(f"会話ログ {len(events)} 件を '{dest}' にエクスポートしました。")
     except ImportError:
         print("[ERROR] conversation_log モジュールが見つかりません。")
@@ -562,8 +579,8 @@ def cmd_log_csv(dest: str) -> None:
         log_path = os.path.join(_ROOT, DEFAULT_LOGFILE)
         log = ConversationLog(log_path)
         csv_content = log.to_csv()
-        with open(dest, "w", encoding="utf-8-sig", newline="") as f:
-            f.write(csv_content)
+        _atomic_write_text(dest, csv_content, encoding="utf-8-sig",
+                           restrict=True, newline="")
         print(f"会話ログを CSV に書き出しました: {dest}")
     except ImportError:
         print("[ERROR] conversation_log モジュールが見つかりません。")

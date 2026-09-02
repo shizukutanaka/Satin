@@ -298,6 +298,21 @@ class DispatchTests(unittest.TestCase):
         self.assertTrue(handled)
         self.assertTrue(os.path.exists(dest))
 
+    @unittest.skipUnless(hasattr(os, "chmod"), "chmod is a no-op on this platform")
+    def test_export_log_is_owner_only(self):
+        """The GUI export is the same full copy of private conversation data
+        as the CLI one, so it gets the same 0600 (it used to be 0644)."""
+        import stat
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        dest = os.path.join(tmp, "perms.csv")
+        conv_log = _FakeConvLog(os.path.join(tmp, "c.jsonl"))
+        v = _fake_viewer()
+        with mock.patch.object(_mod, "get_conversation_log", return_value=conv_log):
+            v._handle_slash_command_gui(f"export-log {dest}", "ja", None)
+        self.assertEqual(stat.S_IMODE(os.stat(dest).st_mode) & 0o077, 0,
+                         "exported conversation must not be group/other readable")
+
     def test_clear_log_dispatches(self):
         v = _fake_viewer()
         with mock.patch.object(_mod, "get_conversation_log", return_value=_FakeConvLog("/tmp/x.jsonl")):

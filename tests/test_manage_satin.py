@@ -1093,5 +1093,74 @@ class MoodShowTransitionArrowTests(unittest.TestCase):
         self.assertIn("↓", output)
 
 
+
+class ExportPermissionTests(unittest.TestCase):
+    """Exports are complete copies of private data, so they must be 0600 too.
+
+    Regression: the live files are owner-only (mood.json, the conversation
+    JSONL, and the rotated .gz archives all go through fsutil), and the
+    dashboard's zip export calls restrict_to_owner — but the five plain
+    `open(dest, "w")` export paths wrote 0644 under the default umask.
+    Measured before the fix: mood export, log export and log csv all came out
+    world-readable while their sources were 0600.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _mode(self, path):
+        import stat as _stat
+        return _stat.S_IMODE(os.stat(path).st_mode)
+
+    def _log(self):
+        from conversation_log import ConversationLog
+        log = ConversationLog(os.path.join(self._tmp, "c.jsonl"))
+        log.log_exchange("private thing", "mm")
+        return log
+
+    @unittest.skipUnless(hasattr(os, "chmod"), "chmod is a no-op on this platform")
+    def test_mood_export_is_owner_only(self):
+        dest = os.path.join(self._tmp, "mood.json")
+        tracker = mock.Mock()
+        tracker.to_dict.return_value = {"affinity": 51.0}
+        with mock.patch.dict("sys.modules"), \
+             mock.patch("mood.get_mood_tracker", lambda: tracker):
+            manage_satin.cmd_mood_export(dest)
+        self.assertEqual(self._mode(dest) & 0o077, 0,
+                         "affinity export must not be group/other readable")
+
+    @unittest.skipUnless(hasattr(os, "chmod"), "chmod is a no-op on this platform")
+    def test_log_export_is_owner_only(self):
+        dest = os.path.join(self._tmp, "log.json")
+        with mock.patch.object(manage_satin, "_get_conversation_log", self._log):
+            manage_satin.cmd_log_export(dest)
+        self.assertEqual(self._mode(dest) & 0o077, 0)
+
+    @unittest.skipUnless(hasattr(os, "chmod"), "chmod is a no-op on this platform")
+    def test_log_csv_is_owner_only(self):
+        from conversation_log import ConversationLog
+        log = self._log()
+        dest = os.path.join(self._tmp, "log.csv")
+        with mock.patch.object(manage_satin, "_ROOT", self._tmp), \
+             mock.patch("conversation_log.ConversationLog",
+                        lambda *a, **k: log):
+            manage_satin.cmd_log_csv(dest)
+        self.assertEqual(self._mode(dest) & 0o077, 0)
+
+    def test_log_csv_does_not_double_translate_newlines(self):
+        """csv writes \r\n itself; newline="" keeps Windows from making \r\r\n."""
+        log = self._log()
+        dest = os.path.join(self._tmp, "log.csv")
+        with mock.patch.object(manage_satin, "_ROOT", self._tmp), \
+             mock.patch("conversation_log.ConversationLog",
+                        lambda *a, **k: log):
+            manage_satin.cmd_log_csv(dest)
+        with open(dest, "rb") as fh:
+            self.assertNotIn(b"\r\r\n", fh.read())
+
 if __name__ == "__main__":
     unittest.main()

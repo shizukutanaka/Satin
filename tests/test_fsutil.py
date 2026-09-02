@@ -187,5 +187,28 @@ class AtomicWriteTextTests(unittest.TestCase):
         self.assertRegex(content, r'^\{"writer": \d\}$')
 
 
+
+class AtomicWriteNewlineTests(unittest.TestCase):
+    """newline="" so a CSV's own \r\n is not translated again on Windows."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_newline_empty_keeps_crlf_verbatim(self):
+        path = os.path.join(self._tmp, "a.csv")
+        atomic_write_text(path, "a,b\r\nc,d\r\n", newline="")
+        with open(path, "rb") as fh:
+            self.assertEqual(fh.read(), b"a,b\r\nc,d\r\n")
+
+    def test_default_newline_is_unchanged_for_plain_text(self):
+        path = os.path.join(self._tmp, "b.txt")
+        atomic_write_text(path, "line\n")
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "line\n")
+
 if __name__ == "__main__":
     unittest.main()
