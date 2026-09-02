@@ -2502,6 +2502,62 @@ class GiftListCooldownMarkerTests(unittest.TestCase):
                         "Catalog must still render without a mood tracker")
 
 
+
+class RepeatableBonusesShareTheDailyBudgetTests(unittest.TestCase):
+    """Regression: saying "good night" 20 times reached the top level on day one.
+
+    The goodnight/apology ritual bonus was applied with adjust(), which
+    bypasses the daily earn budget — the same defect class as gifts. Measured
+    before the fix: affinity 90.0 / level "close" after 20 lines, on a
+    tracker whose daily cap is 5.0. The CLI also applied a daily-mood
+    multiplier to conversation gains outside the budget (the GUI never did),
+    so the two front-ends drifted apart; that path is gone.
+    """
+
+    def setUp(self):
+        from conversation_log import ConversationLog
+        self._tmp = tempfile.mkdtemp()
+        self._log = ConversationLog(os.path.join(self._tmp, "c.jsonl"))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _run(self, inputs, tracker):
+        d = _Driver(inputs)
+        persona_cli.run_chat(
+            persona=_persona(), conv_log=self._log, mood=tracker,
+            input_fn=d.input_fn, output_fn=d.output_fn, greet=False,
+        )
+        return d.out
+
+    def test_goodnight_spam_cannot_reach_the_top_level_on_day_one(self):
+        from mood import MoodTracker
+        t = MoodTracker()
+        self._run(["good night"] * 20, t)
+        self.assertLessEqual(t.affinity, 50.0 + t.max_daily_gain + 1e-6,
+                             "ritual bonus is applied outside the daily budget")
+        self.assertNotEqual(t.level, "close")
+
+    def test_apology_spam_cannot_reach_the_top_level_on_day_one(self):
+        from mood import MoodTracker
+        t = MoodTracker()
+        self._run(["sorry"] * 20, t)
+        self.assertLessEqual(t.affinity, 50.0 + t.max_daily_gain + 1e-6)
+
+    def test_cli_conversation_gain_matches_the_tracker_alone(self):
+        """No CLI-only multiplier: the CLI path and a bare tracker agree."""
+        from mood import MoodTracker
+        # 上限に掛からない小さな上昇（thank you = +4.0 < 5.0）で比べる。
+        # 乗数 1.2 が会話に掛かっていれば CLI 側が 0.8 多くなる。
+        with mock.patch.object(persona_cli, "_get_daily_mood", lambda: "energetic"), \
+             mock.patch.object(persona_cli, "_mood_affinity_multiplier", lambda key: 1.2):
+            via_cli = MoodTracker()
+            self._run(["thank you"], via_cli)
+        bare = MoodTracker()
+        bare.register("thank you")
+        self.assertAlmostEqual(via_cli.affinity, bare.affinity, places=6)
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -756,21 +756,15 @@ def run_chat(
                 before_affinity = mood.affinity
                 before_interactions = mood.interactions
                 raw_delta = mood.register(text)
-                # デイリームードによる好感度感度変調（明るい日は上がりやすい）
-                if raw_delta != 0 and _get_daily_mood is not None and _mood_affinity_multiplier is not None:
-                    try:
-                        # 日付のみで決定（名前 salt は使わない）— 全経路で同じ気分にする
-                        dmood = _get_daily_mood()
-                        multiplier = _mood_affinity_multiplier(dmood)
-                        if multiplier != 1.0:
-                            extra = raw_delta * (multiplier - 1.0)
-                            mood.adjust(extra)
-                    except Exception:
-                        pass
-                # 謝罪・おやすみルーティン: 小さな好感度ボーナスで「仲直り/就寝の習慣」を演出
+                # 会話へのデイリームード乗数は削除した。本体 GUI の会話経路には
+                # 元々無く（ギフトにだけ適用）、CLI だけが上限を通さず上乗せして
+                # いた。日次予算を通す以上、乗数は予算を消化する速さしか変えない
+                # ので、GUI と同じ挙動に揃えるほうが正しい。
+                # 謝罪・おやすみルーティン: 小さな好感度ボーナスで「仲直り/就寝の習慣」を演出。
+                # 何度でも繰り返せる上昇なので earn()（日次予算）を通す。
                 ritual = _detect_ritual_event(text)
                 if ritual is not None:
-                    mood.adjust(ritual[1])
+                    mood.earn(ritual[1])
                 # 傷つきイベント: 大きな好感度低下で通常応答を感情反応に差し替える
                 hurt_msg = ""
                 if _check_hurt_event is not None:

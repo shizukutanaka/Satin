@@ -457,11 +457,12 @@ class AutonomousAvatarViewer(
                 before_affinity = tracker.affinity
                 before_interactions = tracker.interactions
                 raw_delta = tracker.register(comment)
-                # 謝罪・おやすみルーティン: 小さな好感度ボーナス
+                # 謝罪・おやすみルーティン: 小さな好感度ボーナス（繰り返せるので
+                # earn() で日次予算を通す。CLI 側と対）
                 if _detect_ritual_event_gui is not None:
                     ritual = _detect_ritual_event_gui(comment)
                     if ritual is not None:
-                        tracker.adjust(ritual[1])
+                        tracker.earn(ritual[1])
                 # 傷つきイベント: 通常応答を感情反応で上書き
                 if _check_hurt_event is not None:
                     hurt = _check_hurt_event(raw_delta, lang=lang)

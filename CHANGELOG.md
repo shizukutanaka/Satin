@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Removed
+- **The CLI-only daily-mood multiplier on conversation gains.** `--chat`
+  applied "bright day = +20%" to every conversational gain, outside the daily
+  budget; the main GUI never did (it applies the multiplier to gifts only).
+  Once gains go through the budget the multiplier only changes how fast the
+  day's budget is spent, so the two front-ends now behave the same way. The
+  `/mood` display and the gift multiplier are unchanged.
+
+### Fixed
+- **Three more ways around the daily affinity budget**, found by asking
+  whether the six-day arc was actually true after `earn()` landed. It was not:
+  typing "good night" twenty times reached the top level on day one (the
+  goodnight/apology ritual bonus was applied with `adjust()`), and the daily
+  login bonus (2.0–5.0/day) was stacked outside the budget, so the "six days
+  minimum" arc ended on day four. Both now go through `earn()`. Only
+  non-repeatable bonuses — birthday (once a year) and anniversaries (five,
+  ever) — stay uncapped. The arc tests that only drove `register()` could not
+  catch any of this; they now drive the real path (login, then conversation;
+  the CLI input loop).
+
 - **`--avatar-loader` is gone** (the owner's decision on `PRODUCT_REVIEW.md`
   §3 #4). It opened a separate tkinter window whose only job was picking an
   avatar file — something the main GUI's `/avatar` command does in place,

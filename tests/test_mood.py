@@ -1812,6 +1812,41 @@ class EarnSharesTheDailyBudgetTests(unittest.TestCase):
         t.adjust(8.0)
         self.assertAlmostEqual(t.affinity, before + 8.0, places=6)
 
+    def test_login_bonus_consumes_the_daily_budget(self):
+        """デイリーログインボーナスは毎日積む上昇なので、同じ予算を使うこと。
+
+        adjust() で上乗せしていた頃は、会話の上限いっぱい + ログイン 2.0〜5.0
+        で 1 日 7〜10 点稼げ、「最短 6 日」の弧が実際には 4 日目に close に
+        達していた（実測）。
+        """
+        from mood import check_daily_login
+        t = MoodTracker()
+        check_daily_login(t, lang="ja")
+        for _ in range(20):
+            t.register("ありがとう")
+        self.assertAlmostEqual(t.affinity, 50.0 + t.max_daily_gain, places=6,
+                               msg="ログインボーナスが日次予算の外で上乗せされている")
+
+    def test_the_arc_takes_six_days_with_login_bonuses_included(self):
+        """実際の 1 日（ログイン → 会話）を 6 日回して、5 日目まで close に達しないこと。
+
+        register() だけを回す既存の弧テストは、ログインボーナスの迂回を
+        捕まえられなかった。実経路で数える。
+        """
+        import datetime
+        from mood import check_daily_login
+        t = MoodTracker()
+        start = datetime.date(2026, 1, 1)
+        for day in range(1, 7):
+            today = (start + datetime.timedelta(days=day - 1)).isoformat()
+            t._daily_gain_date = None  # 日付が変わったものとして予算をリセット
+            check_daily_login(t, lang="ja", today=today)
+            for _ in range(20):
+                t.register("ありがとう")
+            if day < 6:
+                self.assertNotEqual(t.level, "close", f"day {day} で最高レベルに達している")
+        self.assertEqual(t.level, "close")
+
 
 class DailyGainCapConfigTests(unittest.TestCase):
     """会話由来の日次上昇上限が設定可能であること。

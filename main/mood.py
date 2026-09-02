@@ -553,8 +553,10 @@ class MoodTracker:
         レベルへ到達できた**（合計 30.5 = 開始 50.0 から close の閾値 80.0 まで
         ちょうど届く）。
 
-        誕生日・記念日など繰り返せない一度きりのボーナスは対象外で、
-        従来どおり `adjust()` を使う。減少（delta <= 0）も対象外 —
+        同じ理由で、おやすみ・謝罪のルーティンボーナス（何度でも言える）と
+        デイリーログインボーナス（毎日積む）もここを通る。予算を通さない
+        `adjust()` が許されるのは、誕生日（年 1 回）と記念日（5 回きり）の
+        ように**繰り返せない**ボーナスだけ。減少（delta <= 0）も対象外 —
         上限は「稼ぎすぎ」だけを防ぎ、正当なマイナス影響は薄めない。
         """
         try:
@@ -1339,7 +1341,8 @@ def absence_message(tracker: "MoodTracker", lang: str = "ja") -> str:
 # デイリーログイン（毎日の最初の会話を祝い、連続日数を追う）
 # --------------------------------------------------------------------------- #
 
-# デイリーログインの基本好感度ボーナスと、連続日数 1 日あたりの加算（上限あり）
+# デイリーログインの基本好感度ボーナスと、連続日数 1 日あたりの加算（上限あり）。
+# earn() を通るので、その日の会話で稼げる残り予算（max_daily_gain）を消費する。
 _DAILY_LOGIN_BASE_BONUS = 2.0
 _DAILY_LOGIN_STREAK_BONUS = 0.5
 _DAILY_LOGIN_MAX_BONUS = 5.0
@@ -1461,13 +1464,15 @@ def check_daily_login(
     tracker._last_login_date = today
     tracker._login_streak = streak
 
-    # 好感度ボーナス（連続日数で微増、上限あり）
+    # 好感度ボーナス（連続日数で微増、上限あり）。毎日積む上昇なので earn() で
+    # 日次予算を通す — adjust() で上乗せしていた頃は、会話の上限いっぱいに
+    # ログインボーナスが加わり、「最短 6 日」の弧が実際には 4 日で終わっていた。
     bonus = min(
         _DAILY_LOGIN_BASE_BONUS + (streak - 1) * _DAILY_LOGIN_STREAK_BONUS,
         _DAILY_LOGIN_MAX_BONUS,
     )
     try:
-        tracker.adjust(bonus)
+        tracker.earn(bonus)
     except Exception:  # pragma: no cover - defensive
         pass
 
