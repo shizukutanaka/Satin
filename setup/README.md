@@ -12,6 +12,18 @@ Satin はローカル完結・オフラインのデスクトップ 3D アバタ�
 | `mac/setup.sh` | macOS / Linux 用セットアップ（[手順](mac/README_MAC.md)） |
 | `github-actions-ci.yml` | CI ワークフロー定義（有効化は所有者が手動で行う。ファイル冒頭を参照） |
 
+## 検証を push 前に自動で走らせる
+
+CI が有効化されるまでの間（および有効化後も一段目の防波堤として）、
+リポジトリ同梱の pre-push フックを有効にできます。クローンごとに 1 回:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+以後 `git push` のたびに `python check.py` が走り、赤なら push を中止します
+（飛ばしたいときは `SATIN_SKIP_CHECK=1 git push` か `git push --no-verify`）。
+
 ## 自動セットアップ
 
 リポジトリ root から実行します。スクリプトは自身の位置からリポジトリルートを

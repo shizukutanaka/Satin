@@ -24,6 +24,7 @@ CHANGELOG.md と docs/history/ を対象外にする理由
 from __future__ import annotations
 
 import os
+import sys
 import re
 import unittest
 
@@ -173,6 +174,72 @@ class MarkdownLinkTests(unittest.TestCase):
                 detail = "\n".join(f"  {rel}:{n}: {t}" for n, t in broken)
                 self.assertEqual(broken, [], f"\n{rel} のリンク切れ:\n{detail}")
 
+
+
+class ReviewChecklistTests(unittest.TestCase):
+    """PRODUCT_REVIEW §5 lists the numbers a human has to sign off on.
+
+    A checklist that has drifted from the code is worse than no checklist: the
+    reviewer approves values that are not the ones running. Every number in the
+    table is checked against its constant here, so changing a threshold without
+    updating the table turns the suite red.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        main = os.path.join(_ROOT, "main")
+        if main not in sys.path:
+            sys.path.insert(0, main)
+        with open(os.path.join(_ROOT, "PRODUCT_REVIEW.md"), encoding="utf-8") as fh:
+            cls.doc = fh.read()
+
+    def _table_row(self, label):
+        for line in self.doc.splitlines():
+            if line.startswith("|") and label in line:
+                return line
+        self.fail(f"PRODUCT_REVIEW §5 has no row for {label!r}")
+
+    def test_affinity_numbers_match_the_code(self):
+        import mood
+        row = self._table_row("関係の成長弧")
+        self.assertIn(str(mood._MAX_DAILY_CONVERSATION_GAIN), row)
+        row = self._table_row("好感度の自然低下")
+        self.assertIn(str(mood._DEFAULT_DECAY_RATE), row)
+        row = self._table_row("告白の下限")
+        self.assertIn(str(int(mood._CONFESSION_MIN_DAYS)), row)
+        self.assertIn(str(mood._CONFESSION_MIN_INTERACTIONS), row)
+
+    def test_login_and_ritual_bonuses_match_the_code(self):
+        import mood
+        import persona_cli
+        row = self._table_row("デイリーログイン")
+        self.assertIn(str(mood._DAILY_LOGIN_BASE_BONUS), row)
+        self.assertIn(str(mood._DAILY_LOGIN_MAX_BONUS), row)
+        row = self._table_row("謝罪 / おやすみ")
+        self.assertIn(str(persona_cli._APOLOGY_BONUS), row)
+        self.assertIn(str(persona_cli._GOODNIGHT_BONUS), row)
+
+    def test_guardrail_thresholds_match_the_code(self):
+        import usage_guardrails
+        row = self._table_row("深夜利用の定義")
+        self.assertIn(str(usage_guardrails._LATE_NIGHT_START_HOUR), row)
+        self.assertIn(str(usage_guardrails._LATE_NIGHT_END_HOUR), row)
+        self.assertIn(str(usage_guardrails._LATE_NIGHT_MIN_EVENTS), row)
+
+    def test_break_reminder_defaults_match_the_code(self):
+        import break_reminder
+        row = self._table_row("休憩リマインダー")
+        for value in (break_reminder._DEFAULT_WORK_MINUTES,
+                      break_reminder._DEFAULT_SHORT_BREAK,
+                      break_reminder._DEFAULT_LONG_BREAK,
+                      break_reminder._DEFAULT_CYCLES_BEFORE_LONG):
+            self.assertIn(str(value), row)
+
+    def test_ai_disclosure_interval_matches_the_code(self):
+        import ai_disclosure
+        row = self._table_row("AI 開示の間隔")
+        hours = ai_disclosure.DISCLOSURE_INTERVAL_SECONDS // 3600
+        self.assertIn(f"{hours} 時間", row)
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

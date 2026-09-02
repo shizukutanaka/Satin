@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`.githooks/pre-push` runs the verification gate before every push**, enabled
+  with one line per clone: `git config core.hooksPath .githooks`. The gate was
+  supposed to be automated by GitHub Actions, but placing
+  `.github/workflows/ci.yml` is refused for this repository's agent token on
+  both available paths — `git push` and the REST contents API (403, measured,
+  not assumed). The requirement was never "GitHub Actions" though; it was "the
+  gate runs on every change", and that needs no special permission. Verified by
+  breaking a module and watching the hook exit 1. Worth keeping after CI is on:
+  CI reports a broken push, the hook prevents one.
+
+- **A sign-off checklist in `PRODUCT_REVIEW.md` §5** — every number that decides
+  the product's character (the growth arc, the confession floor, the late-night
+  window, the break-reminder cadence, the AI-disclosure interval) in one table
+  with its file and the question a reviewer has to answer. Tests assert each
+  cell against its constant, so a threshold that changes without the table
+  turns the suite red; a checklist that has drifted is worse than none, because
+  the reviewer signs off on values that are not the ones running.
+
+### Fixed
+- **The CI definition would have skipped the GUI smoke.** `xvfb` was missing
+  from its apt list, so `check.py`'s new real-Qt smoke would have found no
+  DISPLAY and reported SKIP — CI would never have exercised the GUI. The
+  optional-dependency count in its comments also still said seven (Pillow is
+  gone; it is six).
+
 ### Security
 - **Exports of private data are now 0600, like the files they copy.** The live
   conversation log, the affinity file and the rotated archives were all

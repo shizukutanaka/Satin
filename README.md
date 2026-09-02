@@ -549,9 +549,10 @@ pip install -r setup/requirements.txt   # includes pytest, ruff, mypy
 python check.py                         # ~10 seconds
 ```
 
-It runs `py_compile`, ruff, mypy, the pytest suite, config validation, and three
-launch smokes (`--version`, `--chat`, the dashboard's main routes). Add `--fast`
-to skip the smokes while editing, or `--list` to see the plan without running it.
+It runs `py_compile`, ruff, mypy, the pytest suite, config validation, and four
+launch smokes (`--version`, `--chat`, the dashboard's main routes, and the real
+Qt window driving autonomous mode under xvfb). Add `--fast` to skip the smokes
+while editing, or `--list` to see the plan without running it.
 
 The smokes exist because the unit tests import modules directly and so never
 observe whether an entry point actually *starts* — a wiring fault in argument
@@ -563,8 +564,18 @@ effect.
 `setup/github-actions-ci.yml` runs this same command rather than re-listing the
 checks, so "passes locally, fails in CI" can't come from the two lists drifting
 apart. See [Contributing](#contributing) for how to activate CI on this
-repository — until an owner does, the gate has never run automatically and
-`python check.py` is the only thing standing in for it.
+repository — until an owner does, GitHub never runs the gate for you.
+
+**Run it automatically before every push**, without needing CI:
+
+```bash
+git config core.hooksPath .githooks      # once per clone
+```
+
+`.githooks/pre-push` then runs `python check.py` and refuses the push if it is
+red (`SATIN_SKIP_CHECK=1 git push` or `--no-verify` overrides it). This is worth
+keeping even after CI is on: CI tells you a push was broken, the hook stops the
+push from happening.
 
 To run a step on its own:
 

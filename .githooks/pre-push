@@ -1,0 +1,43 @@
+#!/bin/sh
+# push の前に検証ゲート（python check.py）を必ず走らせる。
+#
+# なぜこれがあるか
+# ----------------
+# 本来この役割は GitHub Actions が持つべきで、定義は
+# setup/github-actions-ci.yml に用意してある。しかしそれを
+# .github/workflows/ へ置けるのはリポジトリ所有者だけで、エージェントの
+# GitHub App トークンでは git push も REST API も 403 で拒否される
+# （両方とも実測済み）。CI が有効化されるまでの間、「変更のたびに自動で
+# 検証が走る」という性質を、権限の要らない場所で満たすのがこのフックである。
+#
+# 有効化（1 回だけ）:
+#     git config core.hooksPath .githooks
+#
+# 一時的に飛ばしたいとき:
+#     SATIN_SKIP_CHECK=1 git push        （または git push --no-verify）
+#
+# CI が有効化されたあとも、このフックは「壊れたものを push しない」という
+# 一段目の防波堤として意味を持つ（CI は push した後にしか教えてくれない）。
+set -e
+
+if [ -n "$SATIN_SKIP_CHECK" ]; then
+    echo "[satin] SATIN_SKIP_CHECK が設定されているため検証を飛ばします。"
+    exit 0
+fi
+
+root=$(git rev-parse --show-toplevel)
+if [ ! -f "$root/check.py" ]; then
+    # check.py が無いリビジョン（歴史的なブランチ等）では黙って通す。
+    exit 0
+fi
+
+python="${SATIN_PYTHON:-python3}"
+command -v "$python" >/dev/null 2>&1 || python=python
+command -v "$python" >/dev/null 2>&1 || {
+    echo "[satin] python が見つからないため検証を飛ばします。" >&2
+    exit 0
+}
+
+echo "[satin] 検証ゲートを実行します（飛ばすには SATIN_SKIP_CHECK=1）..."
+cd "$root"
+"$python" check.py

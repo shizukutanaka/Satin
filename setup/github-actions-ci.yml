@@ -44,6 +44,10 @@ jobs:
 
       # pip では入らない共有ライブラリ。この一覧は実際に PyQt5 / PyOpenGL /
       # pyttsx3 を導入した環境で 1 つずつ確かめたもの:
+      #   xvfb                … 仮想 X サーバ。これが無いと check.py の
+      #                          「smoke: GUI」（実 Qt でウィンドウを開き自律
+      #                          モードを 400 ティック回す）が DISPLAY 不在で
+      #                          SKIP になり、CI が GUI を一度も動かさない
       #   libgl1, libglib2.0-0 … PyQt5 の import に必要
       #   libglu1-mesa        … PyOpenGL の GLU（プレースホルダ球）。無くても
       #                          縮退するが、入れておけば描画経路も検証できる
@@ -52,7 +56,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            libgl1 libglib2.0-0 libglu1-mesa espeak espeak-data
+            libgl1 libglib2.0-0 libglu1-mesa espeak espeak-data xvfb
 
       - name: Install Python dependencies
         run: |
@@ -63,7 +67,7 @@ jobs:
       # config validate / 起動スモーク）は check.py が決める。
       # 手元で `python check.py` が緑なら、ここも緑になる。
       # check.py は冒頭で任意依存の導入状況を表示する。ここは全部入りなので
-      # 「全 7 件導入済み（CI と同条件）」と出るのが正常。手元でこの行が
+      # 「全 6 件導入済み（CI と同条件）」と出るのが正常。手元でこの行が
       # 「未導入: ...」になっている場合、手元の緑は CI の緑と同じ意味を持たない。
       - name: Verification gate
         run: python check.py

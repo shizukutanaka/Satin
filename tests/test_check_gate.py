@@ -121,5 +121,47 @@ class PersonalDataPreservationTests(unittest.TestCase):
             self.assertIn(name, self.check._PERSONAL_DATA)
 
 
+
+class PrePushHookTests(unittest.TestCase):
+    """The pre-push hook is the gate's automation while CI is not enabled.
+
+    Placing .github/workflows/ci.yml is refused for this repo's agent token on
+    both paths — `git push` ("refusing to allow a GitHub App to create or
+    update workflow") and the REST contents API (403 "Resource not accessible
+    by integration"). Until the owner enables CI, this hook is what makes the
+    gate run automatically, so it must keep working and stay discoverable.
+    """
+
+    HOOK = os.path.join(_ROOT, ".githooks", "pre-push")
+
+    def test_hook_exists_and_is_executable(self):
+        self.assertTrue(os.path.exists(self.HOOK), "pre-push hook is missing")
+        if hasattr(os, "access"):
+            self.assertTrue(os.access(self.HOOK, os.X_OK),
+                            "pre-push hook must be executable or git will ignore it")
+
+    def test_hook_runs_the_same_gate_as_ci(self):
+        """One definition of "verified": the hook calls check.py, not its own list."""
+        with open(self.HOOK, encoding="utf-8") as fh:
+            body = fh.read()
+        self.assertIn("check.py", body)
+        for tool in ("pytest", "ruff", "mypy"):
+            self.assertNotIn(f"{tool} ", body.replace("check.py", ""),
+                             f"the hook must not re-list {tool}; check.py owns the list")
+
+    def test_documented_enable_command_matches_the_directory(self):
+        """A wrong path in the docs makes the hook silently never run."""
+        for doc in ("README.md", os.path.join("setup", "README.md")):
+            path = os.path.join(_ROOT, doc)
+            if not os.path.exists(path):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            if "core.hooksPath" in text:
+                self.assertIn("core.hooksPath .githooks", text,
+                              f"{doc} points core.hooksPath at the wrong directory")
+                return
+        self.fail("no document explains how to enable the hook (core.hooksPath)")
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
