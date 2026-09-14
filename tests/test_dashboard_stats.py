@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 _MAIN = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "main")
 sys.path.insert(0, _MAIN)
@@ -407,6 +408,92 @@ class DashboardPortResolutionTests(unittest.TestCase):
         with mock.patch.object(dashboard, "app", _FakeApp()):
             launcher._launch_dashboard(host="127.0.0.1", port=None)
         self.assertEqual(captured["port"], 5003)
+
+
+@unittest.skipUnless(getattr(dashboard, "_FLASK_AVAILABLE", False), "Flask not installed")
+class StatsAndSummaryI18nTests(unittest.TestCase):
+    """Regression: /stats and /summary built their labels with a raw
+    `'X' if is_en else 'Y'` ternary instead of going through i18n.t(), so an
+    English request still got Japanese labels for "Peak activity", "Messages
+    per hour", "No conversation data yet.", the /summary rows ("Date",
+    "Your messages", "{name} replies", ...) and the module-unavailable
+    message. Every label on both pages must now come from i18n.t() and must
+    actually flip with ?lang=.
+    """
+
+    def _write_events(self, events):
+        f = tempfile.NamedTemporaryFile(suffix=".jsonl", mode="w", delete=False, encoding="utf-8")
+        for ev in events:
+            f.write(json.dumps(ev) + "\n")
+        f.close()
+        return f.name
+
+    def _ts(self, date_str, hour=12):
+        import datetime
+        dt = datetime.datetime.strptime(f"{date_str} {hour:02d}:00:00", "%Y-%m-%d %H:%M:%S")
+        return dt.timestamp()
+
+    def setUp(self):
+        dashboard.app.config["TESTING"] = True
+        self.client = dashboard.app.test_client()
+        events = [
+            {"event_type": "user_comment", "timestamp": self._ts("2024-01-01", 9),
+             "details": {"text": "hi"}},
+            {"event_type": "avatar_reply", "timestamp": self._ts("2024-01-01", 9),
+             "details": {"text": "hello"}},
+        ]
+        self._log_path = self._write_events(events)
+        self._log_patcher = mock.patch.object(dashboard, "event_log_path", self._log_path)
+        self._log_patcher.start()
+
+    def tearDown(self):
+        self._log_patcher.stop()
+        os.unlink(self._log_path)
+
+    def test_stats_page_is_english_for_en(self):
+        resp = self.client.get("/stats?lang=en")
+        body = resp.data.decode("utf-8")
+        self.assertIn("User messages", body)
+        self.assertIn("Avatar replies", body)
+        self.assertIn("Peak activity", body)
+        self.assertIn("Messages per hour", body)
+        self.assertNotIn("ユーザーメッセージ", body)
+        self.assertNotIn("ピーク時間帯", body)
+
+    def test_stats_page_is_japanese_for_ja(self):
+        resp = self.client.get("/stats?lang=ja")
+        body = resp.data.decode("utf-8")
+        self.assertIn("ユーザーメッセージ", body)
+        self.assertIn("アバター返答", body)
+        self.assertIn("ピーク時間帯", body)
+        self.assertIn("時間別メッセージ数", body)
+        self.assertNotIn("User messages", body)
+        self.assertNotIn("Peak activity", body)
+
+    def test_stats_empty_log_message_follows_lang(self):
+        os.unlink(self._log_path)
+        open(self._log_path, "w", encoding="utf-8").close()  # empty log
+        en_body = self.client.get("/stats?lang=en").data.decode("utf-8")
+        self.assertIn("No conversation data yet.", en_body)
+        ja_body = self.client.get("/stats?lang=ja").data.decode("utf-8")
+        self.assertIn("まだ会話データがありません。", ja_body)
+
+    def test_summary_page_is_english_for_en(self):
+        resp = self.client.get("/summary?lang=en")
+        body = resp.data.decode("utf-8")
+        # Either the real summary renders in English, or (if daily_summary is
+        # unavailable in this environment) the unavailable message does — but
+        # never the Japanese text either way.
+        self.assertNotIn("サマリー機能が利用できません", body)
+        self.assertNotIn("あなたのメッセージ", body)
+        self.assertNotIn("合計やりとり", body)
+
+    def test_summary_page_is_japanese_for_ja(self):
+        resp = self.client.get("/summary?lang=ja")
+        body = resp.data.decode("utf-8")
+        self.assertNotIn("Summary module unavailable", body)
+        self.assertNotIn("Your messages", body)
+        self.assertNotIn("Total interactions", body)
 
 
 if __name__ == "__main__":

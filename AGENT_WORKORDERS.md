@@ -63,9 +63,9 @@
 | ~~多重起動ガードが無い（同時書き込みでデータ破損しうる）~~ ✅**実装済** | 高 | W-01 |
 | ~~GUI 終了処理が不完全（スレッド join なし・タイマー停止なし）~~ ✅**実装済** | 高 | W-02 |
 | ~~**危険な誤った削除メモ** `README_REMOVE.txt`~~ ✅**撤去済** | 高 | W-05 |
-| `__version__` 不在・`--version` フラグ無し | 中 | W-03 |
+| ~~`__version__` 不在・`--version` フラグ無し~~ ✅**実装済** | 中 | W-03 |
 | 孤児モジュール（`sync_to_cloud.py` 等）の整理 | 中 | W-04 |
-| dashboard の多言語対応状況が未検証 | 中 | W-06 |
+| ~~dashboard の多言語対応状況が未検証~~ ✅**検証・修正済**（`/sync` の「クラウド同期」誤表記も是正） | 中 | W-06 |
 | 型チェック（mypy）未導入 | 中 | W-07 |
 | 3D 描画がワイヤーフレーム止まり（面・法線・シェーディング無し） | 低 | W-08 |
 | CI 未有効化・lock ファイル無し（オーナー/方針事項） | — | §4 |
@@ -173,6 +173,23 @@
   `batch_test_util.py` / `camera_tracking_sample.py` はテストのスモークのみ。
   `avatar_3d_autonomous.py` / `avatar_3d_sync.py` / `avatar_3d_viewer.py` は
   スタンドアロンのデモビューアで本体未使用。
+- **W-06 の調査で新たに見つかった候補（未着手・本カードで扱う）**:
+  - `main/i18n/__init__.py`（クラス `I18nManager`）— `main/i18n.py`（`I18N`
+    クラス、dashboard.py が実際に使う）とは別の、独立した旧 i18n 実装。
+    本体からは一切 import されず、`tests/test_i18n_manager.py` のみが参照する
+    （テスト専用の到達＝孤児と同じ扱い）。`main/i18n/` はパッケージとして
+    `main/i18n.py` と名前が衝突しており、`dashboard.py` はこれを避けるために
+    `from i18n import I18N` の ImportError 時にファイルパスで直接
+    `main/i18n.py` を読み込むフォールバックを持っている（W-06 参照）。
+    削除すれば衝突そのものが無くなり回避フォールバックも不要になるが、
+    import 解決の挙動が変わるため（`main/i18n/` がパッケージで無くなる）、
+    影響範囲の再確認と full suite green の確認が必須。`main/i18n/locales/`
+    （データディレクトリ）は `main/i18n.py` が実際に使うので**削除しないこと**。
+  - `backup_manager.py`（Google Cloud Storage へのアップロード機能を持つ）は
+    `backup_cli.py` / `backup_scheduler.py` からのみ import されるが、
+    どちらも `satin_launcher.py` から呼ばれておらず本体未使用。
+    `sync_to_cloud.py` と同じ「no-LLM/プライバシー第一設計と相反する孤児」
+    のカテゴリ。3 ファイルまとめて対象に追加する。
 - **実装前チェック（必須）**: 各候補について
   `grep -rl "\b<module>\b" main/ tests/ satin_launcher.py examples/ | grep -v <self> | grep -v __pycache__`
   を再実行し、**docstring/コメントのみのヒットは参照に数えない**（実 import かを Read で確認）。
@@ -204,22 +221,47 @@
 - **完了条件**: 誤ったメモが除去され、フラグシップ削除の地雷が消える。
 - **触るな**: 実コード。
 
-### W-06: dashboard の多言語対応（まず検証） — [難易度 M / 優先度 中]
-- **背景**: `locales/{ja,en}.json` は 18 キーのみ。GUI クロームは W-07（済）で両言語化
-  したが、**dashboard の HTML/文字列が locales を使っているか未検証**。英語ユーザーに
-  日本語ダッシュボードが出る可能性。
-- **対象**: `main/dashboard.py`、`main/i18n.py`（`t()` ヘルパ）、`locales/*.json`。
-- **実装前チェック（このカードの前半＝調査）**: `dashboard.py` を Read し、
-  (a) `i18n.t()` / `locales` を使っているか、(b) ハードコード文字列の言語、
-  (c) 言語決定の仕組み（Accept-Language? 設定?）を確認。**調査結果次第で後半の
-  実装内容が変わる**ため、まず所見をまとめる。
-- **実装方針（調査後に確定）**: ハードコード日本語があれば `i18n.t(key, default)` 経由に
-  移し、不足キーを `locales/{ja,en}.json` に追加（両ファイルのキー数一致を保つ）。
-- **テスト**: locales の ja/en キー完全一致テスト、`i18n.t()` のフォールバック、
-  dashboard のテンプレートレンダリングが言語で切替わること（既存の dashboard テスト
-  様式に合わせる）。
-- **完了条件**: full suite green、英語設定で英語ダッシュボード。
-- **触るな**: セキュリティヘッダ（`no-store` 等）・CSRF トークン処理。
+### W-06: dashboard の多言語対応 — ✅**完了**
+- **背景**: 本カードは元々、リポジトリ直下 `locales/{ja,en}.json`（18 キー）を
+  対象に「dashboard が locales を使っているか未検証」として書かれていた。しかし
+  **その前提自体が誤りだった**: `main/i18n.py` の `LOCALES_DIR` は
+  `main/i18n/locales/`（45 キー）を指しており、リポジトリ直下の `locales/` は
+  **どこからも読まれない孤児ディレクトリ**（`main/i18n/__init__.py` という
+  別の未使用クラス `I18nManager` が同名の `locales/` サブディレクトリ —
+  `main/i18n/locales/` — を読むが、これは `main/i18n.py` とは無関係な別実装。
+  `main/i18n.py` は `main/i18n/` パッケージとファイル名が衝突するため、
+  `dashboard.py` は `from i18n import I18N` が失敗した場合に備え
+  明示的にファイルパスで `main/i18n.py` を読み込むフォールバックを持つ）。
+  調査（実装前チェック）の結果:
+  - `dashboard.py` の大半（61 箇所）は `i18n.t()` を正しく使っていた。
+  - `/stats` と `/summary` ルートだけが `'X' if is_en else 'Y'` の三項演算子で
+    ハードコードしており、i18n アーキテクチャから外れていた。
+  - **より重大な発見**: `/sync` ルートの nav リンク・見出し・ボタン・成功
+    メッセージが `i18n.t('cloud_sync')` 等、**「クラウド同期」と表記されていた
+    が、実装はローカル zip バックアップのみで、ネットワークには一切触れない**。
+    本document §0.1 が明記する「意図的な no-LLM / オフライン / プライバシー
+    第一設計」と正面から矛盾する誤表記であり、プライバシーを重視して本製品を
+    選んだユーザーに無用な不安（会話履歴がどこかへアップロードされているの
+    では、という懸念）を与えていた。
+- **対象**: `main/dashboard.py`、`main/i18n/locales/{ja,en}.json`
+  （**`main/i18n.py` が実際に読む場所**。リポジトリ直下の `locales/*.json` は
+  W-04 相当の孤児として削除済み）。
+- **実装方針**: (1) `cloud_sync` / `manual_cloud_sync` / `executed_cloud_sync`
+  キーを `local_backup` / `create_backup` / `backup_created` へ改名し文言を
+  事実に合わせる。(2) `/stats`・`/summary` の三項演算子を新規ロケールキー
+  （`stats_user_messages` 等）へ移行。ja/en とも 59 キーで一致を維持。
+- **テスト**: `tests/test_i18n.py` に ja/en キー集合の完全一致テスト
+  （`LocaleKeySetParityTests`）を新規追加、`_DASHBOARD_KEYS` を更新。
+  `tests/test_dashboard_security.py` に `/sync` が "cloud"/"クラウド" を
+  含まないことの回帰テストを追加。`tests/test_dashboard_stats.py` に
+  `/stats`・`/summary` が `?lang=` で実際に言語が切り替わることの回帰テストを
+  追加。各テストは revert-verify 済み（修正を戻すと該当テストが赤くなることを
+  確認）。
+- **完了条件**: full suite green、英語設定で英語ダッシュボード、`/sync` の表記が
+  実装（ローカルバックアップのみ）と一致。
+- **触らなかったもの**: セキュリティヘッダ（`no-store` 等）・CSRF トークン処理・
+  `/sync` の URL パス自体（内部実装の詳細であり、ブックマーク互換性のため
+  変更しなかった）。
 
 ### W-07: mypy の段階導入 — [難易度 M / 優先度 中]
 - **背景**: 型チェッカーが設定・依存・CI のいずれにも無い。ruff（F821 等）で

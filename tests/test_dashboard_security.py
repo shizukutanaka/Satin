@@ -461,6 +461,39 @@ class CsrfProtectionTests(unittest.TestCase):
         resp = self.client.get("/sync")
         self.assertIn(b'name="csrf_token"', resp.data)
 
+    def test_sync_page_does_not_claim_to_use_the_cloud(self):
+        """Regression: the page was labelled "Cloud Sync" / "クラウド同期"
+        (nav link, heading, button) even though it only ever writes a local
+        zip — it never touches the network. That contradicts the product's
+        core local-only/privacy-first design, and a privacy-conscious user
+        reading "Cloud Sync" in the nav would reasonably worry their
+        conversation history was being uploaded somewhere. Renamed to
+        "Local Backup" / "ローカルバックアップ" throughout.
+        """
+        for lang in ("en", "ja"):
+            resp = self.client.get(f"/sync?lang={lang}")
+            body = resp.data.decode("utf-8")
+            self.assertNotIn("cloud", body.lower(),
+                             f"lang={lang}: page still claims to use the cloud")
+            self.assertNotIn("クラウド", body,
+                             f"lang={lang}: page still claims to use the cloud (ja)")
+
+    def test_sync_success_message_is_not_a_placeholder(self):
+        """Guard against the "(example)" wording that this page's live locale
+        keys have never actually shipped with, but that an orphaned duplicate
+        locale directory (root-level locales/, unreachable by i18n.py's
+        LOCALES_DIR and deleted for that reason) did contain: "Cloud sync
+        executed (example)" / "クラウド同期を実行しました（例）". Since that
+        stale wording is exactly the kind of thing someone could paste back in
+        by editing the wrong locales/ directory, pin it down here.
+        """
+        with self.client.session_transaction() as sess:
+            sess["csrf_token"] = "the-real-token"
+        resp = self.client.post("/sync?lang=en", data={"csrf_token": "the-real-token"})
+        body = resp.data.decode("utf-8")
+        self.assertNotIn("(example)", body)
+        self.assertNotIn("（例）", body)
+
     def test_get_csrf_token_is_stable_within_a_session(self):
         with dashboard.app.test_request_context("/"):
             from flask import session as _session

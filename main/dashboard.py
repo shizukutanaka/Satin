@@ -298,7 +298,7 @@ TEMPLATE = '''
   <li><a href="/conversation?lang={{lang}}">{{i18n.t('conversation', 'Chat')}}</a></li>
   <li><a href="/conversation/search?lang={{lang}}">{{i18n.t('search', 'Search')}}</a></li>
   <li><a href="/backups?lang={{lang}}">{{i18n.t('backups')}}</a></li>
-  <li><a href="/sync?lang={{lang}}">{{i18n.t('cloud_sync')}}</a></li>
+  <li><a href="/sync?lang={{lang}}">{{i18n.t('local_backup')}}</a></li>
   <li><a href="/mood?lang={{lang}}">{{i18n.t('mood', 'Mood')}}</a></li>
   <li><a href="/stats?lang={{lang}}">{{i18n.t('stats', 'Stats')}}</a></li>
   <li><a href="/summary?lang={{lang}}">{{i18n.t('summary', 'Summary')}}</a></li>
@@ -429,7 +429,7 @@ def sync(i18n):
             config_dir = os.path.join(_root, 'config')
             _build_sync_backup(zip_path, config_dir, event_log_path)
             backup_path_display = zip_name
-            msg = i18n.t('executed_cloud_sync')
+            msg = i18n.t('backup_created')
         except Exception as exc:
             msg = _html.escape(str(exc))
             msg_color = 'red'
@@ -453,9 +453,9 @@ def sync(i18n):
             existing_html += f'<li><a href="/download/{fn_esc}?lang={lang}">{fn_esc}</a></li>'
         existing_html += '</ul>'
 
-    content = f'''<h3>{_html.escape(i18n.t("cloud_sync"))}</h3>
+    content = f'''<h3>{_html.escape(i18n.t("local_backup"))}</h3>
 <p>{_html.escape(i18n.t("sync_description", "Create a local backup of config files and conversation log."))}</p>
-<form method="post">{_csrf_field()}<button type="submit">{_html.escape(i18n.t("manual_cloud_sync"))}</button></form>
+<form method="post">{_csrf_field()}<button type="submit">{_html.escape(i18n.t("create_backup"))}</button></form>
 {backup_info}
 <p style="color:{msg_color}">{_html.escape(msg)}</p>
 {existing_html}'''
@@ -504,14 +504,13 @@ def conversation(i18n):
                 f'{_html.escape(str(ex["text"]))}</td></tr>'
             )
         content += '</table>'
-    csv_label = 'CSV' if lang.startswith('en') else 'CSV形式'
     content += (
         f'<p>'
         f'<a href="/conversation/download?lang={_html.escape(lang)}">'
         f'{_html.escape(i18n.t("download_conversation", "Download as text"))}</a>'
         f' &nbsp;|&nbsp; '
         f'<a href="/conversation/download/csv?lang={_html.escape(lang)}">'
-        f'{_html.escape(csv_label)}</a>'
+        f'{_html.escape(i18n.t("csv_format", "CSV"))}</a>'
         f'</p>'
     )
     return _render_page(content, i18n, lang, switcher)
@@ -812,12 +811,11 @@ def mood_history(i18n):
                     f'</tr>'
                 )
             content += '</table>'
-        csv_lbl = 'Download CSV' if is_en else 'CSVダウンロード'
         content += (
             f'<p>'
             f'<a href="/mood?lang={_html.escape(lang)}">&larr; {_html.escape(i18n.t("back_to_mood", "Back to Mood"))}</a>'
             f' &nbsp;|&nbsp; '
-            f'<a href="/mood/history/csv?lang={_html.escape(lang)}">{_html.escape(csv_lbl)}</a>'
+            f'<a href="/mood/history/csv?lang={_html.escape(lang)}">{_html.escape(i18n.t("download_csv", "Download CSV"))}</a>'
             f'</p>'
         )
 
@@ -920,14 +918,13 @@ def stats(i18n):
     per_hour = s["per_hour"]
     peak_hour = s["peak_hour"]
 
-    if is_en:
-        content += f'<p>User messages: <b>{total_user}</b> &nbsp; Avatar replies: <b>{total_avatar}</b></p>'
-    else:
-        content += f'<p>ユーザーメッセージ: <b>{total_user}</b> &nbsp; アバター返答: <b>{total_avatar}</b></p>'
+    content += (
+        f'<p>{_html.escape(i18n.t("stats_user_messages", "User messages"))}: <b>{total_user}</b>'
+        f' &nbsp; {_html.escape(i18n.t("stats_avatar_replies", "Avatar replies"))}: <b>{total_avatar}</b></p>'
+    )
 
     if per_day:
-        ph_label = 'Messages per day' if is_en else '日別メッセージ数'
-        content += f'<h4>{_html.escape(ph_label)}</h4>'
+        content += f'<h4>{_html.escape(i18n.t("messages_per_day", "Messages per day"))}</h4>'
         content += '<table border=0 cellpadding=3 cellspacing=2>'
         max_day = max(per_day.values()) if per_day else 1
         for day, cnt in list(per_day.items())[-30:]:
@@ -941,12 +938,11 @@ def stats(i18n):
         content += '</table>'
 
     if peak_hour is not None:
-        if is_en:
-            content += f'<p>Peak activity: <b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>'
-        else:
-            content += f'<p>ピーク時間帯: <b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>'
-        hr_label = 'Messages per hour' if is_en else '時間別メッセージ数'
-        content += f'<h4>{_html.escape(hr_label)}</h4>'
+        content += (
+            f'<p>{_html.escape(i18n.t("peak_activity", "Peak activity"))}: '
+            f'<b>{peak_hour:02d}:00–{peak_hour:02d}:59</b></p>'
+        )
+        content += f'<h4>{_html.escape(i18n.t("messages_per_hour", "Messages per hour"))}</h4>'
         content += '<table border=0 cellpadding=2 cellspacing=2>'
         max_hr = max(per_hour.values()) if any(per_hour.values()) else 1
         for h in range(24):
@@ -960,8 +956,7 @@ def stats(i18n):
         content += '</table>'
 
     if not per_day:
-        no_data = 'No conversation data yet.' if is_en else 'まだ会話データがありません。'
-        content += f'<p>{_html.escape(no_data)}</p>'
+        content += f'<p>{_html.escape(i18n.t("no_conversation_data", "No conversation data yet."))}</p>'
 
     return _render_page(content, i18n, lang, switcher)
 
@@ -979,8 +974,7 @@ def summary(i18n):
     content = f'<h3>{title}</h3>'
 
     if _daily_summary is None:
-        msg = 'Summary module unavailable.' if is_en else 'サマリー機能が利用できません。'
-        content += f'<p>{_html.escape(msg)}</p>'
+        content += f'<p>{_html.escape(i18n.t("summary_unavailable", "Summary module unavailable."))}</p>'
     else:
         s = _daily_summary(
             lang=lang,
@@ -1002,13 +996,16 @@ def summary(i18n):
                 f'{_html.escape(greeting)}</blockquote>'
             )
 
-        date_lbl = 'Date' if is_en else '日付'
-        user_lbl = 'Your messages' if is_en else 'あなたのメッセージ'
+        date_lbl = i18n.t('date', 'Date')
+        user_lbl = i18n.t('your_messages', 'Your messages')
         _aname = _get_persona_name()
-        avatar_lbl = f'{_aname} replies' if is_en else f'{_aname}の返答'
-        total_lbl = 'Total interactions' if is_en else '合計やりとり'
-        peak_lbl = 'Peak hour' if is_en else 'ピーク時間帯'
-        affinity_lbl = 'Affinity' if is_en else '好感度'
+        # t() is a flat lookup with no .format() support (a translated value
+        # containing literal braces would raise), so interpolate with a plain
+        # string replace instead.
+        avatar_lbl = i18n.t('avatar_replies_template', '{name} replies').replace('{name}', _aname)
+        total_lbl = i18n.t('total_interactions', 'Total interactions')
+        peak_lbl = i18n.t('peak_hour', 'Peak hour')
+        affinity_lbl = i18n.t('affinity_label', 'Affinity')
 
         peak = s['peak_hour']
         peak_str = f'{peak:02d}:00–{peak:02d}:59' if peak is not None else '—'

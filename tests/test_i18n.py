@@ -58,16 +58,20 @@ class JaLocaleTests(unittest.TestCase):
     """ja.json must have non-empty translations for all dashboard keys."""
 
     _DASHBOARD_KEYS = [
-        "title", "event_log", "conversation", "backups", "cloud_sync",
+        "title", "event_log", "conversation", "backups", "local_backup",
         "mood", "time", "type", "details", "no_file",
-        "executed_cloud_sync", "manual_cloud_sync", "you", "avatar",
+        "backup_created", "create_backup", "you", "avatar",
         "no_conversation", "affinity_score", "affinity_level",
         "interactions", "last_interaction", "mood_unavailable",
         "mood_no_interactions_yet", "reset_mood",
         "mood_history", "mood_no_history", "date", "back_to_mood",
         "total_messages", "download_conversation",
         "search", "search_placeholder", "search_results",
-        "stats",
+        "stats", "summary", "stats_user_messages", "stats_avatar_replies",
+        "messages_per_day", "peak_activity", "messages_per_hour",
+        "no_conversation_data", "summary_unavailable", "your_messages",
+        "avatar_replies_template", "total_interactions", "peak_hour",
+        "affinity_label", "csv_format", "download_csv",
     ]
 
     def setUp(self):
@@ -103,16 +107,20 @@ class EnLocaleTests(unittest.TestCase):
     """en.json must also have all dashboard keys."""
 
     _DASHBOARD_KEYS = [
-        "title", "event_log", "conversation", "backups", "cloud_sync",
+        "title", "event_log", "conversation", "backups", "local_backup",
         "mood", "time", "type", "details", "no_file",
-        "executed_cloud_sync", "manual_cloud_sync", "you", "avatar",
+        "backup_created", "create_backup", "you", "avatar",
         "no_conversation", "affinity_score", "affinity_level",
         "interactions", "last_interaction", "mood_unavailable",
         "mood_no_interactions_yet", "reset_mood",
         "mood_history", "mood_no_history", "date", "back_to_mood",
         "total_messages", "download_conversation",
         "search", "search_placeholder", "search_results",
-        "stats",
+        "stats", "summary", "stats_user_messages", "stats_avatar_replies",
+        "messages_per_day", "peak_activity", "messages_per_hour",
+        "no_conversation_data", "summary_unavailable", "your_messages",
+        "avatar_replies_template", "total_interactions", "peak_hour",
+        "affinity_label", "csv_format", "download_csv",
     ]
 
     def setUp(self):
@@ -133,6 +141,29 @@ class EnLocaleTests(unittest.TestCase):
         i = module.I18N(lang="zz")  # non-existent lang
         # should fall back to en.json
         self.assertEqual(i.t("you", "fallback"), "You")
+
+
+class LocaleKeySetParityTests(unittest.TestCase):
+    """ja.json and en.json must declare exactly the same set of keys.
+
+    The fixed _DASHBOARD_KEYS lists above only catch a key going *missing* —
+    they don't catch one language gaining a key the other never gets (e.g. a
+    string added to en.json and forgotten in ja.json, or vice versa), because
+    nothing asserts the two files are the same shape. This test compares the
+    live key sets directly, so any future drift fails immediately instead of
+    silently falling back to the raw key (or the other language) in the UI.
+    """
+
+    def test_ja_and_en_declare_the_same_keys(self):
+        module = _load_i18n_module()
+        module.I18N._translation_cache.clear()
+        ja = module.I18N(lang="ja")
+        module.I18N._translation_cache.clear()
+        en = module.I18N(lang="en")
+        ja_only = set(ja.translations) - set(en.translations)
+        en_only = set(en.translations) - set(ja.translations)
+        self.assertEqual(ja_only, set(), f"keys only in ja.json: {sorted(ja_only)}")
+        self.assertEqual(en_only, set(), f"keys only in en.json: {sorted(en_only)}")
 
 
 class NullLocaleFileTests(unittest.TestCase):
