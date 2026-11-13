@@ -44,10 +44,10 @@ To use the enhanced cache system:
 
 ```python
 from main.cache_manager import CacheManager
-from main.logging_manager import Logger
+from main.logging_manager import LoggingManager
 
 # Initialize logger and cache manager
-logger = Logger()
+logger = LoggingManager()
 cache_manager = CacheManager()
 
 # Create a cached function
@@ -85,12 +85,12 @@ To use the enhanced backup scheduler:
 from main.backup_scheduler import BackupScheduler
 from main.notification_system import NotificationSystem
 from main.backup_manager import BackupManager
-from main.logging_manager import Logger
+from main.logging_manager import LoggingManager
 
 # Initialize components
-logger = Logger()
-notification_system = NotificationSystem(logger)
-backup_manager = BackupManager(logger)
+logger = LoggingManager()
+notification_system = NotificationSystem()
+backup_manager = BackupManager()
 
 # Initialize backup scheduler
 scheduler = BackupScheduler(backup_manager, notification_system)
@@ -435,10 +435,10 @@ To use the plugin system:
 
 ```python
 from main.plugin_manager import PluginManager
-from main.logging_manager import Logger
+from main.logging_manager import LoggingManager
 
 # Initialize logger and plugin manager
-logger = Logger()
+logger = LoggingManager()
 plugin_manager = PluginManager(logger)
 
 # Load all plugins
@@ -468,10 +468,12 @@ To use the backup scheduler:
 ```python
 from main.backup_scheduler import BackupScheduler
 from main.backup_manager import BackupManager
+from main.notification_system import NotificationSystem
 
 # Initialize backup manager and scheduler
 backup_manager = BackupManager()
-scheduler = BackupScheduler(backup_manager)
+notification_system = NotificationSystem()
+scheduler = BackupScheduler(backup_manager, notification_system)
 
 # Schedule daily backup at 2 AM
 scheduler.add_daily_backup(2, 0)
