@@ -7,10 +7,13 @@ Socratic-review finding: these commands existed in the headless CLI
 GUI (avatar_3d_autonomous_tts.py) — the product's default interface. This
 file verifies the GUI-side wiring added to close that gap.
 
-Qt/OpenGL are absent in CI, so instances are built via object.__new__ to
-bypass the QOpenGLWidget-dependent __init__, following the pattern already
-used in tests/test_avatar_event_timeline_viewer.py and
-tests/test_avatar_3d_autonomous_or_camera.py.
+Instances are built via the viewer's own __new__ to bypass the
+QOpenGLWidget-dependent __init__, following the pattern already used in
+tests/test_avatar_event_timeline_viewer.py and
+tests/test_avatar_3d_autonomous_or_camera.py (object.__new__ is rejected by
+sip when PyQt5 is installed; Cls.__new__ skips __init__ either way). The raw
+Qt base class is then initialized via _init_qt_base so that attribute
+lookups on the doubles behave normally when PyQt5 is installed.
 """
 import os
 import sys
@@ -22,9 +25,39 @@ sys.path.insert(0, _MAIN)
 
 import avatar_3d_autonomous_tts as _mod  # noqa: E402
 
+# When PyQt5 is installed, the viewer/window doubles below initialize the Qt
+# base class (see _init_qt_base), which requires a QApplication. Create one
+# on the offscreen platform so the suite stays headless; tests/conftest.py or
+# an earlier-imported test module may already have created it.
+try:
+    from PyQt5.QtWidgets import QApplication as _QApplication
+except ImportError:
+    _QApplication = None
+if _QApplication is not None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    _QT_APP = _QApplication.instance() or _QApplication([])
+
+
+def _init_qt_base(obj):
+    """Initialize only the Qt base class of a __new__-built test double.
+
+    With PyQt5 installed the viewer classes are QWidget subclasses, and sip
+    raises RuntimeError on any attribute lookup the double did not set —
+    defeating the production code's getattr(...) defenses for partially
+    constructed instances — unless the C++ side exists. Initializing the raw
+    Qt base (never the class's own __init__) makes the double a valid widget
+    while every Python-level attribute stays under the test's control.
+    No-op when PyQt5 is absent (the classes then derive from object).
+    """
+    for base in type(obj).__mro__[1:]:
+        if base.__module__.startswith("PyQt5."):
+            base.__init__(obj)
+            break
+
 
 def _fake_viewer(**overrides):
-    v = object.__new__(_mod.AutonomousAvatarViewer)
+    v = _mod.AutonomousAvatarViewer.__new__(_mod.AutonomousAvatarViewer)
+    _init_qt_base(v)
     defaults = dict(
         tts_queue=None,
         comment_text="",
@@ -534,7 +567,8 @@ class MainWindowChromeI18nTests(unittest.TestCase):
     controls despite the product's advertised multi-language support."""
 
     def _window(self, lang):
-        w = object.__new__(_mod.MainWindow)
+        w = _mod.MainWindow.__new__(_mod.MainWindow)
+        _init_qt_base(w)
         w._lang = lang
         return w
 
@@ -565,7 +599,8 @@ class MainWindowWelcomeTests(unittest.TestCase):
     slash commands) is invisible at first contact."""
 
     def _window(self, lang="ja"):
-        w = object.__new__(_mod.MainWindow)
+        w = _mod.MainWindow.__new__(_mod.MainWindow)
+        _init_qt_base(w)
         w._lang = lang
         w.viewer = mock.Mock()
         return w
@@ -641,7 +676,8 @@ class MainWindowCloseEventTests(unittest.TestCase):
     after the widget was destroyed and access a dead widget."""
 
     def _window(self):
-        w = object.__new__(_mod.MainWindow)
+        w = _mod.MainWindow.__new__(_mod.MainWindow)
+        _init_qt_base(w)
         w.tts_thread = mock.Mock()
         w.text_timer = mock.Mock()
         w.viewer = mock.Mock()
@@ -676,7 +712,8 @@ class MainWindowCloseEventTests(unittest.TestCase):
     def test_survives_missing_attributes(self):
         # A partially-constructed window (Qt init failed midway) must still
         # close without raising.
-        w = object.__new__(_mod.MainWindow)
+        w = _mod.MainWindow.__new__(_mod.MainWindow)
+        _init_qt_base(w)
         w.tts_thread = None
         w.viewer = None
         w.break_reminder = None

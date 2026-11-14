@@ -1,12 +1,13 @@
 """
 Headless wiring test for avatar_3d_autonomous_tts.AutonomousAvatarViewer.speak_comment.
 
-Qt is absent in CI. We build the viewer via object.__new__ (bypassing the
+We build the viewer via AutonomousAvatarViewer.__new__ (bypassing the
 Qt-dependent __init__) and set only the attributes speak_comment touches, then
 assert the avatar now REPLIES (persona.respond) instead of echoing the input,
 while preserving the legacy echo behavior when no persona / no reply is available.
 
-This mirrors the object.__new__ approach used in test_avatar_event_timeline_viewer.py.
+This mirrors the Cls.__new__ approach used in test_avatar_event_timeline_viewer.py
+(object.__new__ is rejected by sip when PyQt5 is installed).
 """
 import os
 import queue
@@ -23,10 +24,40 @@ from persona import Persona  # noqa: E402
 import mood as _mood_mod  # noqa: E402
 import user_profile as _profile_mod  # noqa: E402
 
+# When PyQt5 is installed, the viewer doubles below initialize the Qt base
+# class (see _init_qt_base), which requires a QApplication. Create one on the
+# offscreen platform so the suite stays headless; tests/conftest.py or an
+# earlier-imported test module may already have created it.
+try:
+    from PyQt5.QtWidgets import QApplication as _QApplication
+except ImportError:
+    _QApplication = None
+if _QApplication is not None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    _QT_APP = _QApplication.instance() or _QApplication([])
+
+
+def _init_qt_base(obj):
+    """Initialize only the Qt base class of a __new__-built test double.
+
+    With PyQt5 installed the viewer classes are QWidget subclasses, and sip
+    raises RuntimeError on any attribute lookup the double did not set —
+    defeating the production code's getattr(...) defenses for partially
+    constructed instances — unless the C++ side exists. Initializing the raw
+    Qt base (never the class's own __init__) makes the double a valid widget
+    while every Python-level attribute stays under the test's control.
+    No-op when PyQt5 is absent (the classes then derive from object).
+    """
+    for base in type(obj).__mro__[1:]:
+        if base.__module__.startswith("PyQt5."):
+            base.__init__(obj)
+            break
+
 
 def _make_viewer(tts_queue=None):
-    """Construct the viewer without running Qt's __init__."""
-    v = object.__new__(_mod.AutonomousAvatarViewer)
+    """Construct the viewer without running its own __init__."""
+    v = _mod.AutonomousAvatarViewer.__new__(_mod.AutonomousAvatarViewer)
+    _init_qt_base(v)
     v.comment_text = ""
     v.mode = "idle"
     v.ticks = 0
@@ -308,7 +339,8 @@ class SilentFailureObservabilityTests(unittest.TestCase):
     RESILIENT (no crash) AND OBSERVABLE (logged), not silently swallowed."""
 
     def _viewer(self):
-        v = object.__new__(_mod.AutonomousAvatarViewer)
+        v = _mod.AutonomousAvatarViewer.__new__(_mod.AutonomousAvatarViewer)
+        _init_qt_base(v)
         v.comment_text = ""
         v.mode = "idle"
         v.ticks = 0

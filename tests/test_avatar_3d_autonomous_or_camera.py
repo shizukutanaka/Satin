@@ -3,9 +3,10 @@ Unit tests for avatar_3d_autonomous_or_camera.Avatar3DAutoOrCamViewer's pure
 logic (mode switching, tick-based autonomous state cycling, camera pose
 queue draining, persona-fallback text picking).
 
-Qt/OpenGL are absent in CI, so instances are built via object.__new__ to
-bypass the QOpenGLWidget-dependent __init__, following the pattern already
-used in tests/test_avatar_event_timeline_viewer.py.
+Instances are built via Avatar3DAutoOrCamViewer.__new__ to bypass the
+QOpenGLWidget-dependent __init__, following the pattern already used in
+tests/test_avatar_event_timeline_viewer.py (object.__new__ is rejected by
+sip when PyQt5 is installed; Cls.__new__ skips __init__ either way).
 """
 import os
 import queue
@@ -20,7 +21,7 @@ import avatar_3d_autonomous_or_camera as _mod  # noqa: E402
 
 
 def _fake_viewer(**overrides):
-    v = object.__new__(_mod.Avatar3DAutoOrCamViewer)
+    v = _mod.Avatar3DAutoOrCamViewer.__new__(_mod.Avatar3DAutoOrCamViewer)
     defaults = dict(
         mode="autonomous",
         position=[0.0, 0.0],

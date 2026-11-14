@@ -23,6 +23,35 @@ from conversation_log import (  # noqa: E402
     reset_conversation_log,
 )
 
+# When PyQt5 is installed, the viewer doubles below initialize the Qt base
+# class (see _init_qt_base), which requires a QApplication. Create one on the
+# offscreen platform so the suite stays headless; tests/conftest.py or an
+# earlier-imported test module may already have created it.
+try:
+    from PyQt5.QtWidgets import QApplication as _QApplication
+except ImportError:
+    _QApplication = None
+if _QApplication is not None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    _QT_APP = _QApplication.instance() or _QApplication([])
+
+
+def _init_qt_base(obj):
+    """Initialize only the Qt base class of a __new__-built test double.
+
+    With PyQt5 installed the viewer classes are QWidget subclasses, and sip
+    raises RuntimeError on any attribute lookup the double did not set —
+    defeating the production code's getattr(...) defenses for partially
+    constructed instances — unless the C++ side exists. Initializing the raw
+    Qt base (never the class's own __init__) makes the double a valid widget
+    while every Python-level attribute stays under the test's control.
+    No-op when PyQt5 is absent (the classes then derive from object).
+    """
+    for base in type(obj).__mro__[1:]:
+        if base.__module__.startswith("PyQt5."):
+            base.__init__(obj)
+            break
+
 
 class DefaultLogfileIsCwdIndependentTests(unittest.TestCase):
     """Regression: DEFAULT_LOGFILE used to be the bare string
@@ -430,7 +459,8 @@ class SpeakCommentWiringTests(unittest.TestCase):
              mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
                                property(lambda self: respond_persona)), \
              mock.patch.object(_mod, "_get_user_profile_gui", lambda: None):
-            v = object.__new__(_mod.AutonomousAvatarViewer)
+            v = _mod.AutonomousAvatarViewer.__new__(_mod.AutonomousAvatarViewer)
+            _init_qt_base(v)
             v.comment_text = ""
             v.mode = "idle"
             v.ticks = 0
@@ -454,7 +484,8 @@ class SpeakCommentWiringTests(unittest.TestCase):
         with mock.patch.object(_mod, "get_conversation_log", _boom), \
              mock.patch.object(_mod.AutonomousBehaviorMixin, "persona",
                                property(lambda self: None)):
-            v = object.__new__(_mod.AutonomousAvatarViewer)
+            v = _mod.AutonomousAvatarViewer.__new__(_mod.AutonomousAvatarViewer)
+            _init_qt_base(v)
             v.comment_text = ""
             v.mode = "idle"
             v.ticks = 0

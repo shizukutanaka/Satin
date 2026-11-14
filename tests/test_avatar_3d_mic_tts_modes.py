@@ -3,9 +3,11 @@ Unit tests for avatar_3d_mic_tts_modes: MicVolumeThread's graceful-degradation
 path and Avatar3DModesViewer's pure logic (mode switching, mouth-open
 computation, TTS queueing).
 
-Qt/OpenGL are absent in CI, so Avatar3DModesViewer instances are built via
-object.__new__ to bypass the QOpenGLWidget-dependent __init__, following the
-pattern already used in tests/test_avatar_event_timeline_viewer.py.
+Avatar3DModesViewer instances are built via Avatar3DModesViewer.__new__ to
+bypass the QOpenGLWidget-dependent __init__, following the pattern already
+used in tests/test_avatar_event_timeline_viewer.py (object.__new__ is
+rejected by sip when PyQt5 is installed; Cls.__new__ skips __init__ either
+way).
 """
 import os
 import queue
@@ -20,7 +22,7 @@ import avatar_3d_mic_tts_modes as _mod  # noqa: E402
 
 
 def _fake_viewer(**overrides):
-    v = object.__new__(_mod.Avatar3DModesViewer)
+    v = _mod.Avatar3DModesViewer.__new__(_mod.Avatar3DModesViewer)
     defaults = dict(
         mouth_open=0.0,
         mode="mic",
