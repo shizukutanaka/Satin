@@ -37,6 +37,10 @@ psutil>=5.9
 
 # [信頼性]
 tenacity>=8.2          # リトライ戦略
+schedule>=1.2          # バックアップスケジューラ (backup_scheduler.py が import。
+                       # 未収録だったため README 通りに導入しても
+                       # add_daily_backup/add_weekly_backup/start が常に
+                       # BackupError になっていた)
 
 # [可視化]
 matplotlib>=3.7

@@ -39,6 +39,7 @@ OPTIONAL_PACKAGES: List[Tuple[str, str, str]] = [
     ("bs4",         "pip install beautifulsoup4",   "Web コンテンツ解析"),
     ("selenium",    "pip install selenium",         "動的ページ取得"),
     ("tqdm",        "pip install tqdm",             "バッチ進捗表示"),
+    ("schedule",    "pip install schedule",         "バックアップスケジューラ"),
 ]
 
 # (import_name, message) — これらが無いと起動できない。

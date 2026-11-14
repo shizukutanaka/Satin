@@ -19,7 +19,10 @@ try:
     import mediapipe as mp
     mp_face_mesh = mp.solutions.face_mesh
     mp_drawing = mp.solutions.drawing_utils
-except ImportError:
+except Exception:
+    # mediapipe 1.x では legacy solutions API が削除され AttributeError に
+    # なる（optional_deps.py と同じ理由）。未インストール時と同じく
+    # 「利用不可 = None」に倒し、CameraThread を no-op として動作させる。
     mp = None  # type: ignore
     mp_face_mesh = None  # type: ignore
     mp_drawing = None  # type: ignore

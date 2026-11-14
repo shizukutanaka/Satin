@@ -19,6 +19,12 @@ def run_tracking():
         print("cv2 / mediapipe が未インストールです: pip install opencv-python mediapipe")
         return
 
+    # mediapipe 1.x では legacy solutions API が削除されている
+    if not hasattr(mp, "solutions"):
+        print("この mediapipe のバージョンには legacy solutions API がありません"
+              "（顔トラッキングサンプルは mediapipe 0.10 系が必要です）")
+        return
+
     mp_face_mesh = mp.solutions.face_mesh
     mp_drawing = mp.solutions.drawing_utils
 

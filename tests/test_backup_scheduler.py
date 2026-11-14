@@ -1,9 +1,13 @@
 """
 Unit tests for BackupScheduler — history, _run_backup, and lifecycle guards.
 
-schedule package is not installed, so add_daily_backup/add_weekly_backup
-raise BackupError (which we test). The core backup logic in _run_backup
-and history management are tested with mocked dependencies.
+The no-schedule behaviour (add_daily_backup/add_weekly_backup/start raise
+BackupError) is tested by forcing ``_scheduler = None`` — the same state a
+missing schedule package produces — rather than by relying on the package
+being absent from the ambient environment. schedule is a declared
+dependency (setup/requirements.txt), so assuming its absence made these
+tests fail on any machine that had it installed. The core backup logic in
+_run_backup and history management are tested with mocked dependencies.
 """
 import os
 import sys
@@ -24,21 +28,25 @@ def _make_scheduler(target_dir="."):
 
 
 class NoSchedulePackageTests(unittest.TestCase):
-    """When schedule is not installed, schedule-registration methods raise BackupError."""
+    """When schedule is unavailable (_scheduler is None), schedule-registration
+    methods raise BackupError. The None state is forced explicitly so the
+    tests pass whether or not the schedule package is installed."""
 
     def test_add_daily_backup_raises_when_no_schedule(self):
         sched, _, _ = _make_scheduler()
-        # schedule not installed → _scheduler is None
+        sched._scheduler = None  # simulate missing schedule package
         with self.assertRaises(BackupError):
             sched.add_daily_backup(2, 0)
 
     def test_add_weekly_backup_raises_when_no_schedule(self):
         sched, _, _ = _make_scheduler()
+        sched._scheduler = None  # simulate missing schedule package
         with self.assertRaises(BackupError):
             sched.add_weekly_backup("monday", 2, 0)
 
     def test_start_raises_when_no_schedule(self):
         sched, _, _ = _make_scheduler()
+        sched._scheduler = None  # simulate missing schedule package
         with self.assertRaises(BackupError):
             sched.start()
 

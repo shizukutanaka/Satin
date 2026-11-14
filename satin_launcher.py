@@ -54,17 +54,24 @@ except Exception:  # pragma: no cover - defensive fallback
 
 def _check_deps(verbose: bool = False) -> list[str]:
     missing_optional: list[str] = []
+    # import の失敗は ImportError とは限らない。例えば sounddevice は
+    # pip パッケージが入っていても PortAudio のシステムライブラリが無いと
+    # import 時に OSError を送出する。ImportError だけを捕捉していたため、
+    # その環境では全モード（--chat / --validate 等のヘッドレス含む）が
+    # 依存チェックの段階で生 traceback のまま落ちていた。「import できな
+    # かった」こと自体は必須/任意どちらの判定でも同じなので、例外の種類で
+    # 区別せず捕捉する。
     for pkg, hint in _REQUIRED_DEPS:
         try:
             importlib.import_module(pkg)
-        except ImportError:
+        except Exception:
             print(f"[ERROR] 必須パッケージ不足: {pkg} — {hint}", file=sys.stderr)
             sys.exit(1)
 
     for pkg, hint in _OPTIONAL_DEPS:
         try:
             importlib.import_module(pkg)
-        except ImportError:
+        except Exception:
             missing_optional.append(f"  {pkg:15s}  →  {hint}")
 
     if missing_optional and verbose:
