@@ -25,7 +25,12 @@ try:
 
     mp_face_mesh = _mp.solutions.face_mesh
     mp_drawing = _mp.solutions.drawing_utils
-except ImportError:
+except Exception:
+    # ImportError だけでなく AttributeError も対象: mediapipe 1.x では
+    # legacy solutions API が削除され、`_mp.solutions` へのアクセス自体が
+    # AttributeError になる（requirements は mediapipe>=0.10 で上限が無いため
+    # 新規インストールでは 1.x が入る）。このモジュールの契約どおり、
+    # 利用できない依存は None として公開し、顔トラッキングだけを無効化する。
     _mp = None  # type: ignore
     mp_face_mesh = None  # type: ignore
     mp_drawing = None  # type: ignore
@@ -62,9 +67,12 @@ except ImportError:
     pyttsx3 = None  # type: ignore
 
 # ── sounddevice ────────────────────────────────────────────────────────────
+# sounddevice は PortAudio のシステムライブラリが無いと ImportError ではなく
+# OSError を送出する（satin_launcher._check_deps と同じ理由）。このモジュール
+# の契約は「未利用可能なら None」なので、OSError も欠落として扱う。
 try:
     import sounddevice as sd
-except ImportError:
+except (ImportError, OSError):
     sd = None  # type: ignore
 
 # ── pygltflib ──────────────────────────────────────────────────────────────
