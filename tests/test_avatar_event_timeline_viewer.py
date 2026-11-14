@@ -1,9 +1,12 @@
 """
 Regression tests for avatar_event_timeline_viewer.
 
-Qt is absent in CI. We test load_logfile and show_detail by constructing a
-minimal duck-typed object with the attributes those methods require, bypassing
-the Qt-dependent __init__.
+We test load_logfile and show_detail by constructing a minimal duck-typed
+object with the attributes those methods require, bypassing the Qt-dependent
+__init__ via EventTimelineViewer.__new__ (see _fake_viewer). This works with
+PyQt5 installed or not: object.__new__ is rejected by sip for QWidget
+subclasses (TypeError), while Cls.__new__ skips __init__ without creating the
+C++ side, so no display or QApplication is needed either way.
 """
 import json
 import os
@@ -58,7 +61,7 @@ def _fake_viewer(logfile=""):
             return self._text
 
     # Construct without calling __init__
-    v = object.__new__(_mod.EventTimelineViewer)
+    v = _mod.EventTimelineViewer.__new__(_mod.EventTimelineViewer)
     v.events = []
     v.list_widget = _FakeListWidget()
     v.detail_label = _FakeLabel()
