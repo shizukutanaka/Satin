@@ -68,17 +68,8 @@ jobs:
         run: |
           python -m py_compile $(find main -name "*.py" | sort)
 
-      # TEMPORARY DIAGNOSTIC (remove once CI is green): run the suite with
-      # output captured and echo the FAILED summary lines + final count as
-      # annotations, so failures are readable without job-log access.
-      # Exits with pytest's own exit code.
       - name: Run tests
         run: |
-          set +e
-          python -m pytest tests/ -q --tb=short > /tmp/test.log 2>&1
-          code=$?
-          grep -E "^FAILED" /tmp/test.log | head -9 | while IFS= read -r l; do echo "::error::$l"; done
-          tail -1 /tmp/test.log | while IFS= read -r l; do echo "::warning::$l"; done
-          exit $code
+          python -m pytest tests/ -q --tb=short
         env:
           PYTHONPATH: main
