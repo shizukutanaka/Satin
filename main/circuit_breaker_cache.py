@@ -276,19 +276,28 @@ class BulkheadPolicy:
         """
         Bulkhead 制御下で関数を実行
         """
-        try:
+        async def _acquire_and_run() -> Any:
             # セマフォで並行数を制限
-            async with asyncio.timeout(self.max_wait_duration_ms / 1000.0):
-                async with self.semaphore:
-                    self.active_calls += 1
-                    try:
-                        if asyncio.iscoroutinefunction(func):
-                            return await func(*args, **kwargs)
-                        else:
-                            return func(*args, **kwargs)
-                    finally:
-                        self.active_calls -= 1
+            async with self.semaphore:
+                self.active_calls += 1
+                try:
+                    if asyncio.iscoroutinefunction(func):
+                        return await func(*args, **kwargs)
+                    else:
+                        return func(*args, **kwargs)
+                finally:
+                    self.active_calls -= 1
 
+        try:
+            # asyncio.timeout は Python 3.11+ 専用で、対応版数（CI は
+            # 3.10〜3.12）では AttributeError になる。async_optimization.py
+            # と同じく asyncio.wait_for で等価の待ち時間制限を実現する
+            # （タイムアウト時のキャンセルと asyncio.TimeoutError の
+            # 送出はどちらの版でも同じ）。
+            return await asyncio.wait_for(
+                _acquire_and_run(),
+                timeout=self.max_wait_duration_ms / 1000.0,
+            )
         except asyncio.TimeoutError:
             self.rejected_calls += 1
             logger.error("Bulkhead wait timeout - request rejected")
