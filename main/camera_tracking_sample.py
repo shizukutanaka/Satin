@@ -9,7 +9,12 @@ except ImportError:
     cv2 = None  # type: ignore
 try:
     import mediapipe as mp
-except ImportError:
+except Exception:
+    # ImportError だけでは足りない: mediapipe の import は内部で sounddevice
+    # を import し、音声サブシステムの無い環境では import 時点の
+    # Pa_Initialize が PortAudioError（ImportError でも OSError でもない）を
+    # 送出する。optional_deps の mediapipe ブロックと同じ理由で Exception
+    # 全体を「利用不可」として扱う。
     mp = None  # type: ignore
 
 
