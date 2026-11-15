@@ -68,23 +68,17 @@ jobs:
         run: |
           python -m py_compile $(find main -name "*.py" | sort)
 
-      # TEMPORARY DIAGNOSTIC (remove once CI is green): the test step dies
-      # ~5s in on the runner with pytest exit code 2 while the same suite
-      # passes locally. Surface the collection log as annotations so the
-      # error is readable without job-log access.
-      - name: Diagnose pytest collection (temporary)
-        run: |
-          set +e
-          python -m pytest tests/ --collect-only -q > /tmp/collect.log 2>&1
-          echo "collect exit code: $?"
-          grep -E "ERROR|Error|error" /tmp/collect.log | head -8 | while IFS= read -r l; do echo "::error::$l"; done
-          tail -3 /tmp/collect.log | while IFS= read -r l; do echo "::warning::$l"; done
-          exit 0
-        env:
-          PYTHONPATH: main
-
+      # TEMPORARY DIAGNOSTIC (remove once CI is green): run the suite with
+      # output captured and echo the FAILED summary lines + final count as
+      # annotations, so failures are readable without job-log access.
+      # Exits with pytest's own exit code.
       - name: Run tests
         run: |
-          python -m pytest tests/ -q --tb=short
+          set +e
+          python -m pytest tests/ -q --tb=short > /tmp/test.log 2>&1
+          code=$?
+          grep -E "^FAILED" /tmp/test.log | head -9 | while IFS= read -r l; do echo "::error::$l"; done
+          tail -1 /tmp/test.log | while IFS= read -r l; do echo "::warning::$l"; done
+          exit $code
         env:
           PYTHONPATH: main
