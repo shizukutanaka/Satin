@@ -68,11 +68,15 @@ except ImportError:
 
 # ── sounddevice ────────────────────────────────────────────────────────────
 # sounddevice は PortAudio のシステムライブラリが無いと ImportError ではなく
-# OSError を送出する（satin_launcher._check_deps と同じ理由）。このモジュール
-# の契約は「未利用可能なら None」なので、OSError も欠落として扱う。
+# OSError を送出する（satin_launcher._check_deps と同じ理由）。さらに、
+# ライブラリが見つかっても音声サブシステムが無い/応答しない環境（音声
+# サーバの無い CI ランナー等）では、import 時点の Pa_Initialize が
+# sounddevice.PortAudioError（OSError でも ImportError でもない Exception
+# サブクラス）を送出する。このモジュールの契約は「利用できない依存は
+# None」なので、mediapipe ブロックと同様に Exception 全体を欠落として扱う。
 try:
     import sounddevice as sd
-except (ImportError, OSError):
+except Exception:
     sd = None  # type: ignore
 
 # ── pygltflib ──────────────────────────────────────────────────────────────

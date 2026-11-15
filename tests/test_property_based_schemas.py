@@ -39,6 +39,22 @@ except ImportError:
     class SearchStrategy: pass  # type: ignore[no-redef]
     settings = lambda *a, **kw: (lambda f: f)  # type: ignore[misc,assignment]
 
+if _HYPOTHESIS_AVAILABLE:
+    # The strategies in this module construct pydantic models on every draw
+    # (~0.1s each), so Hypothesis' too_slow health check — a wall-clock guard
+    # on input-generation speed — trips nondeterministically on loaded or
+    # shared CI runners (observed on the Python 3.11 leg, where different
+    # tests failed on different runs). The guard measures machine speed, not
+    # correctness: suppressing it file-wide leaves every example count and
+    # assertion unchanged. Tests with an explicit @settings(...) do NOT
+    # inherit this (an explicit suppress_health_check replaces the
+    # profile's), so those tests list too_slow themselves.
+    settings.register_profile(
+        "satin-slow-generation",
+        suppress_health_check=[HealthCheck.too_slow],
+    )
+    settings.load_profile("satin-slow-generation")
+
 try:
     import pytest
 except ImportError:
@@ -349,6 +365,12 @@ class TestWebScrapingRequest:
         assert req.timeout_seconds > 0
         assert 0 <= req.max_retries <= 10
 
+    # valid_urls() builds URLs via regex + nested draws, so input generation
+    # is intrinsically slow (~0.1s/draw) and tripped HealthCheck.too_slow on
+    # a loaded CI runner (Python 3.11 leg). too_slow is a wall-clock guard,
+    # not an assertion: suppressing it leaves the examples and the checked
+    # property unchanged.
+    @settings(suppress_health_check=[HealthCheck.too_slow])
     @given(valid_urls())
     def test_url_validation(self, url: str):
         """Test URL validation."""
@@ -540,7 +562,7 @@ def test_regression_{function_name}_{id(inputs)}():
     return test_code
 
 
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
 @given(search_results())
 def test_search_result_serialization(result: SearchResult):
     """Test SearchResult can be serialized/deserialized."""
@@ -553,7 +575,10 @@ def test_search_result_serialization(result: SearchResult):
     assert deserialized.relevance_score == result.relevance_score
 
 
-@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+# too_slow suppressed for the same reason as test_url_validation above:
+# generating lists of up to 100 pydantic SearchResult objects is slow by
+# construction and tripped the wall-clock health check on CI.
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
 @given(st.lists(search_results(), min_size=1, max_size=100))
 def test_result_list_processing(results: List[SearchResult]):
     """Test processing lists of search results."""
