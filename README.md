@@ -1,148 +1,55 @@
 # Satin
 
-Satin is a 3D avatar desktop companion. It responds to what you type or say
-using offline, rule-based dialogue (no LLM or network required), speaks via
-text-to-speech, and tracks a growing relationship (affinity, memories, special
-days). It runs as a GUI avatar, a headless CLI chat, or a web dashboard. A
-flexible configuration-management subsystem (layered config, validation,
-versioning, backups, plugins) underpins it.
+**Satin is a 3D avatar desktop companion who remembers you.**
+She talks with you — fully offline, with rule-based dialogue (no LLM, no
+network, no account) — speaks via text-to-speech, and keeps a growing
+relationship with you: affinity that rises and falls with how you treat her,
+memories of your name, birthday and interests, and greetings for special
+days. Your data never leaves your machine, and you can erase everything she
+remembers at any time.
 
-See [`SPECIFICATION.md`](SPECIFICATION.md) for the full specification,
+## Try it now — no install
+
+The chat companion runs on **Python's standard library alone**. If you have
+Python, you can talk to Satin before installing anything:
+
+```bash
+git clone https://github.com/shizukutanaka/Satin.git
+cd Satin
+python satin_launcher.py --chat
+```
+
+```text
+Satin: こんにちは！調子はどう？
+You: こんにちは
+Satin: こんにちは！来たね。
+You: /quit
+Satin: ばいばい、気をつけてね。
+```
+
+Type `/help` in chat for everything she can do (`/callme`, `/birthday`,
+`/like`, `/gift`, `/forget-me`, …). The 3D GUI, voice and camera features
+need the full dependency install — see [Getting Started](#getting-started).
+
+## Three ways to spend time with Satin
+
+| Mode | Command | Needs |
+|------|---------|-------|
+| CLI chat | `python satin_launcher.py --chat` | Python only — nothing to install |
+| Web dashboard | `python satin_launcher.py --dashboard` | + Flask |
+| 3D avatar GUI | `python satin_launcher.py` | Full install (PyQt5, OpenGL, TTS, …) |
+
+A flexible configuration-management subsystem (layered config, validation,
+versioning, backups, plugins) underpins it — see
+[Under the hood](#under-the-hood--configuration-and-infrastructure) and
+[`SPECIFICATION.md`](SPECIFICATION.md) for the full specification,
 architecture, and a strengths / weaknesses / improvements analysis.
 Contributors and AI agents should also read
-[`AGENT_WORKORDERS.md`](AGENT_WORKORDERS.md) — a strengths/weaknesses inventory
-and ready-to-execute work-order cards (with the repo's design boundaries and
-contribution conventions).
+[`AGENT_WORKORDERS.md`](AGENT_WORKORDERS.md) — a strengths/weaknesses
+inventory and ready-to-execute work-order cards (with the repo's design
+boundaries and contribution conventions).
 
-## Features
-
-- Multi-language support
-- Advanced error handling
-- Task scheduling
-- Plugin system
-- Performance monitoring
-- Configuration validation
-- Automatic backups
-- Backup scheduling
-- Environment variable support
-- Dynamic plugin loading
-- Enhanced configuration versioning
-- Enhanced backup scheduler
-- Enhanced caching system
-
-### Enhanced Caching System
-
-Satin now includes an enhanced caching system that:
-
-1. Supports async operations
-2. Provides detailed cache statistics
-3. Optimizes memory usage
-4. Manages disk cache efficiently
-5. Includes cache warmup
-
-To use the enhanced cache system:
-
-```python
-from main.cache_manager import CacheManager
-from main.logging_manager import LoggingManager
-
-# Initialize logger and cache manager
-logger = LoggingManager()
-cache_manager = CacheManager()
-
-# Create a cached function
-@cache_manager.cache
-async def expensive_operation(param):
-    # Simulate expensive operation
-    await asyncio.sleep(1)
-    return f"Result for {param}"
-
-# Use the cached function
-result = await expensive_operation("test")
-
-# Get cache statistics
-stats = cache_manager.get_cache_stats()
-print(f"Cache hit rate: {stats['hit_rate']}%")
-print(f"Average latency: {stats['average_latency']}ms")
-
-# Clear cache
-cache_manager.clear_cache()
-```
-
-### Enhanced Backup Scheduler
-
-Satin now includes an enhanced backup scheduler that:
-
-1. Provides detailed backup history
-2. Sends notifications for backup events
-3. Validates backup success/failure
-4. Automatically clears old backups
-5. Supports daily and weekly backups
-
-To use the enhanced backup scheduler:
-
-```python
-from main.backup_scheduler import BackupScheduler
-from main.notification_system import NotificationSystem
-from main.backup_manager import BackupManager
-from main.logging_manager import LoggingManager
-
-# Initialize components
-logger = LoggingManager()
-notification_system = NotificationSystem()
-backup_manager = BackupManager()
-
-# Initialize backup scheduler
-scheduler = BackupScheduler(backup_manager, notification_system)
-
-# Schedule daily backup at 2 AM
-scheduler.add_daily_backup(2, 0)
-
-# Schedule weekly backup on Sunday at 3 AM
-scheduler.add_weekly_backup("sunday", 3, 0)
-
-# Start the scheduler
-scheduler.start()
-
-# Get backup history
-history = scheduler.get_backup_history()
-
-# Clear backup history
-scheduler.clear_backup_history()
-```
-
-### Enhanced Configuration Version Management
-
-Satin now includes enhanced configuration version management that:
-
-1. Saves versions with optional descriptions
-2. Limits version history to prevent disk space issues
-3. Compares different versions
-4. Automatically backs up before restoration
-5. Provides detailed version information
-
-To use the enhanced version management:
-
-```python
-from main.config_version_manager import save_config_version, list_config_versions, restore_config_version, compare_versions
-
-# Save current configuration with description
-version_path = save_config_version(description="before_update")
-
-# List all versions with details
-versions = list_config_versions()
-for version in versions:
-    print(f"{version['timestamp']} - {version['size']} bytes")
-
-# Restore a specific version
-restore_config_version(versions[0]['path'])
-
-# Compare two versions
-comparison = compare_versions(versions[0]['path'], versions[1]['path'])
-print(f"Differences found: {len(comparison['differences'])}")
-```
-
-### Avatar Persona / Dialogue
+## Avatar Persona / Dialogue
 
 The autonomous 3D avatar's spoken lines (idle chatter, rest phrases and
 time-aware greetings) are no longer hardcoded — they are loaded from
@@ -422,6 +329,228 @@ summary. A `GET /healthz` endpoint returns `{"status":"ok"}` for uptime probes.
 All conversation/affinity pages are served `no-store` so private data is never
 cached by the browser.
 
+## Getting Started
+
+### Prerequisites
+
+- Python 3.8+ (the headless chat runs on the standard library alone;
+  the full GUI stack — PyQt5 / mediapipe — only ships wheels for recent
+  Python versions, so use a current Python 3 for the GUI)
+- Git (or download the repository ZIP from GitHub)
+
+### Platform-Specific Requirements
+
+#### Windows
+- Windows 10 or later
+- PowerShell 5.1 or later
+- Visual C++ Redistributable
+
+#### Mac
+- macOS 10.14 (Mojave) or later
+- Homebrew (for dependency management)
+- Xcode Command Line Tools
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/shizukutanaka/Satin.git
+cd Satin
+```
+
+2. Install dependencies (same file on every platform):
+```bash
+pip install -r setup/requirements.txt
+```
+
+3. (Optional) Run the platform setup script — checks Python, upgrades pip,
+   and installs the dependencies above for you:
+```bash
+# Windows
+setup\win\setup.bat
+
+# Mac
+setup/mac/setup.sh
+```
+
+### Configuration
+
+The main configuration file is located at `config/config.json`. You can override settings using environment variables or by modifying the JSON file.
+
+### Usage
+
+```bash
+# Windows — launch the GUI avatar
+launch\win\run_satin.bat
+
+# Mac — launch the GUI avatar
+launch/mac/run_satin.sh
+
+# Any platform — same entry point directly, with more modes:
+python satin_launcher.py              # GUI avatar (default)
+python satin_launcher.py --chat       # headless CLI chat (no GUI/TTS deps needed)
+python satin_launcher.py --dashboard  # Flask web dashboard
+python satin_launcher.py --validate   # validate config and exit
+python satin_launcher.py --avatar-loader  # pick a .glb/.gltf/.vrm avatar; the main GUI renders it next launch
+```
+
+To back up your configuration, run `launch/win/backup_satin.bat` (Windows) or
+`launch/mac/backup_satin.sh` (Mac).
+
+## Directory Structure
+
+```
+Satin/
+├── satin_launcher.py  # Entry point: --chat / --dashboard / --manage / --validate
+├── config/            # Runtime configuration, mood/profile state, plugin configs
+├── main/              # Application code (dialogue, mood, TTS, GUI, dashboard, i18n, ...)
+│   ├── config/        # Layered config-management subsystem
+│   ├── i18n/          # Internationalization helpers
+│   └── plugin_system/ # Plugin loading/registration
+├── locales/           # ja.json / en.json UI strings
+├── plugins/           # Sample/user plugins
+├── examples/          # Standalone usage examples for subsystems
+├── launch/            # Per-OS launch scripts (call satin_launcher.py)
+│   ├── win/run_satin.bat, backup_satin.bat
+│   └── mac/run_satin.sh, backup_satin.sh
+├── setup/             # Install: requirements.txt + per-OS setup.bat / setup.sh
+└── tests/             # unittest suite (one file per module, run with pytest)
+```
+
+## Under the hood — configuration and infrastructure
+
+The companion is underpinned by a configuration-management subsystem.
+These sections are for developers and power users; you do not need any of
+them to chat with Satin.
+
+## Features
+
+- Multi-language support
+- Advanced error handling
+- Task scheduling
+- Plugin system
+- Performance monitoring
+- Configuration validation
+- Automatic backups
+- Backup scheduling
+- Environment variable support
+- Dynamic plugin loading
+- Enhanced configuration versioning
+- Enhanced backup scheduler
+- Enhanced caching system
+
+### Enhanced Caching System
+
+Satin now includes an enhanced caching system that:
+
+1. Supports async operations
+2. Provides detailed cache statistics
+3. Optimizes memory usage
+4. Manages disk cache efficiently
+5. Includes cache warmup
+
+To use the enhanced cache system:
+
+```python
+from main.cache_manager import CacheManager
+from main.logging_manager import LoggingManager
+
+# Initialize logger and cache manager
+logger = LoggingManager()
+cache_manager = CacheManager()
+
+# Create a cached function
+@cache_manager.cache
+async def expensive_operation(param):
+    # Simulate expensive operation
+    await asyncio.sleep(1)
+    return f"Result for {param}"
+
+# Use the cached function
+result = await expensive_operation("test")
+
+# Get cache statistics
+stats = cache_manager.get_cache_stats()
+print(f"Cache hit rate: {stats['hit_rate']}%")
+print(f"Average latency: {stats['average_latency']}ms")
+
+# Clear cache
+cache_manager.clear_cache()
+```
+
+### Enhanced Backup Scheduler
+
+Satin now includes an enhanced backup scheduler that:
+
+1. Provides detailed backup history
+2. Sends notifications for backup events
+3. Validates backup success/failure
+4. Automatically clears old backups
+5. Supports daily and weekly backups
+
+To use the enhanced backup scheduler:
+
+```python
+from main.backup_scheduler import BackupScheduler
+from main.notification_system import NotificationSystem
+from main.backup_manager import BackupManager
+from main.logging_manager import LoggingManager
+
+# Initialize components
+logger = LoggingManager()
+notification_system = NotificationSystem()
+backup_manager = BackupManager()
+
+# Initialize backup scheduler
+scheduler = BackupScheduler(backup_manager, notification_system)
+
+# Schedule daily backup at 2 AM
+scheduler.add_daily_backup(2, 0)
+
+# Schedule weekly backup on Sunday at 3 AM
+scheduler.add_weekly_backup("sunday", 3, 0)
+
+# Start the scheduler
+scheduler.start()
+
+# Get backup history
+history = scheduler.get_backup_history()
+
+# Clear backup history
+scheduler.clear_backup_history()
+```
+
+### Enhanced Configuration Version Management
+
+Satin now includes enhanced configuration version management that:
+
+1. Saves versions with optional descriptions
+2. Limits version history to prevent disk space issues
+3. Compares different versions
+4. Automatically backs up before restoration
+5. Provides detailed version information
+
+To use the enhanced version management:
+
+```python
+from main.config_version_manager import save_config_version, list_config_versions, restore_config_version, compare_versions
+
+# Save current configuration with description
+version_path = save_config_version(description="before_update")
+
+# List all versions with details
+versions = list_config_versions()
+for version in versions:
+    print(f"{version['timestamp']} - {version['size']} bytes")
+
+# Restore a specific version
+restore_config_version(versions[0]['path'])
+
+# Compare two versions
+comparison = compare_versions(versions[0]['path'], versions[1]['path'])
+print(f"Differences found: {len(comparison['differences'])}")
+```
+
 ### Plugin System
 
 Satin now includes a robust plugin system that:
@@ -579,92 +708,6 @@ base config.json  <  config.<env>.json  <  .env file  <  real environment vars
 
 If no `SATIN_ENV` is set, or the matching overlay file is absent, only the base
 config is loaded.
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.8+
-- Git
-
-### Platform-Specific Requirements
-
-#### Windows
-- Windows 10 or later
-- PowerShell 5.1 or later
-- Visual C++ Redistributable
-
-#### Mac
-- macOS 10.14 (Mojave) or later
-- Homebrew (for dependency management)
-- Xcode Command Line Tools
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/shizukutanaka/Satin.git
-cd Satin
-```
-
-2. Install dependencies (same file on every platform):
-```bash
-pip install -r setup/requirements.txt
-```
-
-3. (Optional) Run the platform setup script — checks Python, upgrades pip,
-   and installs the dependencies above for you:
-```bash
-# Windows
-setup\win\setup.bat
-
-# Mac
-setup/mac/setup.sh
-```
-
-### Configuration
-
-The main configuration file is located at `config/config.json`. You can override settings using environment variables or by modifying the JSON file.
-
-### Usage
-
-```bash
-# Windows — launch the GUI avatar
-launch\win\run_satin.bat
-
-# Mac — launch the GUI avatar
-launch/mac/run_satin.sh
-
-# Any platform — same entry point directly, with more modes:
-python satin_launcher.py              # GUI avatar (default)
-python satin_launcher.py --chat       # headless CLI chat (no GUI/TTS deps needed)
-python satin_launcher.py --dashboard  # Flask web dashboard
-python satin_launcher.py --validate   # validate config and exit
-python satin_launcher.py --avatar-loader  # pick a .glb/.gltf/.vrm avatar; the main GUI renders it next launch
-```
-
-To back up your configuration, run `launch/win/backup_satin.bat` (Windows) or
-`launch/mac/backup_satin.sh` (Mac).
-
-## Directory Structure
-
-```
-Satin/
-├── satin_launcher.py  # Entry point: --chat / --dashboard / --manage / --validate
-├── config/            # Runtime configuration, mood/profile state, plugin configs
-├── main/              # Application code (dialogue, mood, TTS, GUI, dashboard, i18n, ...)
-│   ├── config/        # Layered config-management subsystem
-│   ├── i18n/          # Internationalization helpers
-│   └── plugin_system/ # Plugin loading/registration
-├── locales/           # ja.json / en.json UI strings
-├── plugins/           # Sample/user plugins
-├── examples/          # Standalone usage examples for subsystems
-├── launch/            # Per-OS launch scripts (call satin_launcher.py)
-│   ├── win/run_satin.bat, backup_satin.bat
-│   └── mac/run_satin.sh, backup_satin.sh
-├── setup/             # Install: requirements.txt + per-OS setup.bat / setup.sh
-└── tests/             # unittest suite (one file per module, run with pytest)
-```
 
 ## Development
 
