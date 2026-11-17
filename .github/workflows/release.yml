@@ -1,0 +1,118 @@
+# Satin リリース用ワークフロー
+#
+# タグ（v*）を push すると、テストを通過したうえでポータブル ZIP を
+# 組み立て、SHA256 チェックサムと一緒に GitHub Release へ添付する。
+# workflow_dispatch（手動実行）では Release は作らず、同じ ZIP を
+# Actions の artifact として出すだけ（公開前の確認用）。
+#
+# 配布単位はソース一式＋ランチャー。チャットモードは Python 標準
+# ライブラリだけで動くため、ZIP を展開して
+# `python satin_launcher.py --chat` とするのが最速の入手経路になる。
+# 3D GUI 等のフル機能に必要な依存は setup/requirements.txt のまま
+# 利用者側で入れる（PyPI の `satin` は無関係な別ライブラリが占有
+# 済みのため、配布は GitHub Release の ZIP を正規路とする）。
+#
+# タグの版数と main/version.py の __version__ が一致しない場合は
+# 誤ラベルの配布物を出さないよう、ここで失敗させる。
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # --- テストゲート（ci.yml の test ジョブと同じ手順） ---
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 libglib2.0-0 espeak espeak-data
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r setup/requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -q --tb=short
+        env:
+          PYTHONPATH: main
+
+      # --- 版数の決定とタグとの整合チェック ---
+      - name: Determine version
+        id: version
+        run: |
+          APP_VERSION=$(python -c "import re; print(re.search(r'__version__ = \"([^\"]+)\"', open('main/version.py').read()).group(1))")
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+              echo "::error::タグ v${TAG_VERSION} と main/version.py の ${APP_VERSION} が一致しません"
+              exit 1
+            fi
+            VERSION="$TAG_VERSION"
+          else
+            VERSION="$APP_VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: $VERSION"
+
+      # --- ポータブル ZIP の組み立て（追跡ファイルのみ、許可リスト方式） ---
+      - name: Build portable ZIP
+        run: |
+          set -euo pipefail
+          PKG="Satin-${{ steps.version.outputs.version }}"
+          mkdir -p "dist/$PKG"
+          git archive HEAD -- \
+            satin_launcher.py main config locales plugins examples launch setup \
+            README.md LICENSE CHANGELOG.md \
+            | tar -x -C "dist/$PKG"
+          (cd dist && zip -r "$PKG.zip" "$PKG" > /dev/null)
+          (cd dist && sha256sum "$PKG.zip" > SHA256SUMS.txt)
+          ls -l dist
+
+      - name: Upload package artifact (no Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Satin-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Satin-${{ needs.package.outputs.version }}
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "Satin-${{ needs.package.outputs.version }}.zip" \
+            "SHA256SUMS.txt" \
+            --title "Satin ${{ needs.package.outputs.version }}" \
+            --generate-notes
