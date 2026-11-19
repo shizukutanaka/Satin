@@ -920,6 +920,89 @@ class DataPurgeTests(unittest.TestCase):
             self.assertTrue(os.path.exists(p))
 
 
+class DataExportTests(unittest.TestCase):
+    """data export carries every file data purge would erase, in a zip that
+    backup restore puts back byte-for-byte (move to a new version/machine)."""
+
+    def setUp(self):
+        import shutil
+        self._root = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self._root, True)
+        self._contents = {
+            "avatar_event_log.jsonl": b'{"event":"user_comment","text":"hi"}\n',
+            "avatar_event_log.jsonl.20260101_000000.gz": b"\x1f\x8bold",
+            "config/mood.json": b'{"affinity": 77.5}',
+            "config/mood_history.jsonl": b'{"date":"2026-11-19"}\n',
+            "config/user_profile.json": "{\"name\": \"太郎\"}".encode("utf-8"),
+            "config/avatar_history.json": b'["a.vrm"]',
+        }
+        self._items = []
+        for rel, data in self._contents.items():
+            p = os.path.join(self._root, *rel.split("/"))
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "wb") as f:
+                f.write(data)
+            self._items.append((rel, p))
+        self._zip = os.path.join(self._root, "satin-memory.zip")
+        patches = [
+            mock.patch.object(manage_satin, "_ROOT", self._root),
+            mock.patch.object(manage_satin, "_personal_data_paths",
+                              return_value=self._items),
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _quiet(self, fn, *a, **kw):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            fn(*a, **kw)
+        return buf.getvalue()
+
+    def test_export_contains_every_purge_target(self):
+        import zipfile
+        self._quiet(manage_satin.cmd_data_export, self._zip)
+        with zipfile.ZipFile(self._zip) as zf:
+            self.assertEqual(sorted(zf.namelist()), sorted(self._contents))
+
+    def test_export_purge_restore_roundtrip_is_byte_identical(self):
+        self._quiet(manage_satin.main, ["data", "export", self._zip])
+        self._quiet(manage_satin.cmd_data_purge, assume_yes=True)
+        for _rel, p in self._items:
+            self.assertFalse(os.path.exists(p))
+        with mock.patch("builtins.input", return_value="y"):
+            self._quiet(manage_satin.cmd_backup_restore, self._zip, None)
+        for rel, data in self._contents.items():
+            with open(os.path.join(self._root, *rel.split("/")), "rb") as f:
+                self.assertEqual(f.read(), data, rel)
+
+    @unittest.skipIf(os.name == "nt", "POSIX permissions only")
+    def test_export_zip_is_owner_only(self):
+        import stat
+        self._quiet(manage_satin.cmd_data_export, self._zip)
+        self.assertEqual(stat.S_IMODE(os.stat(self._zip).st_mode), 0o600)
+
+    def test_nothing_to_export_writes_no_file(self):
+        for _rel, p in self._items:
+            os.remove(p)
+        out = self._quiet(manage_satin.cmd_data_export, self._zip)
+        self.assertIn("ありません", out)
+        self.assertFalse(os.path.exists(self._zip))
+
+    def test_file_outside_root_is_excluded(self):
+        import zipfile
+        outside = tempfile.NamedTemporaryFile(delete=False)
+        outside.close()
+        self.addCleanup(os.remove, outside.name)
+        self._items.append(("外部", outside.name))
+        out = self._quiet(manage_satin.cmd_data_export, self._zip)
+        self.assertIn("除外", out)
+        with zipfile.ZipFile(self._zip) as zf:
+            self.assertEqual(sorted(zf.namelist()), sorted(self._contents))
+
+
 class PersonalDataPathsTests(unittest.TestCase):
     """_personal_data_paths enumerates conversation log, mood state, and mood history."""
 
