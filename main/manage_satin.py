@@ -18,6 +18,7 @@ Satin 管理バッチツール (CLI)
   persona respond TEXT  入力に対する応答をプレビュー（ログ・好感度に影響なし）
   summary               アクティビティサマリーを表示
   data purge            全個人データ（会話・好感度・履歴）を完全削除
+  data export FILE      全個人データを 1 つの zip に書き出す（backup restore で復元可）
 """
 from __future__ import annotations
 
@@ -608,6 +609,46 @@ def cmd_data_purge(assume_yes: bool = False, dry_run: bool = False) -> None:
     print(f"\n個人データ {deleted} 件を削除しました。Satin はあなたとの思い出をすべて忘れました。")
 
 
+def cmd_data_export(dest: str) -> None:
+    """data purge が消す全個人データを 1 つの zip に書き出す（持ち出し・移行用）。
+
+    zip 内のパスはリポジトリルートからの相対パスで、`backup restore` がそのまま
+    復元できる形式。新しい版の ZIP を展開した先や別マシンで
+    `backup restore FILE` するだけで、同じ関係（好感度・記憶・会話）を引き継げる。
+    標準ライブラリのみで動作する（Flask ダッシュボード不要）。
+    """
+    import zipfile
+    root = os.path.realpath(_ROOT)
+    entries = []
+    for _desc, p in _personal_data_paths():
+        if not p or not os.path.isfile(p):
+            continue
+        real = os.path.realpath(p)
+        if not real.startswith(root + os.sep):
+            print(f"[WARNING] リポジトリ外のため除外しました: {p}")
+            continue
+        entries.append((real, os.path.relpath(real, root).replace(os.sep, "/")))
+
+    if not entries:
+        print("(書き出す個人データはありません)")
+        return
+
+    try:
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+            for real, arc in entries:
+                zf.write(real, arc)
+    except OSError as e:
+        print(f"[ERROR] 書き出しに失敗しました: {e}")
+        sys.exit(1)
+    try:
+        from fsutil import restrict_to_owner
+        restrict_to_owner(dest)
+    except Exception:
+        pass
+    print(f"個人データ {len(entries)} 件を書き出しました: {dest}")
+    print(f"復元: python satin_launcher.py --manage backup restore {dest}")
+
+
 def cmd_persona_show() -> None:
     """現在のペルソナ情報を表示する。"""
     try:
@@ -780,6 +821,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_data_purge.add_argument("--yes", action="store_true", help="確認をスキップして削除")
     p_data_purge.add_argument("--dry-run", action="store_true", help="削除対象を表示するだけ")
+    p_data_export = data_sub.add_parser(
+        "export", help="全個人データを 1 つの zip に書き出す（backup restore で復元可）"
+    )
+    p_data_export.add_argument("file", help="書き出し先の zip ファイルパス")
 
     return parser
 
@@ -855,10 +900,12 @@ def main(argv: list[str] | None = None) -> int:
 
     elif args.command == "data":
         if not args.data_cmd:
-            print("使用方法: manage_satin data {purge}")
+            print("使用方法: manage_satin data {purge,export}")
             return 1
         if args.data_cmd == "purge":
             cmd_data_purge(assume_yes=args.yes, dry_run=args.dry_run)
+        elif args.data_cmd == "export":
+            cmd_data_export(args.file)
         return 0
 
     return 0

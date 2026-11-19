@@ -303,6 +303,7 @@ python main/manage_satin.py persona respond "やあ"    # preview a reply (no lo
 python main/manage_satin.py summary                  # today's activity summary
 python main/manage_satin.py data purge --dry-run     # preview every personal-data file
 python main/manage_satin.py data purge               # erase ALL personal data (confirms first)
+python main/manage_satin.py data export memory.zip     # take ALL personal data with you (one zip)
 ```
 
 `validate` checks JSON syntax and also performs semantic checks: it loads
@@ -319,6 +320,16 @@ and asks for confirmation first; use `--dry-run` to preview without deleting, or
 `--yes` to skip the prompt in scripts. (Your customisations in
 `config/mood_config.json` and `config/persona.json` are preferences, not memories,
 so they are left untouched.)
+
+#### Take her with you (no account, no cloud)
+
+`data export memory.zip` writes exactly the files `data purge` would erase
+into one zip, using only the Python standard library. Unzip a newer Satin
+release or move to another machine, then run
+`python satin_launcher.py --manage backup restore memory.zip` and she
+remembers you there — name, birthday, interests, affinity and the whole
+conversation history. The zip is created owner-only (0600) and never leaves
+your disk unless you move it.
 
 ### Web dashboard
 
